@@ -7,12 +7,28 @@ const SCHEDULE = process.env.CRON_SCHEDULE || '0 * * * *'; // every hour by defa
 
 logger.info(`Auto-Affiliate pipeline starting. Schedule: "${SCHEDULE}"`);
 
+let pipelineRunning = false;
+
+async function safePipelineRun(trigger) {
+  if (pipelineRunning) {
+    logger.warn(`[${trigger}] Previous run still active — skipping this cycle`);
+    return;
+  }
+  pipelineRunning = true;
+  try {
+    await runPipeline();
+  } catch (err) {
+    logger.error(`[${trigger}] Run error: ${err.message}`);
+  } finally {
+    pipelineRunning = false;
+  }
+}
+
 // Run immediately on startup, then on schedule
-runPipeline().catch(err => logger.error(`Startup run error: ${err.message}`));
+safePipelineRun('startup');
 
 const task = cron.schedule(SCHEDULE, () => {
-  logger.info('Cron triggered pipeline run');
-  runPipeline().catch(err => logger.error(`Scheduled run error: ${err.message}`));
+  safePipelineRun('cron');
 });
 
 process.on('SIGTERM', () => {

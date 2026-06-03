@@ -26,7 +26,7 @@ export function recordCost(amount) {
   saveBudget(budget);
 
   const cap = parseFloat(process.env.DAILY_COST_CAP_USD || '2.00');
-  const alert = parseFloat(process.env.ALERT_COST_THRESHOLD_USD || '5.00');
+  const alert = parseFloat(process.env.ALERT_COST_THRESHOLD_USD || '1.50');
 
   if (budget.spent >= alert) {
     console.error(`[BUDGET ALERT] Daily spend $${budget.spent.toFixed(4)} exceeds alert threshold $${alert}`);

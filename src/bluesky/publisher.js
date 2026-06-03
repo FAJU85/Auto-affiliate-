@@ -10,25 +10,24 @@ export async function publishPost(text, deeplink, imageBuffer) {
   const agent = await getBskyAgent();
   const maxLen = parseInt(process.env.MAX_POST_LENGTH || '300', 10);
 
-  // Truncate text to leave room for URL
-  const urlDisplay = deeplink.length > 30 ? deeplink.slice(0, 27) + '...' : deeplink;
-  const bodyText = `${text}\n\n${urlDisplay}`.slice(0, maxLen);
-  const fullText = `${text}\n\n${deeplink}`;
+  // Build combined text, then truncate by byte length to respect Bluesky's limit
+  const combined = `${text}\n\n${deeplink}`;
+  const combinedBytes = Buffer.from(combined, 'utf8');
+  const truncatedBytes = combinedBytes.slice(0, maxLen);
+  const truncated = truncatedBytes.toString('utf8');
 
-  // Build facets for the URL (rich text link)
-  const linkStart = Buffer.byteLength(text + '\n\n', 'utf8');
-  const linkEnd = Buffer.byteLength(fullText, 'utf8');
+  // Facet indices are byte offsets into the final truncated text
+  const prefixBytes = Buffer.byteLength(text + '\n\n', 'utf8');
+  const linkStart = prefixBytes;
+  const linkEnd = Math.min(prefixBytes + Buffer.byteLength(deeplink, 'utf8'), truncatedBytes.length);
 
   const postRecord = {
     $type: 'app.bsky.feed.post',
-    text: fullText.slice(0, maxLen),
+    text: truncated,
     createdAt: new Date().toISOString(),
-    facets: [
-      {
-        index: { byteStart: linkStart, byteEnd: Math.min(linkEnd, Buffer.byteLength(fullText.slice(0, maxLen), 'utf8')) },
-        features: [{ $type: 'app.bsky.richtext.facet#link', uri: deeplink }],
-      },
-    ],
+    facets: linkStart < linkEnd
+      ? [{ index: { byteStart: linkStart, byteEnd: linkEnd }, features: [{ $type: 'app.bsky.richtext.facet#link', uri: deeplink }] }]
+      : [],
   };
 
   // Upload image if we have one

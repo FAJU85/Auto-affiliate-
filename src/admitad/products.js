@@ -12,7 +12,7 @@ const API_BASE = 'https://api.admitad.com';
  */
 export async function getTopProduct() {
   const token = await getAdmitadToken();
-  const minCommission = parseFloat(process.env.MIN_COMMISSION_RATE || '0.10');
+  const minEcpc = parseFloat(process.env.MIN_COMMISSION_RATE || '0.10');
 
   const params = new URLSearchParams({
     limit: '50',
@@ -34,14 +34,12 @@ export async function getTopProduct() {
   logger.info(`Admitad: fetched ${campaigns.length} campaigns`);
 
   const filtered = campaigns.filter(c => {
-    const rate = parseFloat(c.avg_money_transfer_time || c.max_money_transfer || 0);
     const hasUrl = !!c.site_url;
-    const commission = parseFloat(c.avg_ecpc || 0);
-    // Use ecpc as proxy for margin; filter campaigns with affiliate URL
-    return hasUrl && commission > 0;
+    const ecpc = parseFloat(c.avg_ecpc || 0);
+    return hasUrl && ecpc >= minEcpc;
   });
 
-  logger.info(`After URL filter: ${filtered.length} campaigns`);
+  logger.info(`After filter (minEcpc=${minEcpc}): ${filtered.length} campaigns`);
 
   // Sort by highest ecpc (margin proxy), pick top
   filtered.sort((a, b) => parseFloat(b.avg_ecpc || 0) - parseFloat(a.avg_ecpc || 0));
@@ -50,7 +48,10 @@ export async function getTopProduct() {
   if (!top) throw new Error('No valid products found after filtering');
 
   logger.info(`Selected campaign: ${top.name} (ecpc: ${top.avg_ecpc})`);
-  return normalizeCampaign(top);
+  const product = normalizeCampaign(top);
+  product._fetchedCount = campaigns.length;
+  product._filteredCount = filtered.length;
+  return product;
 }
 
 function normalizeCampaign(c) {
@@ -68,7 +69,6 @@ function normalizeCampaign(c) {
 
 export async function buildDeeplink(product) {
   const token = await getAdmitadToken();
-  const { ADMITAD_CLIENT_ID } = process.env;
 
   const body = new URLSearchParams({
     campaign_id: product.id,

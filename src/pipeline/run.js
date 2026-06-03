@@ -16,6 +16,7 @@ export async function runPipeline() {
     postUri: null,
     durationMs: 0,
     dailySpendUsd: 0,
+    productsFetched: 0,
     productsFiltered: 0,
   };
 
@@ -28,6 +29,8 @@ export async function runPipeline() {
       getTopTrends(5),
     ]);
     runMeta.product = product.name;
+    runMeta.productsFiltered = product._filteredCount ?? 0;
+    runMeta.productsFetched = product._fetchedCount ?? 0;
 
     // 2. Build trackable deeplink
     const deeplink = await buildDeeplink(product);

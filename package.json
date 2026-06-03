@@ -4,10 +4,13 @@
   "description": "Autonomous affiliate marketing pipeline: Admitad → AI → Bluesky",
   "type": "module",
   "main": "src/index.js",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "test": "node --test src/**/*.test.js"
+    "test": "node --test $(find src -name '*.test.js' | tr '\\n' ' ')"
   },
   "dependencies": {
     "@atproto/api": "^0.13.0",
