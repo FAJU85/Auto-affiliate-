@@ -10,7 +10,8 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "test": "node --test $(find src -name '*.test.js' | tr '\\n' ' ')"
+    "test": "node --test $(find src -name '*.test.js' | tr '\\n' ' ')",
+    "status": "node src/cli/status.js"
   },
   "dependencies": {
     "@atproto/api": "^0.13.0",
