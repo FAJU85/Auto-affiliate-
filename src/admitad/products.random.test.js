@@ -1,58 +1,71 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-// Inline the selection logic for deterministic testing
-function selectFromTopN(campaigns, minEcpc, n = 5) {
-  const filtered = campaigns.filter(c => !!c.site_url && parseFloat(c.avg_ecpc || 0) >= minEcpc);
-  filtered.sort((a, b) => parseFloat(b.avg_ecpc) - parseFloat(a.avg_ecpc));
-  if (filtered.length === 0) return null;
-  const pool = filtered.slice(0, n);
-  return pool[Math.floor(Math.random() * pool.length)];
+// Inline the filter+sort+random-pick logic to test without network calls
+function filterSortPick(campaigns, minEcpc) {
+  const filtered = campaigns.filter(c => {
+    const hasUrl = !!c.site_url;
+    const ecpc = parseFloat(c.avg_ecpc || 0);
+    return hasUrl && ecpc >= minEcpc;
+  });
+  filtered.sort((a, b) => parseFloat(b.avg_ecpc || 0) - parseFloat(a.avg_ecpc || 0));
+  if (filtered.length === 0) throw new Error('No valid products found after filtering');
+  const top5 = filtered.slice(0, 5);
+  const idx = Math.floor(Math.random() * top5.length);
+  return { picked: top5[idx], top5 };
 }
 
-const CAMPAIGNS = Array.from({ length: 20 }, (_, i) => ({
-  id: String(i + 1),
-  name: `Campaign ${i + 1}`,
-  site_url: `https://shop${i + 1}.example.com`,
-  avg_ecpc: String((20 - i) * 0.05), // ecpc: 1.00, 0.95, 0.90 ... descending
-}));
+const SAMPLE = [
+  { id: '1', name: 'A', site_url: 'https://a.com', avg_ecpc: '0.90' },
+  { id: '2', name: 'B', site_url: 'https://b.com', avg_ecpc: '0.80' },
+  { id: '3', name: 'C', site_url: 'https://c.com', avg_ecpc: '0.70' },
+  { id: '4', name: 'D', site_url: 'https://d.com', avg_ecpc: '0.60' },
+  { id: '5', name: 'E', site_url: 'https://e.com', avg_ecpc: '0.50' },
+  { id: '6', name: 'F', site_url: 'https://f.com', avg_ecpc: '0.40' },
+  { id: '7', name: 'G', site_url: '',              avg_ecpc: '0.99' },
+  { id: '8', name: 'H', site_url: 'https://h.com', avg_ecpc: '0.01' },
+];
 
-const TOP5_IDS = CAMPAIGNS.slice(0, 5).map(c => c.id); // ids 1-5 (highest ecpc)
+const TOP5_IDS = new Set(['1', '2', '3', '4', '5']);
 
-describe('random selection from top 5', () => {
-  it('selected campaign is always one of the top 5 by ecpc (100 trials)', () => {
+describe('random selection always picks from top-5 by ecpc', () => {
+  it('runs 100 times and always selects from top-5 candidates', () => {
     for (let i = 0; i < 100; i++) {
-      const selected = selectFromTopN(CAMPAIGNS, 0.10);
-      assert.ok(TOP5_IDS.includes(selected.id), `Trial ${i}: selected id ${selected.id} not in top 5`);
+      const { picked, top5 } = filterSortPick(SAMPLE, 0.10);
+      assert.ok(TOP5_IDS.has(picked.id), `Iteration ${i}: picked id=${picked.id} is not in top-5`);
+      assert.equal(top5.length, 5, 'top5 should have 5 elements');
     }
   });
 
-  it('returns null when no campaigns meet threshold', () => {
-    const result = selectFromTopN(CAMPAIGNS, 999);
-    assert.equal(result, null);
+  it('top-5 are sorted by ecpc desc', () => {
+    const { top5 } = filterSortPick(SAMPLE, 0.10);
+    assert.equal(top5[0].id, '1');
+    assert.equal(top5[1].id, '2');
+    assert.equal(top5[2].id, '3');
+    assert.equal(top5[3].id, '4');
+    assert.equal(top5[4].id, '5');
   });
 
-  it('works with exactly 1 valid campaign', () => {
-    const single = [{ id: '1', name: 'Only', site_url: 'https://a.com', avg_ecpc: '0.50' }];
-    const result = selectFromTopN(single, 0.10);
-    assert.equal(result.id, '1');
+  it('item ranked 6th is never picked when 5+ candidates exist', () => {
+    for (let i = 0; i < 200; i++) {
+      const { picked } = filterSortPick(SAMPLE, 0.10);
+      assert.notEqual(picked.id, '6');
+    }
   });
 
-  it('works with 3 valid campaigns (pool smaller than 5)', () => {
-    const small = CAMPAIGNS.slice(0, 3);
-    const ids = small.map(c => c.id);
+  it('works correctly when fewer than 5 candidates exist', () => {
+    const small = SAMPLE.slice(0, 3);
     for (let i = 0; i < 50; i++) {
-      const result = selectFromTopN(small, 0.10);
-      assert.ok(ids.includes(result.id), 'Must select from the 3 available');
+      const { picked, top5 } = filterSortPick(small, 0.10);
+      assert.ok(['1', '2', '3'].includes(picked.id));
+      assert.equal(top5.length, 3);
     }
   });
 
-  it('excludes campaigns below minEcpc from the pool', () => {
-    // Only campaigns with ecpc >= 0.80 qualify: ids 1-4 (ecpc 1.00, 0.95, 0.90, 0.85)
-    for (let i = 0; i < 50; i++) {
-      const result = selectFromTopN(CAMPAIGNS, 0.80);
-      const ecpc = parseFloat(CAMPAIGNS.find(c => c.id === result.id).avg_ecpc);
-      assert.ok(ecpc >= 0.80, `Selected campaign ecpc ${ecpc} is below threshold`);
-    }
+  it('throws when no candidates pass the filter', () => {
+    assert.throws(
+      () => filterSortPick(SAMPLE, 999),
+      /No valid products found after filtering/,
+    );
   });
 });
