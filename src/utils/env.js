@@ -28,4 +28,16 @@ export function validateEnv() {
   if (alert >= cap) {
     throw new Error(`ALERT_COST_THRESHOLD_USD ($${alert}) must be less than DAILY_COST_CAP_USD ($${cap})`);
   }
+
+  const schedule = process.env.CRON_SCHEDULE || '0 * * * *';
+  if (!isValidCron(schedule)) {
+    throw new Error(`CRON_SCHEDULE "${schedule}" is not a valid 5-field cron expression`);
+  }
+}
+
+function isValidCron(expr) {
+  const parts = expr.trim().split(/\s+/);
+  if (parts.length !== 5) return false;
+  // Permissive check: each field must be non-empty and composed of valid cron chars
+  return parts.every(p => /^[\d\*\/,\-]+$/.test(p));
 }

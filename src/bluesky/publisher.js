@@ -6,7 +6,20 @@ import { logger } from '../utils/logger.js';
  * Uploads image blob if provided, then creates the post record.
  * Returns the published post URI.
  */
+function isValidHttpUrl(str) {
+  try {
+    const u = new URL(str);
+    return u.protocol === 'http:' || u.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 export async function publishPost(text, deeplink, imageBuffer, productName) {
+  if (!isValidHttpUrl(deeplink)) {
+    throw new Error(`publishPost: deeplink is not a valid URL: ${deeplink}`);
+  }
+
   const agent = await getBskyAgent();
   const maxLen = parseInt(process.env.MAX_POST_LENGTH || '300', 10);
 

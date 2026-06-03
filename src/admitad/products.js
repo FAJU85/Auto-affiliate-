@@ -55,16 +55,29 @@ export async function getTopProduct() {
 }
 
 function normalizeCampaign(c) {
+  const id = String(c.id || '');
+  const name = String(c.name || '').trim() || 'Unknown Product';
+  const siteUrl = isValidHttpUrl(c.site_url) ? c.site_url : null;
+  if (!siteUrl) throw new Error(`Campaign ${id} has invalid site_url: ${c.site_url}`);
   return {
-    id: String(c.id),
-    name: c.name,
-    description: c.description || c.name,
-    siteUrl: c.site_url,
+    id,
+    name,
+    description: String(c.description || c.name || name).trim(),
+    siteUrl,
     logoUrl: c.logo || null,
-    category: c.categories?.[0]?.name || 'Product',
+    category: String(c.categories?.[0]?.name || 'Product').trim(),
     ecpc: parseFloat(c.avg_ecpc || 0),
-    currency: c.currency || 'USD',
+    currency: String(c.currency || 'USD'),
   };
+}
+
+function isValidHttpUrl(str) {
+  try {
+    const u = new URL(str);
+    return u.protocol === 'http:' || u.protocol === 'https:';
+  } catch {
+    return false;
+  }
 }
 
 export async function buildDeeplink(product) {
@@ -92,5 +105,8 @@ export async function buildDeeplink(product) {
   }
 
   const data = await res.json();
-  return data.deeplink || product.siteUrl;
+  const deeplink = data.deeplink;
+  if (deeplink && isValidHttpUrl(deeplink)) return deeplink;
+  logger.warn('Deeplink API returned invalid or empty URL, falling back to siteUrl');
+  return product.siteUrl;
 }

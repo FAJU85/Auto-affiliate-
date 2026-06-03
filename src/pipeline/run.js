@@ -52,6 +52,7 @@ export async function runPipeline() {
     logger.info(`=== Pipeline complete. Post: ${uri} ===`);
   } catch (err) {
     runMeta.error = err.message;
+    runMeta.errorStack = err.stack?.split('\n').slice(0, 5).join(' | ') || null;
     logger.error(`Pipeline failed: ${err.message}`);
   }
 
