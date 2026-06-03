@@ -1,0 +1,20 @@
+{
+  "name": "auto-affiliate",
+  "version": "1.0.0",
+  "description": "Autonomous affiliate marketing pipeline: Admitad → AI → Bluesky",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "test": "node --test src/**/*.test.js"
+  },
+  "dependencies": {
+    "@atproto/api": "^0.13.0",
+    "node-cron": "^3.0.3",
+    "openai": "^4.52.0",
+    "dotenv": "^16.4.5",
+    "node-fetch": "^3.3.2",
+    "rss-parser": "^3.13.0"
+  }
+}
