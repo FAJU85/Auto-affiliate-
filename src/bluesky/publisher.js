@@ -1,5 +1,6 @@
 import { getBskyAgent } from './client.js';
 import { logger } from '../utils/logger.js';
+import { sleep } from '../utils/sleep.js';
 
 /**
  * Publishes an affiliate post to Bluesky.
@@ -75,6 +76,3 @@ export async function publishPost(text, deeplink, imageBuffer, productName) {
   }
 }
 
-function sleep(ms) {
-  return new Promise(r => setTimeout(r, ms));
-}

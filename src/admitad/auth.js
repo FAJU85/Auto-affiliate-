@@ -1,5 +1,6 @@
 import fetch from 'node-fetch';
 import { logger } from '../utils/logger.js';
+import { sleep } from '../utils/sleep.js';
 
 const TOKEN_URL = 'https://api.admitad.com/token/';
 
@@ -50,6 +51,3 @@ async function _fetchToken() {
   throw lastError;
 }
 
-function sleep(ms) {
-  return new Promise(r => setTimeout(r, ms));
-}

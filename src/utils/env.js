@@ -5,10 +5,12 @@ const REQUIRED = [
   'BSKY_APP_PASSWORD',
 ];
 
-const OPTIONAL_WITH_COST = [
-  'OPENAI_API_KEY',
-  'HF_API_TOKEN',
-];
+const OPTIONAL_LABELS = {
+  DEEPSEEK_API_KEY: 'DeepSeek text generation (will use template fallback)',
+  HF_API_TOKEN: 'HuggingFace upscaling (images will not be upscaled)',
+  LANGSEARCH_API_KEY: 'LangSearch image search (og:image scrape fallback only)',
+  OPENAI_API_KEY: 'DALL-E image generation (unused in v2, kept for compatibility)',
+};
 
 export function validateEnv() {
   const missing = REQUIRED.filter(k => !process.env[k]);
@@ -16,10 +18,9 @@ export function validateEnv() {
     throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
   }
 
-  for (const k of OPTIONAL_WITH_COST) {
+  for (const [k, label] of Object.entries(OPTIONAL_LABELS)) {
     if (!process.env[k]) {
-      const label = k === 'OPENAI_API_KEY' ? 'DALL-E image generation' : 'Hugging Face text generation';
-      console.warn(`[WARN] ${k} not set — ${label} will use fallback mode`);
+      console.warn(`[WARN] ${k} not set — ${label}`);
     }
   }
 

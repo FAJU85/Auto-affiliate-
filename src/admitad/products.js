@@ -41,13 +41,16 @@ export async function getTopProduct() {
 
   logger.info(`After filter (minEcpc=${minEcpc}): ${filtered.length} campaigns`);
 
-  // Sort by highest ecpc (margin proxy), pick top
+  // Sort by highest ecpc (margin proxy), take top 5, randomly pick 1
   filtered.sort((a, b) => parseFloat(b.avg_ecpc || 0) - parseFloat(a.avg_ecpc || 0));
 
-  const top = filtered[0];
-  if (!top) throw new Error('No valid products found after filtering');
+  if (filtered.length === 0) throw new Error('No valid products found after filtering');
 
-  logger.info(`Selected campaign: ${top.name} (ecpc: ${top.avg_ecpc})`);
+  const top5 = filtered.slice(0, 5);
+  const randomIndex = Math.floor(Math.random() * top5.length);
+  const top = top5[randomIndex];
+
+  logger.info(`Selected campaign (${randomIndex + 1} of ${top5.length} top candidates): ${top.name} (ecpc: ${top.avg_ecpc})`);
   const product = normalizeCampaign(top);
   product._fetchedCount = campaigns.length;
   product._filteredCount = filtered.length;
