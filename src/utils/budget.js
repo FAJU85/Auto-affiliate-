@@ -16,8 +16,11 @@ function loadBudget() {
 }
 
 function saveBudget(data) {
-  fs.mkdirSync(path.dirname(BUDGET_FILE), { recursive: true });
-  fs.writeFileSync(BUDGET_FILE, JSON.stringify(data, null, 2));
+  const dir = path.dirname(BUDGET_FILE);
+  fs.mkdirSync(dir, { recursive: true });
+  const tmp = `${BUDGET_FILE}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
+  fs.renameSync(tmp, BUDGET_FILE);
 }
 
 export function recordCost(amount) {

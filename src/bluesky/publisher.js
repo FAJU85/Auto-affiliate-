@@ -6,7 +6,7 @@ import { logger } from '../utils/logger.js';
  * Uploads image blob if provided, then creates the post record.
  * Returns the published post URI.
  */
-export async function publishPost(text, deeplink, imageBuffer) {
+export async function publishPost(text, deeplink, imageBuffer, productName) {
   const agent = await getBskyAgent();
   const maxLen = parseInt(process.env.MAX_POST_LENGTH || '300', 10);
 
@@ -39,7 +39,7 @@ export async function publishPost(text, deeplink, imageBuffer) {
         images: [
           {
             image: upload.data.blob,
-            alt: 'Product image',
+            alt: productName ? `Product image: ${productName}`.slice(0, 300) : 'Product image',
           },
         ],
       };

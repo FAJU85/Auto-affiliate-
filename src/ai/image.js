@@ -39,7 +39,14 @@ export async function generateProductImage(product) {
     const imageUrl = response.data[0]?.url;
     if (!imageUrl) throw new Error('No image URL in DALL-E response');
 
-    const imgRes = await fetch(imageUrl);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30_000);
+    let imgRes;
+    try {
+      imgRes = await fetch(imageUrl, { signal: controller.signal });
+    } finally {
+      clearTimeout(timeout);
+    }
     if (!imgRes.ok) throw new Error(`Failed to download DALL-E image: ${imgRes.status}`);
 
     const buffer = Buffer.from(await imgRes.arrayBuffer());

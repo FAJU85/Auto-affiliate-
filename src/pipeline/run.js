@@ -18,6 +18,7 @@ export async function runPipeline() {
     dailySpendUsd: 0,
     productsFetched: 0,
     productsFiltered: 0,
+    imageGenerated: false,
   };
 
   logger.info('=== Pipeline run starting ===');
@@ -41,9 +42,10 @@ export async function runPipeline() {
 
     // 4. Generate image (DALL-E 3) — non-blocking on failure
     const imageBuffer = await generateProductImage(product);
+    runMeta.imageGenerated = imageBuffer !== null;
 
     // 5. Publish to Bluesky
-    const uri = await publishPost(postText, deeplink, imageBuffer);
+    const uri = await publishPost(postText, deeplink, imageBuffer, product.name);
     runMeta.postUri = uri;
     runMeta.success = true;
 

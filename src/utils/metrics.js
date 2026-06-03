@@ -12,8 +12,11 @@ function load() {
 }
 
 function save(data) {
-  fs.mkdirSync(path.dirname(METRICS_FILE), { recursive: true });
-  fs.writeFileSync(METRICS_FILE, JSON.stringify(data, null, 2));
+  const dir = path.dirname(METRICS_FILE);
+  fs.mkdirSync(dir, { recursive: true });
+  const tmp = `${METRICS_FILE}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
+  fs.renameSync(tmp, METRICS_FILE);
 }
 
 export function recordRun(metrics) {

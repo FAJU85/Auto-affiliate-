@@ -3,6 +3,15 @@ import { logger } from '../utils/logger.js';
 
 const HF_API = 'https://api-inference.huggingface.co/models';
 
+// Strip Llama special tokens and control characters from untrusted external data
+function sanitiseForPrompt(str) {
+  return str
+    .replace(/<\|[^|>]*\|>/g, '')   // strip <|...|> tokens
+    .replace(/[\x00-\x1F\x7F]/g, ' ') // strip control chars
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 /**
  * Generates affiliate post text via Hugging Face Inference API (Llama 3).
  * Falls back to a template string if the API fails or rate-limits.
@@ -16,16 +25,21 @@ export async function generatePostText(product, trends) {
     return templateFallback(product, trends);
   }
 
-  const trendContext = trends.length
-    ? `Trending now: ${trends.map(t => t.title).join(', ')}.`
+  const safeName = sanitiseForPrompt(product.name).slice(0, 80);
+  const safeCategory = sanitiseForPrompt(product.category).slice(0, 40);
+  const safeDesc = sanitiseForPrompt(product.description).slice(0, 150);
+  const safeTrends = trends.map(t => sanitiseForPrompt(t.title)).filter(Boolean);
+
+  const trendContext = safeTrends.length
+    ? `Trending now: ${safeTrends.join(', ')}.`
     : '';
 
   const prompt = `<|begin_of_text|><|start_header_id|>system<|end_header_id|>
 You write concise, engaging affiliate marketing posts for Bluesky (max 280 chars). No hashtags spam. Be natural.
 <|eot_id|><|start_header_id|>user<|end_header_id|>
 ${trendContext}
-Write a Bluesky post for: "${product.name}" (${product.category}).
-Description: ${product.description.slice(0, 150)}
+Write a Bluesky post for: "${safeName}" (${safeCategory}).
+Description: ${safeDesc}
 Include a call-to-action. Under 200 characters. Do not include the URL (it will be appended).
 <|eot_id|><|start_header_id|>assistant<|end_header_id|>`;
 
