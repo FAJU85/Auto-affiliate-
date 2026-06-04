@@ -1,25 +1,75 @@
 import fetch from 'node-fetch';
+import fs from 'fs';
+import path from 'path';
 import { logger } from '../utils/logger.js';
 import { sleep } from '../utils/sleep.js';
 
 const DEEPSEEK_API = 'https://api.deepseek.com/v1/chat/completions';
+const CACHE_FILE = path.resolve('data/caption-cache.json');
 
 // Strip special tokens and control characters from untrusted external data
 function sanitiseForPrompt(str) {
   return str
-    .replace(/<\|[^|>]*\|>/g, '')   // strip <|...|> tokens
-    .replace(/[\x00-\x1F\x7F]/g, ' ') // strip control chars
+    .replace(/<\|[^|>]*\|>/g, '')
+    .replace(/[\x00-\x1F\x7F]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
+// --- Caption cache (keyed by productId + UTC date) ---
+
+function cacheKey(productId) {
+  const date = new Date().toISOString().slice(0, 10);
+  return `${productId}:${date}`;
+}
+
+function readCache() {
+  try {
+    return JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
+function writeCache(data) {
+  fs.mkdirSync(path.dirname(CACHE_FILE), { recursive: true });
+  const tmp = `${CACHE_FILE}.tmp`;
+  // Prune entries older than today to keep file small
+  const today = new Date().toISOString().slice(0, 10);
+  const pruned = Object.fromEntries(
+    Object.entries(data).filter(([k]) => k.endsWith(today))
+  );
+  fs.writeFileSync(tmp, JSON.stringify(pruned, null, 2));
+  fs.renameSync(tmp, CACHE_FILE);
+}
+
+function getCached(productId) {
+  const cache = readCache();
+  return cache[cacheKey(productId)] ?? null;
+}
+
+function setCached(productId, caption) {
+  const cache = readCache();
+  cache[cacheKey(productId)] = caption;
+  writeCache(cache);
+}
+
+// --- Text generation ---
+
 /**
  * Generates affiliate post text via DeepSeek Chat API.
- * Falls back to a template string if the API fails or key is missing.
+ * Caches result by product ID + date to avoid duplicate API calls.
+ * Falls back to template if API key missing or all attempts fail.
  */
 export async function generatePostText(product, trends) {
-  const apiKey = process.env.DEEPSEEK_API_KEY;
+  // Cache hit — free
+  const cached = getCached(product.id);
+  if (cached) {
+    logger.info(`Caption cache hit for product ${product.id} (${cached.length} chars)`);
+    return cached;
+  }
 
+  const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) {
     logger.warn('DEEPSEEK_API_KEY not set, using template fallback');
     return templateFallback(product, trends);
@@ -27,15 +77,13 @@ export async function generatePostText(product, trends) {
 
   const safeName = sanitiseForPrompt(product.name).slice(0, 80);
   const safeCategory = sanitiseForPrompt(product.category).slice(0, 40);
-  const safeDesc = sanitiseForPrompt(product.description).slice(0, 150);
-  const safeTrends = trends.map(t => sanitiseForPrompt(t.title)).filter(Boolean);
+  const safeDesc = sanitiseForPrompt(product.description).slice(0, 80); // trimmed 150→80
+  const safeTrend = trends[0] ? sanitiseForPrompt(trends[0].title) : '';
 
-  const trendContext = safeTrends.length
-    ? `Trending now: ${safeTrends.join(', ')}.`
-    : '';
-
-  const systemPrompt = 'You write concise, engaging affiliate marketing posts for Bluesky (max 280 chars). No hashtag spam. Be natural.';
-  const userPrompt = `${trendContext}\nWrite a Bluesky post for: "${safeName}" (${safeCategory}).\nDescription: ${safeDesc}\nInclude a call-to-action. Under 200 characters. Do not include the URL (it will be appended).`;
+  const systemPrompt = 'Write short affiliate posts for Bluesky. Max 200 chars. No hashtags. Natural tone.';
+  const userPrompt = safeTrend
+    ? `Trending: ${safeTrend}. Product: "${safeName}" (${safeCategory}). ${safeDesc}. CTA, no URL.`
+    : `Product: "${safeName}" (${safeCategory}). ${safeDesc}. Write a post with CTA, no URL.`;
 
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
@@ -51,7 +99,7 @@ export async function generatePostText(product, trends) {
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt },
           ],
-          max_tokens: 100,
+          max_tokens: 60,
           temperature: 0.8,
         }),
       });
@@ -71,9 +119,10 @@ export async function generatePostText(product, trends) {
       const generated = data?.choices?.[0]?.message?.content;
       if (!generated) throw new Error('Empty response from DeepSeek');
 
-      const cleaned = generated.trim().replace(/^["']|["']$/g, '');
+      const cleaned = generated.trim().replace(/^["']|["']$/g, '').slice(0, 250);
       logger.info(`Text generated (${cleaned.length} chars): ${cleaned.slice(0, 60)}...`);
-      return cleaned.slice(0, 250);
+      setCached(product.id, cleaned);
+      return cleaned;
     } catch (err) {
       logger.warn(`DeepSeek text attempt ${attempt} failed: ${err.message}`);
       if (attempt === 3) break;
