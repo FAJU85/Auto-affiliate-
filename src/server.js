@@ -350,6 +350,35 @@ export function startServer(getIsRunning, triggerRun) {
     res.end(DASHBOARD_HTML);
   });
 
-  server.listen(PORT, () => logger.info(`Dashboard listening on http://localhost:${PORT}`));
+  server.listen(PORT, () => {
+    logger.info(`Dashboard listening on http://localhost:${PORT}`);
+    startKeepAlive(PORT);
+  });
   return server;
+}
+
+// ─── Keep-alive self-ping ────────────────────────────────────────────────────
+// HF Spaces free tier sleeps after ~48h of no external traffic.
+// We ping our own /health every 25 minutes so the Space stays awake indefinitely.
+
+const PING_INTERVAL_MS = 25 * 60 * 1000; // 25 minutes
+
+function startKeepAlive(port) {
+  // HF injects SPACE_HOST; fall back to localhost for other environments
+  const host = process.env.SPACE_HOST
+    ? `https://${process.env.SPACE_HOST}`
+    : `http://localhost:${port}`;
+  const url = `${host}/health`;
+
+  setInterval(async () => {
+    try {
+      const { default: fetch } = await import('node-fetch');
+      const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+      logger.debug(`Keep-alive ping → ${url} [${res.status}]`);
+    } catch (err) {
+      logger.warn(`Keep-alive ping failed: ${err.message}`);
+    }
+  }, PING_INTERVAL_MS);
+
+  logger.info(`Keep-alive self-ping active (every ${PING_INTERVAL_MS / 60000}min → ${url})`);
 }
