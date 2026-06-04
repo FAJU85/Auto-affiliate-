@@ -6,10 +6,11 @@ const REQUIRED = [
 ];
 
 const OPTIONAL_LABELS = {
-  DEEPSEEK_API_KEY: 'DeepSeek text generation (will use template fallback)',
-  HF_API_TOKEN: 'HuggingFace upscaling (images will not be upscaled)',
-  LANGSEARCH_API_KEY: 'LangSearch image search (og:image scrape fallback only)',
-  OPENAI_API_KEY: 'DALL-E image generation (unused in v2, kept for compatibility)',
+  GROQ_API_KEY:      'Groq text generation — FREE, recommended primary (llama-3.3-70b-versatile)',
+  DEEPSEEK_API_KEY:  'DeepSeek text generation — paid fallback (~$0.0002/call)',
+  HF_API_TOKEN:      'HuggingFace upscaling (images will not be upscaled without this)',
+  LANGSEARCH_API_KEY:'LangSearch image search (og:image scrape used as fallback)',
+  OPENAI_API_KEY:    'DALL-E image generation (unused in v2)',
 };
 
 export function validateEnv() {

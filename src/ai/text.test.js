@@ -82,16 +82,36 @@ describe('caption cache', () => {
   });
 });
 
-describe('cost optimisation config', () => {
-  it('max_tokens is 60 (reduced from 100)', async () => {
+describe('provider config', () => {
+  it('max_tokens is 60', () => {
     const src = fs.readFileSync('src/ai/text.js', 'utf8');
-    assert.ok(src.includes('max_tokens: 60'), 'max_tokens reduced to 60');
+    assert.ok(src.includes('max_tokens: 60'), 'max_tokens is 60');
     assert.ok(!src.includes('max_tokens: 100'), 'old value 100 removed');
   });
 
-  it('description is truncated to 80 chars (reduced from 150)', async () => {
+  it('description is truncated to 80 chars', () => {
     const src = fs.readFileSync('src/ai/text.js', 'utf8');
     assert.ok(src.includes('.slice(0, 80)'), 'description truncated at 80');
+  });
+
+  it('Groq is the primary provider (listed before DeepSeek)', () => {
+    const src = fs.readFileSync('src/ai/text.js', 'utf8');
+    const groqIdx     = src.indexOf('GROQ_API');
+    const deepseekIdx = src.indexOf('DEEPSEEK_API');
+    assert.ok(groqIdx < deepseekIdx, 'Groq endpoint defined before DeepSeek');
+  });
+
+  it('Groq uses llama-3.3-70b-versatile model', () => {
+    const src = fs.readFileSync('src/ai/text.js', 'utf8');
+    assert.ok(src.includes('llama-3.3-70b-versatile'), 'correct Groq model specified');
+  });
+
+  it('fallback chain: Groq → DeepSeek → template', () => {
+    const src = fs.readFileSync('src/ai/text.js', 'utf8');
+    const groqPos     = src.indexOf('GROQ_API_KEY');
+    const deepseekPos = src.indexOf('DEEPSEEK_API_KEY');
+    const templatePos = src.indexOf('templateFallback');
+    assert.ok(groqPos < deepseekPos && deepseekPos < templatePos, 'correct fallback order');
   });
 });
 
