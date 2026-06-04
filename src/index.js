@@ -3,6 +3,7 @@ import cron from 'node-cron';
 import { runPipeline } from './pipeline/run.js';
 import { logger } from './utils/logger.js';
 import { validateEnv } from './utils/env.js';
+import { startServer } from './server.js';
 
 validateEnv();
 
@@ -11,6 +12,9 @@ const SCHEDULE = process.env.CRON_SCHEDULE || '0 * * * *';
 logger.info(`Auto-Affiliate pipeline starting. Schedule: "${SCHEDULE}"`);
 
 let pipelineRunning = false;
+
+// HTTP status server — required by HuggingFace Spaces (port 7860)
+startServer(() => pipelineRunning);
 
 async function safePipelineRun(trigger) {
   if (pipelineRunning) {
