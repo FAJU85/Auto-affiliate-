@@ -13,9 +13,6 @@ logger.info(`Auto-Affiliate pipeline starting. Schedule: "${SCHEDULE}"`);
 
 let pipelineRunning = false;
 
-// HTTP status server — required by HuggingFace Spaces (port 7860)
-startServer(() => pipelineRunning);
-
 async function safePipelineRun(trigger) {
   if (pipelineRunning) {
     logger.warn(`[${trigger}] Previous run still active — skipping this cycle`);
@@ -30,6 +27,9 @@ async function safePipelineRun(trigger) {
     pipelineRunning = false;
   }
 }
+
+// Dashboard + API — required by HuggingFace Spaces (port 7860)
+startServer(() => pipelineRunning, safePipelineRun);
 
 // Run immediately on startup, then on schedule
 safePipelineRun('startup');
