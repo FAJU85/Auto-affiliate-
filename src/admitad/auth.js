@@ -22,20 +22,30 @@ async function _fetchToken() {
     throw new Error('Missing ADMITAD_CLIENT_ID or ADMITAD_CLIENT_SECRET');
   }
 
+  const scope = ADMITAD_SCOPE || 'advcampaigns deeplink';
   const body = new URLSearchParams({
     grant_type: 'client_credentials',
     client_id: ADMITAD_CLIENT_ID,
     client_secret: ADMITAD_CLIENT_SECRET,
-    scope: ADMITAD_SCOPE || 'advcampaigns banners deeplink',
+    scope,
   });
+
+  const basicAuth = Buffer.from(`${ADMITAD_CLIENT_ID}:${ADMITAD_CLIENT_SECRET}`).toString('base64');
 
   let lastError;
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      const res = await fetch(TOKEN_URL, { method: 'POST', body });
+      const res = await fetch(TOKEN_URL, {
+        method: 'POST',
+        headers: {
+          Authorization: `Basic ${basicAuth}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body,
+      });
       if (!res.ok) {
         const text = await res.text();
-        throw new Error(`Admitad auth failed ${res.status}`);
+        throw new Error(`Admitad auth failed ${res.status}: ${text}`);
       }
       const data = await res.json();
       cachedToken = data.access_token;

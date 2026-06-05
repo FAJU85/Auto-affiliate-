@@ -115,6 +115,14 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
   .err-cell  { color: var(--red); max-width: 240px; overflow: hidden;
                text-overflow: ellipsis; white-space: nowrap; }
 
+  /* ── Setup banner ── */
+  .setup-banner { background: #1c1408; border: 1px solid #92400e; border-radius: var(--radius);
+                  padding: 1.25rem 1.5rem; margin-bottom: 2rem; }
+  .setup-banner h2 { color: #fbbf24; font-size: 1rem; margin-bottom: 0.5rem; }
+  .setup-banner p  { color: #d97706; font-size: 0.875rem; margin-bottom: 0.75rem; }
+  .setup-banner ul { color: #fcd34d; font-size: 0.875rem; padding-left: 1.25rem; }
+  .setup-banner li { margin-bottom: 0.2rem; font-family: monospace; }
+
   /* ── Trigger button ── */
   .btn { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.55rem 1.25rem;
          border-radius: 8px; border: none; font-size: 0.875rem; font-weight: 600;
@@ -140,6 +148,13 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
 </header>
 
 <main>
+
+  <!-- Setup banner (hidden when configured) -->
+  <div id="setup-banner" class="setup-banner" style="display:none">
+    <h2>⚠️ Configuration required</h2>
+    <p>Add the following secrets in your HuggingFace Space → Settings → Variables and secrets:</p>
+    <ul id="missing-vars-list"></ul>
+  </div>
 
   <!-- KPI cards -->
   <div class="cards" id="kpi-cards">
@@ -224,6 +239,16 @@ async function fetchStatus() {
 }
 
 function render(d) {
+  // Setup banner
+  const banner = document.getElementById('setup-banner');
+  if (d.missingVars && d.missingVars.length) {
+    banner.style.display = 'block';
+    document.getElementById('missing-vars-list').innerHTML =
+      d.missingVars.map(v => '<li>' + v + '</li>').join('');
+  } else {
+    banner.style.display = 'none';
+  }
+
   // Status pill
   const pill = document.getElementById('status-pill');
   if (d.pipeline.running) {
@@ -323,9 +348,8 @@ polling = setInterval(fetchStatus, 20_000);
 
 // ─── Server ──────────────────────────────────────────────────────────────────
 
-export function startServer(getIsRunning, triggerRun) {
+export function startServer(getIsRunning, triggerRun, missingVars = []) {
   const server = http.createServer((req, res) => {
-    // CORS for local dev
     res.setHeader('Access-Control-Allow-Origin', '*');
 
     if (req.url === '/health') {
@@ -334,10 +358,15 @@ export function startServer(getIsRunning, triggerRun) {
     }
 
     if (req.url === '/api/status') {
-      return json(res, 200, getStatusPayload(getIsRunning()));
+      const payload = getStatusPayload(getIsRunning());
+      payload.missingVars = missingVars;
+      return json(res, 200, payload);
     }
 
     if (req.url === '/api/run' && req.method === 'POST') {
+      if (missingVars.length) {
+        return json(res, 503, { ok: false, error: `Not configured — set: ${missingVars.join(', ')}` });
+      }
       if (getIsRunning()) {
         return json(res, 409, { ok: false, error: 'Pipeline already running' });
       }
