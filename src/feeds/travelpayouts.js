@@ -55,6 +55,7 @@ export async function getTravelpayoutsProduct() {
       price:          parseFloat(price) || null,
       currency:       'USD',
       commissionRate: 0,
+      category:       'Travel',
       source:         'travelpayouts',
     };
   } catch (err) {

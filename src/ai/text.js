@@ -11,7 +11,7 @@ const HF_FALLBACK  = 'mistralai/Mistral-7B-Instruct-v0.3';
 const CACHE_FILE   = path.resolve('data/caption-cache.json');
 
 function sanitiseForPrompt(str) {
-  return str
+  return String(str ?? '')
     .replace(/<\|[^|>]*\|>/g, '')
     .replace(/[\x00-\x1F\x7F]/g, ' ')
     .replace(/\s+/g, ' ')
