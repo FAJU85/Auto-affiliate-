@@ -30,17 +30,12 @@ async function _fetchToken() {
   if (ADMITAD_SCOPE) bodyParams.scope = ADMITAD_SCOPE;
   const body = new URLSearchParams(bodyParams);
 
-  const basicAuth = Buffer.from(`${ADMITAD_CLIENT_ID}:${ADMITAD_CLIENT_SECRET}`).toString('base64');
-
   let lastError;
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       const res = await fetch(TOKEN_URL, {
         method: 'POST',
-        headers: {
-          Authorization: `Basic ${basicAuth}`,
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body,
       });
       if (!res.ok) {
