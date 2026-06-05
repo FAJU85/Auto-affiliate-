@@ -8,7 +8,8 @@ const OPTIONAL_LABELS = {
   ADMITAD_CLIENT_ID:   'Admitad OAuth2 client ID (for API campaigns + deeplinks)',
   ADMITAD_CLIENT_SECRET:'Admitad OAuth2 client secret',
   ADMITAD_WEBSITE_ID:  'Admitad website/ad-space ID (enables deeplink generation)',
-  TAKEADS_API_KEY:     'Takeads CPC network API key',
+  TAKEADS_API_KEY:       'Takeads CPC network API key',
+  TRAVELPAYOUTS_TOKEN:   'Travelpayouts API token (flight & hotel deals)',
   HF_API_TOKEN:        'HuggingFace — text generation (Qwen2.5-72B + Mistral-7B) AND image upscaling',
   LANGSEARCH_API_KEY:  'LangSearch image search (og:image scrape used as fallback)',
 };
