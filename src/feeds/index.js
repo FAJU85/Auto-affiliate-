@@ -1,5 +1,6 @@
 import { getAdmitadProduct } from './admitad.js';
 import { getTakeadsProduct } from './takeads.js';
+import { getAdmitadApiProduct } from '../admitad/campaigns.js';
 import { logger } from '../utils/logger.js';
 
 /**
@@ -13,29 +14,28 @@ import { logger } from '../utils/logger.js';
  * @throws {Error} If no network yields a product
  */
 export async function getProduct() {
-  const [admitad, takeads] = await Promise.allSettled([
-    getAdmitadProduct(),
-    getTakeadsProduct(),
-  ]);
+  const tasks = [
+    { key: 'admitad-feed', fn: getAdmitadProduct,    enabled: !!process.env.ADMITAD_FEED_URL },
+    { key: 'admitad-api',  fn: getAdmitadApiProduct, enabled: !!(process.env.ADMITAD_CLIENT_ID && process.env.ADMITAD_CLIENT_SECRET) },
+    { key: 'takeads',      fn: getTakeadsProduct,    enabled: !!process.env.TAKEADS_API_KEY },
+  ];
+
+  const results = await Promise.allSettled(
+    tasks.filter(t => t.enabled).map(t => t.fn().then(v => ({ key: t.key, value: v })))
+  );
 
   const candidates = [];
-
-  if (admitad.status === 'fulfilled' && admitad.value) {
-    candidates.push(admitad.value);
-    logger.info(`Network available: admitad → "${admitad.value.name}"`);
-  } else {
-    logger.warn(`admitad unavailable: ${admitad.reason?.message || 'returned null'}`);
-  }
-
-  if (takeads.status === 'fulfilled' && takeads.value) {
-    candidates.push(takeads.value);
-    logger.info(`Network available: takeads → "${takeads.value.name}"`);
-  } else {
-    logger.warn(`takeads unavailable: ${takeads.reason?.message || 'returned null'}`);
+  for (const r of results) {
+    if (r.status === 'fulfilled' && r.value?.value) {
+      candidates.push(r.value.value);
+      logger.info(`Network available: ${r.value.key} → "${r.value.value.name}"`);
+    } else {
+      logger.warn(`Network unavailable: ${r.reason?.message || 'returned null'}`);
+    }
   }
 
   if (candidates.length === 0) {
-    throw new Error('No affiliate network returned a product. Check ADMITAD_FEED_URL and TAKEADS_API_KEY.');
+    throw new Error('No affiliate network returned a product. Configure at least one: ADMITAD_FEED_URL, ADMITAD_CLIENT_ID+SECRET, or TAKEADS_API_KEY.');
   }
 
   const picked = candidates[Math.floor(Math.random() * candidates.length)];
