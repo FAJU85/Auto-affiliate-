@@ -25,6 +25,8 @@ async function _fetchToken() {
   const scope = ADMITAD_SCOPE || 'advcampaigns banners deeplink';
   const body = new URLSearchParams({
     grant_type: 'client_credentials',
+    client_id: ADMITAD_CLIENT_ID,
+    client_secret: ADMITAD_CLIENT_SECRET,
     scope,
   });
 
@@ -43,7 +45,7 @@ async function _fetchToken() {
       });
       if (!res.ok) {
         const text = await res.text();
-        throw new Error(`Admitad auth failed ${res.status}`);
+        throw new Error(`Admitad auth failed ${res.status}: ${text}`);
       }
       const data = await res.json();
       cachedToken = data.access_token;
