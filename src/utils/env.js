@@ -1,11 +1,11 @@
 const REQUIRED = [
-  'ADMITAD_CLIENT_ID',
-  'ADMITAD_CLIENT_SECRET',
   'BSKY_HANDLE',
   'BSKY_APP_PASSWORD',
 ];
 
 const OPTIONAL_LABELS = {
+  ADMITAD_FEED_URL:  'Admitad XML product feed URL (includes auth params, no OAuth needed)',
+  TAKEADS_API_KEY:   'Takeads CPC network API key',
   HF_API_TOKEN:      'HuggingFace — text generation (Qwen2.5-72B + Mistral-7B) AND image upscaling',
   LANGSEARCH_API_KEY:'LangSearch image search (og:image scrape used as fallback)',
 };
