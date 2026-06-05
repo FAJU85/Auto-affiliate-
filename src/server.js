@@ -42,6 +42,7 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="mitgo-verification" content="59e6a3e7-c3cf-4275-9389-f395e13df3a2" />
+<script data-cfasync="false" data-no-defer="1">(function(){var s=document.createElement("script");s.async=1;s.src="https://emrldtp.cc/NTM2NzQw.js?t=536740";document.head.appendChild(s);})();</script>
 <title>Auto-Affiliate · Dashboard</title>
 <style>
   :root {
