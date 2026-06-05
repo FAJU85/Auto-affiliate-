@@ -4,13 +4,12 @@ import path from 'path';
 import { logger } from '../utils/logger.js';
 import { sleep } from '../utils/sleep.js';
 
-// Groq: free tier, 14,400 req/day, no cold starts, OpenAI-compatible
-// DeepSeek: paid fallback (~$0.0005/call) when Groq unavailable
-const GROQ_API    = 'https://api.groq.com/openai/v1/chat/completions';
-const DEEPSEEK_API = 'https://api.deepseek.com/v1/chat/completions';
-const CACHE_FILE  = path.resolve('data/caption-cache.json');
+// HuggingFace free Inference API — OpenAI-compatible chat endpoint
+const HF_API_BASE = 'https://api-inference.huggingface.co/v1/chat/completions';
+const HF_PRIMARY   = 'Qwen/Qwen2.5-72B-Instruct';
+const HF_FALLBACK  = 'mistralai/Mistral-7B-Instruct-v0.3';
+const CACHE_FILE   = path.resolve('data/caption-cache.json');
 
-// Strip special tokens and control characters from untrusted external data
 function sanitiseForPrompt(str) {
   return str
     .replace(/<\|[^|>]*\|>/g, '')
@@ -52,7 +51,7 @@ function setCached(productId, caption) {
   writeCache(cache);
 }
 
-// --- Shared prompt builders ---
+// --- Prompt builder ---
 
 function buildMessages(product, trends) {
   const safeName     = sanitiseForPrompt(product.name).slice(0, 80);
@@ -68,12 +67,12 @@ function buildMessages(product, trends) {
   return { system, user };
 }
 
-// --- Generic OpenAI-compatible chat call with retry ---
+// --- HuggingFace chat call with retry ---
 
-async function callChatAPI({ url, apiKey, model, system, user, providerName }) {
+async function callHfModel(model, system, user, apiKey) {
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      const res = await fetch(url, {
+      const res = await fetch(HF_API_BASE, {
         method: 'POST',
         headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -85,23 +84,29 @@ async function callChatAPI({ url, apiKey, model, system, user, providerName }) {
       });
 
       if (res.status === 429) {
-        logger.warn(`${providerName} rate limited (attempt ${attempt}), backing off`);
+        logger.warn(`HF (${model}) rate limited (attempt ${attempt}), backing off`);
         await sleep(attempt * 5000);
+        continue;
+      }
+
+      if (res.status === 503) {
+        logger.warn(`HF (${model}) loading (attempt ${attempt}), retrying`);
+        await sleep(attempt * 10000);
         continue;
       }
 
       if (!res.ok) {
         const text = await res.text();
-        throw new Error(`${providerName} API error ${res.status}: ${text}`);
+        throw new Error(`HF API error ${res.status}: ${text}`);
       }
 
-      const data  = await res.json();
-      const text  = data?.choices?.[0]?.message?.content;
-      if (!text) throw new Error(`Empty response from ${providerName}`);
+      const data = await res.json();
+      const text = data?.choices?.[0]?.message?.content;
+      if (!text) throw new Error(`Empty response from HF (${model})`);
 
       return text.trim().replace(/^["']|["']$/g, '').slice(0, 250);
     } catch (err) {
-      logger.warn(`${providerName} attempt ${attempt} failed: ${err.message}`);
+      logger.warn(`HF (${model}) attempt ${attempt} failed: ${err.message}`);
       if (attempt === 3) return null;
       await sleep(attempt * 2000);
     }
@@ -113,7 +118,7 @@ async function callChatAPI({ url, apiKey, model, system, user, providerName }) {
 
 /**
  * Generates affiliate post text.
- * Priority: cache hit (free) → Groq/Llama-3.3-70B (free) → DeepSeek (paid fallback) → template
+ * Priority: cache hit → HF Qwen2.5-72B (free) → HF Mistral-7B (free) → template
  */
 export async function generatePostText(product, trends) {
   // 1. Cache hit — zero cost
@@ -124,47 +129,31 @@ export async function generatePostText(product, trends) {
   }
 
   const { system, user } = buildMessages(product, trends);
+  const hfKey = process.env.HF_API_TOKEN;
 
-  // 2. Groq — free, 70B quality, no cold starts
-  const groqKey = process.env.GROQ_API_KEY;
-  if (groqKey) {
-    const result = await callChatAPI({
-      url: GROQ_API,
-      apiKey: groqKey,
-      model: 'llama-3.3-70b-versatile',
-      system, user,
-      providerName: 'Groq',
-    });
-    if (result) {
-      logger.info(`Groq text generated (${result.length} chars): ${result.slice(0, 60)}...`);
-      setCached(product.id, result);
-      return result;
+  if (hfKey) {
+    // 2. Qwen2.5-72B — high quality, free tier
+    const primary = await callHfModel(HF_PRIMARY, system, user, hfKey);
+    if (primary) {
+      logger.info(`HF Qwen2.5-72B text generated (${primary.length} chars): ${primary.slice(0, 60)}...`);
+      setCached(product.id, primary);
+      return primary;
     }
-    logger.warn('Groq failed, falling back to DeepSeek');
-  }
+    logger.warn('Qwen2.5-72B failed, trying Mistral-7B fallback');
 
-  // 3. DeepSeek — paid fallback (~$0.0002/call with optimised tokens)
-  const deepseekKey = process.env.DEEPSEEK_API_KEY;
-  if (deepseekKey) {
-    const result = await callChatAPI({
-      url: DEEPSEEK_API,
-      apiKey: deepseekKey,
-      model: 'deepseek-chat',
-      system, user,
-      providerName: 'DeepSeek',
-    });
-    if (result) {
-      logger.info(`DeepSeek text generated (${result.length} chars): ${result.slice(0, 60)}...`);
-      setCached(product.id, result);
-      return result;
+    // 3. Mistral-7B — lighter model, free tier
+    const fallback = await callHfModel(HF_FALLBACK, system, user, hfKey);
+    if (fallback) {
+      logger.info(`HF Mistral-7B text generated (${fallback.length} chars): ${fallback.slice(0, 60)}...`);
+      setCached(product.id, fallback);
+      return fallback;
     }
-    logger.warn('DeepSeek failed, falling back to template');
+    logger.warn('Mistral-7B failed, falling back to template');
+  } else {
+    logger.warn('HF_API_TOKEN not set, using template fallback');
   }
 
-  // 4. Template — always free, always works
-  if (!groqKey && !deepseekKey) {
-    logger.warn('No GROQ_API_KEY or DEEPSEEK_API_KEY set, using template fallback');
-  }
+  // 4. Template — always works
   return templateFallback(product, trends);
 }
 

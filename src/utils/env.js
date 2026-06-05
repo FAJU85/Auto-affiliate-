@@ -6,11 +6,8 @@ const REQUIRED = [
 ];
 
 const OPTIONAL_LABELS = {
-  GROQ_API_KEY:      'Groq text generation — FREE, recommended primary (llama-3.3-70b-versatile)',
-  DEEPSEEK_API_KEY:  'DeepSeek text generation — paid fallback (~$0.0002/call)',
-  HF_API_TOKEN:      'HuggingFace upscaling (images will not be upscaled without this)',
+  HF_API_TOKEN:      'HuggingFace — text generation (Qwen2.5-72B + Mistral-7B) AND image upscaling',
   LANGSEARCH_API_KEY:'LangSearch image search (og:image scrape used as fallback)',
-  OPENAI_API_KEY:    'DALL-E image generation (unused in v2)',
 };
 
 export function validateEnv() {
