@@ -5,15 +5,24 @@ import { logger } from './utils/logger.js';
 import { validateEnv } from './utils/env.js';
 import { startServer } from './server.js';
 
-validateEnv();
+const missingVars = validateEnv();
+const configured  = missingVars.length === 0;
+
+if (!configured) {
+  logger.warn(`Not configured — missing: ${missingVars.join(', ')}`);
+  logger.warn('Dashboard will start; pipeline will not run until all secrets are set.');
+}
 
 const SCHEDULE = process.env.CRON_SCHEDULE || '0 * * * *';
-
 logger.info(`Auto-Affiliate pipeline starting. Schedule: "${SCHEDULE}"`);
 
 let pipelineRunning = false;
 
 async function safePipelineRun(trigger) {
+  if (!configured) {
+    logger.warn(`[${trigger}] Skipped — required env vars not set`);
+    return;
+  }
   if (pipelineRunning) {
     logger.warn(`[${trigger}] Previous run still active — skipping this cycle`);
     return;
@@ -28,11 +37,12 @@ async function safePipelineRun(trigger) {
   }
 }
 
-// Dashboard + API — required by HuggingFace Spaces (port 7860)
-startServer(() => pipelineRunning, safePipelineRun);
+// Dashboard always starts — required by HuggingFace Spaces (port 7860)
+startServer(() => pipelineRunning, safePipelineRun, missingVars);
 
-// Run immediately on startup, then on schedule
-safePipelineRun('startup');
+if (configured) {
+  safePipelineRun('startup');
+}
 
 const task = cron.schedule(SCHEDULE, () => {
   safePipelineRun('cron');

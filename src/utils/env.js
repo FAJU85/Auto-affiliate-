@@ -15,9 +15,6 @@ const OPTIONAL_LABELS = {
 
 export function validateEnv() {
   const missing = REQUIRED.filter(k => !process.env[k]);
-  if (missing.length) {
-    throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
-  }
 
   for (const [k, label] of Object.entries(OPTIONAL_LABELS)) {
     if (!process.env[k]) {
@@ -35,6 +32,9 @@ export function validateEnv() {
   if (!isValidCron(schedule)) {
     throw new Error(`CRON_SCHEDULE "${schedule}" is not a valid 5-field cron expression`);
   }
+
+  // Return missing list — caller decides whether to halt or degrade gracefully
+  return missing;
 }
 
 function isValidCron(expr) {
