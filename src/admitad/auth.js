@@ -22,7 +22,7 @@ async function _fetchToken() {
     throw new Error('Missing ADMITAD_CLIENT_ID or ADMITAD_CLIENT_SECRET');
   }
 
-  const scope = ADMITAD_SCOPE || 'advcampaigns banners deeplink';
+  const scope = ADMITAD_SCOPE || 'advcampaigns deeplink';
   const body = new URLSearchParams({
     grant_type: 'client_credentials',
     client_id: ADMITAD_CLIENT_ID,
