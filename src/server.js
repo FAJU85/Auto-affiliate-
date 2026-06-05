@@ -41,6 +41,7 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="mitgo-verification" content="59e6a3e7-c3cf-4275-9389-f395e13df3a2" />
 <title>Auto-Affiliate · Dashboard</title>
 <style>
   :root {

@@ -1,5 +1,5 @@
 import fetch from 'node-fetch';
-import { getTopProduct, buildDeeplink } from '../admitad/products.js';
+import { getProduct } from '../feeds/index.js';
 import { getTopTrends } from '../admitad/trends.js';
 import { generatePostText } from '../ai/text.js';
 import { findProductImage } from '../ai/imagesearch.js';
@@ -35,22 +35,18 @@ export async function runPipeline() {
   logger.info('=== Pipeline v2 run starting ===');
 
   try {
-    // Phase 1 — Fetch product + trends in parallel (canvas phases 2-5)
+    // Phase 1 — Fetch product + trends in parallel
     const [product, trends] = await Promise.all([
-      getTopProduct(),
+      getProduct(),
       getTopTrends(5),
     ]);
 
-    // Payload starts here — single accumulating object (canvas Section 3)
-    let payload = {
-      ...product,
-      _fetchedCount: product._fetchedCount,
-      _filteredCount: product._filteredCount,
-    };
+    // Payload starts here — single accumulating object
+    let payload = { ...product };
 
     runMeta.product = payload.name;
-    runMeta.productsFetched = payload._fetchedCount ?? 0;
-    runMeta.productsFiltered = payload._filteredCount ?? 0;
+    runMeta.productsFetched = 1;
+    runMeta.productsFiltered = 1;
 
     // Phase 2 — Merge trend context (canvas phase 6)
     const trend = trends[0]?.title || '';
@@ -61,10 +57,10 @@ export async function runPipeline() {
     logger.info(`Rate limit wait: ${RATE_LIMIT_WAIT_MS / 1000}s before text generation`);
     await sleep(RATE_LIMIT_WAIT_MS);
 
-    // Phase 4 — Build deeplink (canvas: tracked affiliate link already in feed)
-    const deeplink = await buildDeeplink(payload);
+    // Phase 4 — Affiliate URL is already a tracked deeplink from the feed
+    const deeplink = payload.siteUrl;
     payload = { ...payload, deeplink };
-    logger.info(`Deeplink: ${deeplink}`);
+    logger.info(`Affiliate URL (deeplink): ${deeplink}`);
 
     // Phase 5 — Text generation via DeepSeek (canvas phase 8)
     const caption = await generatePostText(payload, trends);
@@ -72,21 +68,21 @@ export async function runPipeline() {
     runMeta.caption = caption;
     runMeta.captionChars = caption.length;
 
-    // Phase 6 — Image acquisition (canvas phases 10-12)
-    // Branch: has Admitad logo → use it directly; else → LangSearch / og:image fallback
+    // Phase 6 — Image acquisition
+    // Branch: has feed image → use it directly; else → LangSearch / og:image fallback
     let imageBuffer = null;
     let imageSource = 'none';
 
-    const admitadImageUrl = payload.logoUrl;
+    const feedImageUrl = payload.imageUrl || null;
 
-    if (admitadImageUrl) {
-      logger.info(`Direct image: ${admitadImageUrl.slice(0, 80)}`);
-      imageBuffer = await downloadImage(admitadImageUrl);
-      if (imageBuffer) imageSource = 'admitad';
+    if (feedImageUrl) {
+      logger.info(`Direct image from feed: ${feedImageUrl.slice(0, 80)}`);
+      imageBuffer = await downloadImage(feedImageUrl);
+      if (imageBuffer) imageSource = payload.source || 'feed';
     }
 
     if (!imageBuffer) {
-      logger.info('No Admitad image — trying LangSearch / og:image fallback');
+      logger.info('No feed image — trying LangSearch / og:image fallback');
       const fallbackUrl = await findProductImage(payload.name, payload.siteUrl);
       if (fallbackUrl) {
         imageBuffer = await downloadImage(fallbackUrl);

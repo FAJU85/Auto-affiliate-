@@ -1,13 +1,16 @@
 const REQUIRED = [
-  'ADMITAD_CLIENT_ID',
-  'ADMITAD_CLIENT_SECRET',
   'BSKY_HANDLE',
   'BSKY_APP_PASSWORD',
 ];
 
 const OPTIONAL_LABELS = {
-  HF_API_TOKEN:      'HuggingFace — text generation (Qwen2.5-72B + Mistral-7B) AND image upscaling',
-  LANGSEARCH_API_KEY:'LangSearch image search (og:image scrape used as fallback)',
+  ADMITAD_FEED_URL:    'Admitad XML product feed URL (no OAuth needed)',
+  ADMITAD_CLIENT_ID:   'Admitad OAuth2 client ID (for API campaigns + deeplinks)',
+  ADMITAD_CLIENT_SECRET:'Admitad OAuth2 client secret',
+  ADMITAD_WEBSITE_ID:  'Admitad website/ad-space ID (enables deeplink generation)',
+  TAKEADS_API_KEY:     'Takeads CPC network API key',
+  HF_API_TOKEN:        'HuggingFace — text generation (Qwen2.5-72B + Mistral-7B) AND image upscaling',
+  LANGSEARCH_API_KEY:  'LangSearch image search (og:image scrape used as fallback)',
 };
 
 export function validateEnv() {
