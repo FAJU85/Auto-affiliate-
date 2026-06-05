@@ -22,14 +22,9 @@ async function _fetchToken() {
     throw new Error('Missing ADMITAD_CLIENT_ID or ADMITAD_CLIENT_SECRET');
   }
 
-  const scope = ADMITAD_SCOPE || 'advcampaigns';
-  const bodyParams = {
-    grant_type: 'client_credentials',
-    client_id: ADMITAD_CLIENT_ID,
-    client_secret: ADMITAD_CLIENT_SECRET,
-    scope,
-  };
-  const body = new URLSearchParams(bodyParams);
+  const scope = ADMITAD_SCOPE || 'public_data advcampaigns deeplink';
+  const body = new URLSearchParams({ grant_type: 'client_credentials', scope });
+  const basicAuth = Buffer.from(`${ADMITAD_CLIENT_ID}:${ADMITAD_CLIENT_SECRET}`).toString('base64');
   logger.info(`Admitad token request: scope="${scope}"`);
 
   let lastError;
@@ -37,7 +32,10 @@ async function _fetchToken() {
     try {
       const res = await fetch(TOKEN_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        headers: {
+          Authorization: `Basic ${basicAuth}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
         body,
       });
       if (!res.ok) {
