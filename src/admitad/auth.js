@@ -22,13 +22,13 @@ async function _fetchToken() {
     throw new Error('Missing ADMITAD_CLIENT_ID or ADMITAD_CLIENT_SECRET');
   }
 
-  const scope = ADMITAD_SCOPE || 'advcampaigns deeplink';
-  const body = new URLSearchParams({
+  const bodyParams = {
     grant_type: 'client_credentials',
     client_id: ADMITAD_CLIENT_ID,
     client_secret: ADMITAD_CLIENT_SECRET,
-    scope,
-  });
+  };
+  if (ADMITAD_SCOPE) bodyParams.scope = ADMITAD_SCOPE;
+  const body = new URLSearchParams(bodyParams);
 
   const basicAuth = Buffer.from(`${ADMITAD_CLIENT_ID}:${ADMITAD_CLIENT_SECRET}`).toString('base64');
 
