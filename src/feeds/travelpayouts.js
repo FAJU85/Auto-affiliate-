@@ -41,8 +41,9 @@ export async function getTravelpayoutsProduct() {
     const airline     = picked.airline || '';
     const departs     = picked.depart_date || '';
 
-    // Build affiliate link
-    const affiliateUrl = `https://www.aviasales.com/search/${origin}${departs.replace(/-/g, '').slice(0, 6)}${destination}1?marker=${token}`;
+    // Build affiliate link — aviasales needs full YYYYMMDD date
+    const dateStr = departs.replace(/-/g, ''); // "2026-07-15" → "20260715"
+    const affiliateUrl = `https://www.aviasales.com/search/${origin}${dateStr}${destination}1?marker=${token}`;
 
     logger.info(`Travelpayouts deal: ${origin}→${destination} $${price} (${airline})`);
 

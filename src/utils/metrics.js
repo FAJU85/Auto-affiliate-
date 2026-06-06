@@ -13,8 +13,7 @@ function load() {
 }
 
 function save(data) {
-  const dir = path.dirname(METRICS_FILE);
-  fs.mkdirSync(dir, { recursive: true });
+  fs.mkdirSync(path.dirname(METRICS_FILE), { recursive: true });
   const tmp = `${METRICS_FILE}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
   fs.renameSync(tmp, METRICS_FILE);
@@ -23,11 +22,20 @@ function save(data) {
 export function recordRun(metrics) {
   const data = load();
   data.runs.push({ timestamp: new Date().toISOString(), ...metrics });
-  // Keep last 200 runs
   if (data.runs.length > 200) data.runs = data.runs.slice(-200);
   save(data);
 }
 
 export function getRecentRuns(n = 10) {
   return load().runs.slice(-n);
+}
+
+// Returns true if this deeplink was already successfully posted in the last windowMs
+export function wasRecentlyPosted(deeplink, windowMs = 6 * 60 * 60 * 1000) {
+  const cutoff = Date.now() - windowMs;
+  return load().runs.some(r =>
+    r.success &&
+    r.deeplink === deeplink &&
+    new Date(r.timestamp).getTime() > cutoff
+  );
 }

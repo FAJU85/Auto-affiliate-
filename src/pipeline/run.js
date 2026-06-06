@@ -6,7 +6,7 @@ import { findProductImage } from '../ai/imagesearch.js';
 import { upscaleImage } from '../ai/upscale.js';
 import { publishPost } from '../bluesky/publisher.js';
 import { getBskyAgent } from '../bluesky/client.js';
-import { recordRun } from '../utils/metrics.js';
+import { recordRun, wasRecentlyPosted } from '../utils/metrics.js';
 import { getDailySpend } from '../utils/budget.js';
 import { logger } from '../utils/logger.js';
 import { sleep } from '../utils/sleep.js';
@@ -57,10 +57,18 @@ export async function runPipeline() {
     logger.info(`Rate limit wait: ${RATE_LIMIT_WAIT_MS / 1000}s before text generation`);
     await sleep(RATE_LIMIT_WAIT_MS);
 
-    // Phase 4 — Affiliate URL is already a tracked deeplink from the feed
+    // Phase 4 — Affiliate URL + duplicate check
     const deeplink = payload.siteUrl;
     payload = { ...payload, deeplink };
     logger.info(`Affiliate URL (deeplink): ${deeplink}`);
+
+    if (wasRecentlyPosted(deeplink)) {
+      logger.warn(`Duplicate suppressed — "${payload.name}" was already posted in the last 6h`);
+      runMeta.error = 'duplicate_suppressed';
+      runMeta.durationMs = Date.now() - startTime;
+      recordRun(runMeta);
+      return runMeta;
+    }
 
     // Phase 5 — Text generation via DeepSeek (canvas phase 8)
     const caption = await generatePostText(payload, trends);
@@ -83,7 +91,7 @@ export async function runPipeline() {
 
     if (!imageBuffer) {
       logger.info('No feed image — trying LangSearch / og:image fallback');
-      const fallbackUrl = await findProductImage(payload.name, payload.siteUrl);
+      const fallbackUrl = await findProductImage(payload.name, payload.siteUrl, payload.source);
       if (fallbackUrl) {
         imageBuffer = await downloadImage(fallbackUrl);
         if (imageBuffer) imageSource = 'langsearch';
@@ -108,8 +116,9 @@ export async function runPipeline() {
     const uri = await publishPost(caption, deeplink, imageBuffer, payload.name);
     payload = { ...payload, postUri: uri };
 
-    runMeta.postUri = uri;
-    runMeta.success = true;
+    runMeta.postUri  = uri;
+    runMeta.deeplink = deeplink;
+    runMeta.success  = true;
     logger.info(`=== Pipeline v2 complete. Post: ${uri} ===`);
   } catch (err) {
     runMeta.error = err.message;
