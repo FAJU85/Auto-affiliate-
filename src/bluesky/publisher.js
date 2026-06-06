@@ -1,4 +1,4 @@
-import { getBskyAgent } from './client.js';
+import { getBskyAgent, invalidateAgent } from './client.js';
 import { logger } from '../utils/logger.js';
 import { sleep } from '../utils/sleep.js';
 
@@ -63,13 +63,19 @@ export async function publishPost(text, deeplink, imageBuffer, productName) {
     }
   }
 
+  let currentAgent = agent;
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      const result = await agent.post(postRecord);
+      const result = await currentAgent.post(postRecord);
       logger.info(`Post published: ${result.uri}`);
       return result.uri;
     } catch (err) {
       logger.warn(`Bluesky post attempt ${attempt} failed: ${err.message}`);
+      if (/deleted|revoked|expired/i.test(err.message)) {
+        // Session invalidated — clear cache and re-authenticate before retry
+        invalidateAgent();
+        try { currentAgent = await getBskyAgent(); } catch {}
+      }
       if (attempt < 3) await sleep(attempt * 2000);
       else throw err;
     }

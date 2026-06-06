@@ -45,10 +45,14 @@ function isRateLimited() {
   return false;
 }
 
+export function invalidateAgent() {
+  agent = null;
+  sessionExpiry = 0;
+}
+
 export async function getBskyAgent(forceRefresh = false) {
   if (forceRefresh) {
-    agent = null;
-    sessionExpiry = 0;
+    invalidateAgent();
     try { fs.unlinkSync(SESSION_FILE); } catch {}
   }
 

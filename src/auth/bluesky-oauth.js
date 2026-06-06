@@ -70,6 +70,17 @@ const sessionStore = {
 
 let _client = null;
 
+// Simple promise-chaining mutex for NodeOAuthClient.
+// Prevents concurrent token-refresh races that cause
+// "The session was deleted by another process" errors.
+const _locks = new Map();
+function requestLock(key, fn) {
+  const prev = _locks.get(key) ?? Promise.resolve();
+  const next = prev.then(fn);
+  _locks.set(key, next.catch(() => {}));
+  return next;
+}
+
 export function getOAuthClient() {
   const host = getSpaceHost();
   if (!host) return null;
@@ -90,6 +101,7 @@ export function getOAuthClient() {
     },
     stateStore,
     sessionStore,
+    requestLock,
   });
 
   return _client;
@@ -121,6 +133,15 @@ export async function getOAuthAgent() {
     return new Agent(session);
   } catch (err) {
     logger.warn(`Bluesky OAuth restore failed: ${err.message}`);
+
+    // If the server reports the session was deleted, wipe the stale local file
+    // so the next startup can try to re-restore from HF secrets.
+    if (/deleted|revoked|invalid/i.test(err.message)) {
+      try {
+        sessionStore.del(did);
+        logger.warn('Stale OAuth session cleared — reconnect via the Accounts tab');
+      } catch {}
+    }
     return null;
   }
 }
