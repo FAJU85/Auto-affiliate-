@@ -7,7 +7,11 @@ const API_BASE = 'https://api.travelpayouts.com';
 const ORIGINS = ['NYC', 'LON', 'PAR', 'DXB', 'SIN', 'LAX', 'BKK', 'IST'];
 
 export async function getTravelpayoutsProduct() {
-  const token = process.env.TRAVELPAYOUTS_TOKEN;
+  const token  = process.env.TRAVELPAYOUTS_TOKEN;
+  // TRAVELPAYOUTS_MARKER is your partner marker from the Travelpayouts dashboard
+  // (a number like "123456"). It is DIFFERENT from the API token.
+  // If not set, falls back to the token — but the link will likely not track.
+  const marker = process.env.TRAVELPAYOUTS_MARKER || token;
   if (!token) return null;
 
   logger.info('Fetching Travelpayouts flight deals…');
@@ -41,9 +45,15 @@ export async function getTravelpayoutsProduct() {
     const airline     = picked.airline || '';
     const departs     = picked.depart_date || '';
 
+    // Both destination and a full YYYY-MM-DD date are required for a valid Aviasales URL
+    if (!destination || !departs || !/^\d{4}-\d{2}-\d{2}$/.test(departs)) {
+      logger.warn(`Travelpayouts: skipping deal with missing/invalid date "${departs}"`);
+      return null;
+    }
+
     // Build affiliate link — aviasales needs full YYYYMMDD date
     const dateStr = departs.replace(/-/g, ''); // "2026-07-15" → "20260715"
-    const affiliateUrl = `https://www.aviasales.com/search/${origin}${dateStr}${destination}1?marker=${token}`;
+    const affiliateUrl = `https://www.aviasales.com/search/${origin}${dateStr}${destination}1?marker=${marker}`;
 
     logger.info(`Travelpayouts deal: ${origin}→${destination} $${price} (${airline})`);
 
