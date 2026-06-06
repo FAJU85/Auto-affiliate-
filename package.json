@@ -14,11 +14,11 @@
     "status": "node src/cli/status.js"
   },
   "dependencies": {
-    "@atproto/api": "^0.13.0",
-    "node-cron": "^3.0.3",
-    "openai": "^4.52.0",
+    "@atproto/api": "^0.20.9",
     "dotenv": "^16.4.5",
+    "node-cron": "^3.0.3",
     "node-fetch": "^3.3.2",
+    "openai": "^4.52.0",
     "rss-parser": "^3.13.0"
   }
 }

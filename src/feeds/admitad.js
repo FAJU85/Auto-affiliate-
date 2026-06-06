@@ -18,16 +18,18 @@ export async function getAdmitadProduct() {
   logger.info('Fetching Admitad XML feed…');
   let xml;
   try {
+    // 60s timeout covers both connection AND full body download of large XML
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30_000);
-    let res;
+    const timeout = setTimeout(() => controller.abort(), 60_000);
     try {
-      res = await fetch(feedUrl, { signal: controller.signal });
+      const res = await fetch(feedUrl, { signal: controller.signal });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      // Cap download at 8MB to avoid hanging on huge feeds
+      const buf = await res.arrayBuffer();
+      xml = Buffer.from(buf).slice(0, 8 * 1024 * 1024).toString('utf8');
     } finally {
       clearTimeout(timeout);
     }
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    xml = await res.text();
   } catch (err) {
     logger.error(`Admitad feed fetch failed: ${err.message}`);
     return null;

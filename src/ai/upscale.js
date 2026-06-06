@@ -2,6 +2,8 @@ import fetch from 'node-fetch';
 import { logger } from '../utils/logger.js';
 import { sleep } from '../utils/sleep.js';
 
+// api-inference.huggingface.co is not reachable from within HF Spaces containers
+const HF_UPSCALER_ENABLED = false;
 const HF_UPSCALER_URL = 'https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-x4-upscaler';
 const TIMEOUT_MS = 90_000;
 
@@ -10,11 +12,10 @@ const TIMEOUT_MS = 90_000;
  * Returns upscaled Buffer or original buffer on any failure.
  */
 export async function upscaleImage(imageBuffer) {
+  if (!HF_UPSCALER_ENABLED) return imageBuffer;
+
   const token = process.env.HF_API_TOKEN;
-  if (!token) {
-    logger.warn('HF_API_TOKEN not set, skipping upscale');
-    return imageBuffer;
-  }
+  if (!token) return imageBuffer;
 
   const backoffs = [10_000, 30_000, 60_000];
 

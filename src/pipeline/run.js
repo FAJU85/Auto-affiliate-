@@ -101,8 +101,8 @@ export async function runPipeline() {
 
     runMeta.imageGenerated = imageBuffer !== null;
 
-    // Phase 8 — Bluesky auth (force refresh every run — canvas phase 14)
-    await getBskyAgent(true);
+    // Phase 8 — Bluesky auth (reuse persisted session, login only when needed)
+    await getBskyAgent();
 
     // Phase 9 — Blob upload + publish (canvas phases 15-17)
     const uri = await publishPost(caption, deeplink, imageBuffer, payload.name);
