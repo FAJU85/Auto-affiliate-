@@ -9,8 +9,15 @@ const API_BASE = 'https://api.admitad.com';
  * Returns one product in the unified feed interface.
  */
 export async function getAdmitadApiProduct() {
-  const token = await getAdmitadToken();
   const websiteId = process.env.ADMITAD_WEBSITE_ID;
+
+  // Without ADMITAD_WEBSITE_ID we cannot generate affiliate deeplinks,
+  // so there is no point fetching campaigns — plain site_url earns no commission.
+  if (!websiteId) {
+    throw new Error('ADMITAD_WEBSITE_ID not set — skipping admitad-api (no deeplink possible)');
+  }
+
+  const token = await getAdmitadToken();
 
   // Global endpoint only — website-scoped requires advcampaigns_for_website scope
   const endpoint = `${API_BASE}/advcampaigns/?limit=50&order_by=-ecpc`;
@@ -35,22 +42,15 @@ export async function getAdmitadApiProduct() {
 
   logger.info(`Admitad API campaign selected: ${c.name} (ecpc: ${c.avg_ecpc})`);
 
-  // Generate deeplink if website ID is available
-  let siteUrl = c.site_url;
-  if (websiteId) {
-    try {
-      siteUrl = await generateDeeplink(token, websiteId, c.id, c.site_url);
-    } catch (err) {
-      logger.warn(`Deeplink failed, using site_url: ${err.message}`);
-    }
-  }
+  // Deeplink is mandatory — plain site_url is not an affiliate link
+  const siteUrl = await generateDeeplink(token, websiteId, c.id, c.site_url);
 
   return {
     id:             String(c.id),
     name:           String(c.name || '').trim(),
     description:    String(c.description || c.name || '').trim(),
     siteUrl,
-    imageUrl:       c.logo || null,
+    imageUrl:       null, // brand logos are not product images
     price:          null,
     currency:       String(c.currency || 'USD'),
     commissionRate: parseFloat(c.avg_ecpc || 0),

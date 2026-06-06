@@ -145,11 +145,13 @@ function parseCampaignXml(xml) {
     const logo        = extractXmlTag(body, 'logo');
     const description = extractXmlTag(body, 'description');
 
-    if (!name || !(gotolink || siteUrl)) continue;
-    const url = gotolink || siteUrl;
-    try { new URL(url); } catch { continue; }
+    // gotolink is the affiliate tracking URL — skip entries that only have a plain site_url
+    if (!name || !gotolink) continue;
+    try { new URL(gotolink); } catch { continue; }
 
-    campaigns.push({ id, name, siteUrl: url, imageUrl: logo || null, description: description?.slice(0, 300) || name });
+    // logo is a brand icon, not a product image — leave imageUrl null so the
+    // pipeline falls back to og:image scraped from the product page
+    campaigns.push({ id, name, siteUrl: gotolink, imageUrl: null, description: description?.slice(0, 300) || name });
   }
 
   logger.info(`Admitad catalog XML: ${campaigns.length} campaigns`);
