@@ -5,22 +5,14 @@ import { logger } from './utils/logger.js';
 import { validateEnv } from './utils/env.js';
 import { startServer } from './server.js';
 
-const missingVars = validateEnv();
-const configured  = missingVars.length === 0;
-
-if (!configured) {
-  logger.warn(`Not configured — missing: ${missingVars.join(', ')}`);
-  logger.warn('Dashboard will start; pipeline will not run until all secrets are set.');
-}
-
-const SCHEDULE = process.env.CRON_SCHEDULE || '0 * * * *';
-logger.info(`Auto-Affiliate pipeline starting. Schedule: "${SCHEDULE}"`);
-
+// Dashboard always starts first (HF Spaces requires port 7860 to be up fast)
+let missingVars = [];
+let configured  = false;
 let pipelineRunning = false;
 
 async function safePipelineRun(trigger) {
   if (!configured) {
-    logger.warn(`[${trigger}] Skipped — required env vars not set`);
+    logger.warn(`[${trigger}] Skipped — Bluesky not connected`);
     return;
   }
   if (pipelineRunning) {
@@ -37,31 +29,42 @@ async function safePipelineRun(trigger) {
   }
 }
 
-// Dashboard always starts — required by HuggingFace Spaces (port 7860)
-startServer(() => pipelineRunning, safePipelineRun, missingVars);
+// Start server immediately so HF Spaces health check passes
+startServer(() => pipelineRunning, safePipelineRun, () => missingVars);
 
-if (configured) {
-  safePipelineRun('startup');
-}
+// Then validate env + start scheduler
+validateEnv().then(missing => {
+  missingVars = missing;
+  configured  = missing.length === 0;
 
-const task = cron.schedule(SCHEDULE, () => {
-  safePipelineRun('cron');
-});
-
-async function shutdown(signal) {
-  logger.info(`Received ${signal}, stopping scheduler`);
-  task.stop();
-  if (pipelineRunning) {
-    logger.info('Waiting for active pipeline run to finish (max 90s)...');
-    const deadline = Date.now() + 90_000;
-    while (pipelineRunning && Date.now() < deadline) {
-      await new Promise(r => setTimeout(r, 500));
-    }
-    if (pipelineRunning) logger.warn('Timeout waiting for pipeline — forcing exit');
+  if (!configured) {
+    logger.warn(`Not configured — ${missing.join(', ')}`);
+    logger.warn('Dashboard running. Connect Bluesky via the dashboard to start posting.');
   }
-  logger.info('Shutdown complete');
-  process.exit(0);
-}
 
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT', () => shutdown('SIGINT'));
+  const SCHEDULE = process.env.CRON_SCHEDULE || '0 * * * *';
+  logger.info(`Auto-Affiliate pipeline starting. Schedule: "${SCHEDULE}"`);
+
+  if (configured) safePipelineRun('startup');
+
+  const task = cron.schedule(SCHEDULE, () => safePipelineRun('cron'));
+
+  async function shutdown(signal) {
+    logger.info(`Received ${signal}, stopping scheduler`);
+    task.stop();
+    if (pipelineRunning) {
+      const deadline = Date.now() + 90_000;
+      while (pipelineRunning && Date.now() < deadline) {
+        await new Promise(r => setTimeout(r, 500));
+      }
+    }
+    logger.info('Shutdown complete');
+    process.exit(0);
+  }
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT',  () => shutdown('SIGINT'));
+}).catch(err => {
+  logger.error(`Startup validation failed: ${err.message}`);
+  process.exit(1);
+});
