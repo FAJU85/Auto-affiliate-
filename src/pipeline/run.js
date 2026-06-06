@@ -9,6 +9,7 @@ import { getBskyAgent } from '../bluesky/client.js';
 import { recordRun, wasRecentlyPosted } from '../utils/metrics.js';
 import { getDailySpend } from '../utils/budget.js';
 import { logger } from '../utils/logger.js';
+import { getProductHighlights } from '../ai/exa.js';
 
 export async function runPipeline() {
   const startTime = Date.now();
@@ -63,7 +64,11 @@ export async function runPipeline() {
       return runMeta;
     }
 
-    // Phase 5 — Text generation via DeepSeek (canvas phase 8)
+    // Phase 4b — Exa product context (enriches AI caption, best-effort)
+    const exaHighlights = await getProductHighlights(payload.name, payload.category);
+    if (exaHighlights) payload = { ...payload, exaHighlights };
+
+    // Phase 5 — Text generation
     const caption = await generatePostText(payload, trends);
     payload = { ...payload, caption };
     runMeta.caption = caption;

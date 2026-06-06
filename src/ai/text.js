@@ -56,21 +56,25 @@ function setCached(productId, caption) {
 // --- Prompt builder ---
 
 function buildMessages(product, trends) {
-  const settings     = getSettings();
-  const safeName     = sanitiseForPrompt(product.name).slice(0, 80);
-  const safeCategory = sanitiseForPrompt(product.category).slice(0, 40);
-  const safeDesc     = sanitiseForPrompt(product.description).slice(0, 80);
-  const safeTrend    = trends[0] ? sanitiseForPrompt(trends[0].title) : '';
+  const settings        = getSettings();
+  const safeName        = sanitiseForPrompt(product.name).slice(0, 80);
+  const safeCategory    = sanitiseForPrompt(product.category).slice(0, 40);
+  const safeDesc        = sanitiseForPrompt(product.description).slice(0, 80);
+  const safeTrend       = trends[0] ? sanitiseForPrompt(trends[0].title) : '';
+  const safeHighlights  = product.exaHighlights
+    ? sanitiseForPrompt(product.exaHighlights).slice(0, 200)
+    : '';
 
   const system = settings.postSystemPrompt;
 
-  // Fill template variables: {name} {category} {description} {trend}
+  // Fill template variables: {name} {category} {description} {trend} {highlights}
   const userTemplate = settings.postUserTemplate;
   const user = userTemplate
     .replace('{name}',        safeName)
     .replace('{category}',    safeCategory)
     .replace('{description}', safeDesc)
-    .replace('{trend}',       safeTrend || 'none');
+    .replace('{trend}',       safeTrend || 'none')
+    .replace('{highlights}',  safeHighlights || '');
 
   return { system, user };
 }

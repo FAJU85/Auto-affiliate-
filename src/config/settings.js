@@ -14,7 +14,7 @@ const DEFAULTS = {
   alertThreshold:   1.50,
   rateLimitWaitMs:  120000,
   postSystemPrompt: 'Write short affiliate posts for social media. Max 200 chars. No hashtags. Natural tone.',
-  postUserTemplate: 'Product: "{name}" ({category}). {description}. Trending: {trend}. Write a post with CTA, no URL.',
+  postUserTemplate: 'Product: "{name}" ({category}). {description}. Trending: {trend}. Extra context: {highlights}. Write a post with CTA, no URL.',
 };
 
 let _cache = null;
