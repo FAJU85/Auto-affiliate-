@@ -112,14 +112,30 @@ function parseOfferBlock(id, body) {
   };
 }
 
+// Decode XML entities in plain-text (non-CDATA) node values.
+// &amp; → & is critical: URLs in XML feeds use &amp; for & which breaks
+// affiliate redirect chains if left un-decoded.
+function decodeXmlEntities(str) {
+  return str
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'");
+}
+
 function extractTag(xml, tag) {
   const m = xml.match(new RegExp(`<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tag}>|<${tag}[^>]*>([^<]*)<\\/${tag}>`));
   if (!m) return null;
-  return (m[1] !== undefined ? m[1] : m[2] || '').trim() || null;
+  const isCdata = m[1] !== undefined;
+  const raw = (isCdata ? m[1] : m[2] || '').trim();
+  return raw ? (isCdata ? raw : decodeXmlEntities(raw)) : null;
 }
 
 function extractParam(xml, name) {
   const m = xml.match(new RegExp(`<param[^>]+name="${name}"[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/param>|<param[^>]+name="${name}"[^>]*>([^<]*)<\\/param>`));
   if (!m) return null;
-  return (m[1] !== undefined ? m[1] : m[2] || '').trim() || null;
+  const isCdata = m[1] !== undefined;
+  const raw = (isCdata ? m[1] : m[2] || '').trim();
+  return raw ? (isCdata ? raw : decodeXmlEntities(raw)) : null;
 }
