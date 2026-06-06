@@ -444,12 +444,14 @@ function renderBskyStatus(bsky) {
 
   if (bsky?.connected) {
     statusEl.className = 'account-status connected';
-    statusEl.textContent = 'Connected' + (bsky.did ? ' · '+bsky.did.slice(0,24)+'…' : '');
+    statusEl.textContent = 'Connected · ' + (bsky.did || '').slice(0,28) + '…';
     actionsEl.innerHTML = '<button class="btn btn-danger" onclick="disconnectBsky()">Disconnect</button>';
     connectBox.style.display = 'none';
   } else {
     statusEl.className = 'account-status';
-    statusEl.textContent = 'Not connected';
+    statusEl.textContent = bsky?.wasConnected
+      ? '⚠ Session expired — Space was rebuilt. Reconnect below.'
+      : 'Not connected';
     actionsEl.innerHTML = '<button class="btn btn-success" onclick="showConnectBox()">Connect</button>';
     connectBox.style.display = 'none';
   }

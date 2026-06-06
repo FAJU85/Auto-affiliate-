@@ -5,8 +5,10 @@ import { logger } from '../utils/logger.js';
 import { sleep } from '../utils/sleep.js';
 import { getOAuthAgent } from '../auth/bluesky-oauth.js';
 
-const SESSION_FILE  = path.resolve('data/bsky-session.json');
-const SESSION_TTL_MS = 90 * 60 * 1000;
+const SESSION_FILE    = path.resolve('data/bsky-session.json');
+const RATELIMIT_FILE  = path.resolve('data/bsky-ratelimit.json');
+const SESSION_TTL_MS  = 90 * 60 * 1000;
+const RATELIMIT_COOLDOWN_MS = 15 * 60 * 1000; // wait 15 min after rate limit
 
 let agent        = null;
 let sessionExpiry = 0;
@@ -23,6 +25,25 @@ function loadSession() {
   catch { return null; }
 }
 
+function setRateLimit() {
+  try {
+    fs.mkdirSync(path.dirname(RATELIMIT_FILE), { recursive: true });
+    fs.writeFileSync(RATELIMIT_FILE, JSON.stringify({ until: Date.now() + RATELIMIT_COOLDOWN_MS }));
+  } catch {}
+}
+
+function isRateLimited() {
+  try {
+    const { until } = JSON.parse(fs.readFileSync(RATELIMIT_FILE, 'utf8'));
+    if (Date.now() < until) {
+      logger.warn(`Bluesky login rate-limited — skipping until ${new Date(until).toISOString()}`);
+      return true;
+    }
+    fs.unlinkSync(RATELIMIT_FILE);
+  } catch {}
+  return false;
+}
+
 export async function getBskyAgent(forceRefresh = false) {
   if (forceRefresh) {
     agent = null;
@@ -32,10 +53,9 @@ export async function getBskyAgent(forceRefresh = false) {
 
   if (agent && Date.now() < sessionExpiry) return agent;
 
-  // 1. Try OAuth session first (one-click connect)
+  // 1. Try OAuth session first
   const oauthSession = await getOAuthAgent();
   if (oauthSession) {
-    // OAuth session is an AtpAgent-compatible object
     agent = oauthSession;
     sessionExpiry = Date.now() + SESSION_TTL_MS;
     logger.info('Bluesky authenticated via OAuth');
@@ -48,9 +68,13 @@ export async function getBskyAgent(forceRefresh = false) {
     throw new Error('Bluesky not connected — use the dashboard to connect via OAuth or set BSKY_HANDLE + BSKY_APP_PASSWORD');
   }
 
+  // Skip if we're in rate limit cooldown
+  if (isRateLimited()) {
+    throw new Error('Bluesky login rate-limited — waiting for cooldown, will retry next run');
+  }
+
   const handle   = BSKY_HANDLE.trim();
   const password = BSKY_APP_PASSWORD.trim();
-
   const freshAgent = new BskyAgent({ service: 'https://bsky.social' });
 
   // Try resuming a saved session first
@@ -69,20 +93,19 @@ export async function getBskyAgent(forceRefresh = false) {
 
   logger.info(`Bluesky login: identifier="${handle}" password_length=${password.length}`);
 
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      await freshAgent.login({ identifier: handle, password });
-      saveSession(freshAgent.session);
-      agent = freshAgent;
-      sessionExpiry = Date.now() + SESSION_TTL_MS;
-      logger.info(`Bluesky authenticated as ${handle}`);
-      return agent;
-    } catch (err) {
-      const isRateLimit = /rate.limit/i.test(err.message);
-      logger.warn(`Bluesky login attempt ${attempt} failed: ${err.message}`);
-      if (isRateLimit || attempt === 3) throw err;
-      await sleep(attempt * 2000);
+  try {
+    await freshAgent.login({ identifier: handle, password });
+    saveSession(freshAgent.session);
+    agent = freshAgent;
+    sessionExpiry = Date.now() + SESSION_TTL_MS;
+    logger.info(`Bluesky authenticated as ${handle}`);
+    return agent;
+  } catch (err) {
+    if (/rate.limit/i.test(err.message)) {
+      setRateLimit();
+      logger.warn(`Bluesky rate limited — cooldown set for ${RATELIMIT_COOLDOWN_MS / 60000} min`);
     }
+    throw err;
   }
 }
 
