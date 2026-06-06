@@ -4,6 +4,7 @@ import { runPipeline } from './pipeline/run.js';
 import { logger } from './utils/logger.js';
 import { validateEnv } from './utils/env.js';
 import { startServer } from './server.js';
+import { restoreSessionFromSecrets } from './auth/bluesky-oauth.js';
 
 // Dashboard always starts first (HF Spaces requires port 7860 to be up fast)
 let missingVars = [];
@@ -31,6 +32,9 @@ async function safePipelineRun(trigger) {
 
 // Start server immediately so HF Spaces health check passes
 startServer(() => pipelineRunning, safePipelineRun, () => missingVars);
+
+// Restore OAuth session from HF secrets if data dir was wiped by a rebuild
+restoreSessionFromSecrets().catch(() => {});
 
 // Then validate env + start scheduler
 validateEnv().then(missing => {
