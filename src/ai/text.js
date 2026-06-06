@@ -4,10 +4,10 @@ import path from 'path';
 import { logger } from '../utils/logger.js';
 import { sleep } from '../utils/sleep.js';
 
-// HuggingFace free Inference API — OpenAI-compatible chat endpoint
-const HF_API_BASE = 'https://api-inference.huggingface.co/v1/chat/completions';
-const HF_PRIMARY   = 'Qwen/Qwen2.5-72B-Instruct';
-const HF_FALLBACK  = 'mistralai/Mistral-7B-Instruct-v0.3';
+// Groq: free tier, 14,400 req/day, works from HF Spaces
+// HF Inference API is blocked from within HF Spaces (ENOTFOUND)
+const GROQ_API   = 'https://api.groq.com/openai/v1/chat/completions';
+const GROQ_MODEL = 'llama-3.3-70b-versatile';
 const CACHE_FILE   = path.resolve('data/caption-cache.json');
 
 function sanitiseForPrompt(str) {
@@ -67,16 +67,16 @@ function buildMessages(product, trends) {
   return { system, user };
 }
 
-// --- HuggingFace chat call with retry ---
+// --- Groq chat call with retry ---
 
-async function callHfModel(model, system, user, apiKey) {
+async function callGroq(system, user, apiKey) {
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      const res = await fetch(HF_API_BASE, {
+      const res = await fetch(GROQ_API, {
         method: 'POST',
         headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model,
+          model: GROQ_MODEL,
           messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
           max_tokens: 60,
           temperature: 0.8,
@@ -84,29 +84,23 @@ async function callHfModel(model, system, user, apiKey) {
       });
 
       if (res.status === 429) {
-        logger.warn(`HF (${model}) rate limited (attempt ${attempt}), backing off`);
+        logger.warn(`Groq rate limited (attempt ${attempt}), backing off`);
         await sleep(attempt * 5000);
-        continue;
-      }
-
-      if (res.status === 503) {
-        logger.warn(`HF (${model}) loading (attempt ${attempt}), retrying`);
-        await sleep(attempt * 10000);
         continue;
       }
 
       if (!res.ok) {
         const text = await res.text();
-        throw new Error(`HF API error ${res.status}: ${text}`);
+        throw new Error(`Groq API error ${res.status}: ${text}`);
       }
 
       const data = await res.json();
       const text = data?.choices?.[0]?.message?.content;
-      if (!text) throw new Error(`Empty response from HF (${model})`);
+      if (!text) throw new Error('Empty response from Groq');
 
       return text.trim().replace(/^["']|["']$/g, '').slice(0, 250);
     } catch (err) {
-      logger.warn(`HF (${model}) attempt ${attempt} failed: ${err.message}`);
+      logger.warn(`Groq attempt ${attempt} failed: ${err.message}`);
       if (attempt === 3) return null;
       await sleep(attempt * 2000);
     }
@@ -129,28 +123,19 @@ export async function generatePostText(product, trends) {
   }
 
   const { system, user } = buildMessages(product, trends);
-  const hfKey = process.env.HF_API_TOKEN;
+  const groqKey = process.env.GROQ_API_KEY;
 
-  if (hfKey) {
-    // 2. Qwen2.5-72B — high quality, free tier
-    const primary = await callHfModel(HF_PRIMARY, system, user, hfKey);
-    if (primary) {
-      logger.info(`HF Qwen2.5-72B text generated (${primary.length} chars): ${primary.slice(0, 60)}...`);
-      setCached(product.id, primary);
-      return primary;
+  if (groqKey) {
+    // 2. Groq llama-3.3-70b — free, 14,400 req/day, works from HF Spaces
+    const result = await callGroq(system, user, groqKey);
+    if (result) {
+      logger.info(`Groq text generated (${result.length} chars): ${result.slice(0, 60)}...`);
+      setCached(product.id, result);
+      return result;
     }
-    logger.warn('Qwen2.5-72B failed, trying Mistral-7B fallback');
-
-    // 3. Mistral-7B — lighter model, free tier
-    const fallback = await callHfModel(HF_FALLBACK, system, user, hfKey);
-    if (fallback) {
-      logger.info(`HF Mistral-7B text generated (${fallback.length} chars): ${fallback.slice(0, 60)}...`);
-      setCached(product.id, fallback);
-      return fallback;
-    }
-    logger.warn('Mistral-7B failed, falling back to template');
+    logger.warn('Groq failed, falling back to template');
   } else {
-    logger.warn('HF_API_TOKEN not set, using template fallback');
+    logger.warn('GROQ_API_KEY not set, using template fallback');
   }
 
   // 4. Template — always works
