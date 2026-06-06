@@ -365,6 +365,20 @@ export function startServer(getIsRunning, triggerRun, missingVars = []) {
       return json(res, 200, payload);
     }
 
+    if (req.url === '/api/test-bluesky' && req.method === 'POST') {
+      const { BskyAgent } = await import('@atproto/api');
+      const handle   = (process.env.BSKY_HANDLE || '').trim();
+      const password = (process.env.BSKY_APP_PASSWORD || '').trim();
+      if (!handle || !password) return json(res, 400, { ok: false, error: 'BSKY_HANDLE or BSKY_APP_PASSWORD not set' });
+      try {
+        const a = new BskyAgent({ service: 'https://bsky.social' });
+        await a.login({ identifier: handle, password });
+        return json(res, 200, { ok: true, did: a.session?.did, handle });
+      } catch (err) {
+        return json(res, 401, { ok: false, error: err.message, handle, password_length: password.length });
+      }
+    }
+
     if (req.url === '/api/run' && req.method === 'POST') {
       if (missingVars.length) {
         return json(res, 503, { ok: false, error: `Not configured — set: ${missingVars.join(', ')}` });
