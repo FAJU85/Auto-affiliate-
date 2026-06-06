@@ -351,7 +351,7 @@ polling = setInterval(fetchStatus, 20_000);
 // ─── Server ──────────────────────────────────────────────────────────────────
 
 export function startServer(getIsRunning, triggerRun, missingVars = []) {
-  const server = http.createServer((req, res) => {
+  const server = http.createServer(async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
 
     if (req.url === '/health') {
