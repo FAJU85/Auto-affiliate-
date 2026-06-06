@@ -12,10 +12,8 @@ export async function getAdmitadApiProduct() {
   const token = await getAdmitadToken();
   const websiteId = process.env.ADMITAD_WEBSITE_ID;
 
-  // Use website-scoped endpoint if ADMITAD_WEBSITE_ID is set, else global list
-  const endpoint = websiteId
-    ? `${API_BASE}/advcampaigns/website/${websiteId}/?limit=50&order_by=-ecpc`
-    : `${API_BASE}/advcampaigns/?limit=50&order_by=-ecpc`;
+  // Global endpoint only — website-scoped requires advcampaigns_for_website scope
+  const endpoint = `${API_BASE}/advcampaigns/?limit=50&order_by=-ecpc`;
 
   const res = await fetch(endpoint, {
     headers: { Authorization: `Bearer ${token}` },

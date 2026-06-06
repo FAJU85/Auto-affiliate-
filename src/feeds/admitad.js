@@ -18,21 +18,32 @@ export async function getAdmitadProduct() {
   logger.info('Fetching Admitad XML feed…');
   let xml;
   try {
-    // 60s timeout covers both connection AND full body download of large XML
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 60_000);
+    // 30s total budget — abort early once we have enough data
+    const timeout = setTimeout(() => controller.abort(), 30_000);
     try {
       const res = await fetch(feedUrl, { signal: controller.signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      // Cap download at 8MB to avoid hanging on huge feeds
-      const buf = await res.arrayBuffer();
-      xml = Buffer.from(buf).slice(0, 8 * 1024 * 1024).toString('utf8');
+
+      // Stream body, stop after 2MB — enough to parse hundreds of offers
+      const MAX_BYTES = 2 * 1024 * 1024;
+      const chunks = [];
+      let total = 0;
+      for await (const chunk of res.body) {
+        chunks.push(chunk);
+        total += chunk.length;
+        if (total >= MAX_BYTES) { controller.abort(); break; }
+      }
+      xml = Buffer.concat(chunks).toString('utf8');
     } finally {
       clearTimeout(timeout);
     }
   } catch (err) {
-    logger.error(`Admitad feed fetch failed: ${err.message}`);
-    return null;
+    if (err.name !== 'AbortError' || !xml) {
+      logger.error(`Admitad feed fetch failed: ${err.message}`);
+      return null;
+    }
+    // AbortError after we intentionally stopped streaming — xml is populated, continue
   }
 
   const offers = parseOffers(xml);
