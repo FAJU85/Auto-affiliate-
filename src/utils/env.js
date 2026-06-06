@@ -11,6 +11,7 @@ const OPTIONAL_LABELS = {
   TAKEADS_API_KEY:      'Takeads CPC network API key',
   TRAVELPAYOUTS_TOKEN:  'Travelpayouts API token (flight & hotel deals)',
   GROQ_API_KEY:         'Groq text generation — free, 14,400 req/day (llama-3.3-70b-versatile)',
+  MISTRAL_API_KEY:      'Mistral text generation — mistral-small-latest fallback',
   HF_API_TOKEN:         'HuggingFace image upscaling (stable-diffusion-x4-upscaler)',
   LANGSEARCH_API_KEY:   'LangSearch image search (og:image scrape used as fallback)',
 };

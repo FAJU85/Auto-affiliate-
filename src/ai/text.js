@@ -4,10 +4,12 @@ import path from 'path';
 import { logger } from '../utils/logger.js';
 import { sleep } from '../utils/sleep.js';
 
-// Groq: free tier, 14,400 req/day, works from HF Spaces
-// HF Inference API is blocked from within HF Spaces (ENOTFOUND)
-const GROQ_API   = 'https://api.groq.com/openai/v1/chat/completions';
-const GROQ_MODEL = 'llama-3.3-70b-versatile';
+// Groq: free tier, 14,400 req/day — works from HF Spaces
+const GROQ_API     = 'https://api.groq.com/openai/v1/chat/completions';
+const GROQ_MODEL   = 'llama-3.3-70b-versatile';
+// Mistral: paid but cheap (~$0.0002/call with mistral-small)
+const MISTRAL_API   = 'https://api.mistral.ai/v1/chat/completions';
+const MISTRAL_MODEL = 'mistral-small-latest';
 const CACHE_FILE   = path.resolve('data/caption-cache.json');
 
 function sanitiseForPrompt(str) {
@@ -67,16 +69,16 @@ function buildMessages(product, trends) {
   return { system, user };
 }
 
-// --- Groq chat call with retry ---
+// --- Generic OpenAI-compatible chat call ---
 
-async function callGroq(system, user, apiKey) {
+async function callChatAPI({ url, model, apiKey, system, user, name }) {
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      const res = await fetch(GROQ_API, {
+      const res = await fetch(url, {
         method: 'POST',
         headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: GROQ_MODEL,
+          model,
           messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
           max_tokens: 60,
           temperature: 0.8,
@@ -84,23 +86,23 @@ async function callGroq(system, user, apiKey) {
       });
 
       if (res.status === 429) {
-        logger.warn(`Groq rate limited (attempt ${attempt}), backing off`);
+        logger.warn(`${name} rate limited (attempt ${attempt}), backing off`);
         await sleep(attempt * 5000);
         continue;
       }
 
       if (!res.ok) {
         const text = await res.text();
-        throw new Error(`Groq API error ${res.status}: ${text}`);
+        throw new Error(`${name} API error ${res.status}: ${text}`);
       }
 
       const data = await res.json();
       const text = data?.choices?.[0]?.message?.content;
-      if (!text) throw new Error('Empty response from Groq');
+      if (!text) throw new Error(`Empty response from ${name}`);
 
       return text.trim().replace(/^["']|["']$/g, '').slice(0, 250);
     } catch (err) {
-      logger.warn(`Groq attempt ${attempt} failed: ${err.message}`);
+      logger.warn(`${name} attempt ${attempt} failed: ${err.message}`);
       if (attempt === 3) return null;
       await sleep(attempt * 2000);
     }
@@ -123,22 +125,25 @@ export async function generatePostText(product, trends) {
   }
 
   const { system, user } = buildMessages(product, trends);
-  const groqKey = process.env.GROQ_API_KEY;
 
-  if (groqKey) {
-    // 2. Groq llama-3.3-70b — free, 14,400 req/day, works from HF Spaces
-    const result = await callGroq(system, user, groqKey);
+  // Try providers in order: Groq (free) → Mistral → template
+  const providers = [
+    { key: process.env.GROQ_API_KEY,    url: GROQ_API,    model: GROQ_MODEL,    name: 'Groq' },
+    { key: process.env.MISTRAL_API_KEY, url: MISTRAL_API, model: MISTRAL_MODEL, name: 'Mistral' },
+  ];
+
+  for (const p of providers) {
+    if (!p.key) continue;
+    const result = await callChatAPI({ url: p.url, model: p.model, apiKey: p.key, system, user, name: p.name });
     if (result) {
-      logger.info(`Groq text generated (${result.length} chars): ${result.slice(0, 60)}...`);
+      logger.info(`${p.name} text generated (${result.length} chars): ${result.slice(0, 60)}...`);
       setCached(product.id, result);
       return result;
     }
-    logger.warn('Groq failed, falling back to template');
-  } else {
-    logger.warn('GROQ_API_KEY not set, using template fallback');
+    logger.warn(`${p.name} failed, trying next provider`);
   }
 
-  // 4. Template — always works
+  logger.warn('All AI providers failed or unconfigured, using template fallback');
   return templateFallback(product, trends);
 }
 
