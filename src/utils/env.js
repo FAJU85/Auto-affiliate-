@@ -17,6 +17,17 @@ const OPTIONAL_LABELS = {
 };
 
 export function validateEnv() {
+  // Startup diagnostic — shows what's actually received (names + lengths only)
+  const allKeys = [...REQUIRED, ...Object.keys(OPTIONAL_LABELS)];
+  for (const k of allKeys) {
+    const v = process.env[k];
+    if (v !== undefined) {
+      console.log(`[ENV] ${k} set (length=${v.length}, first_char="${v[0]}")`);
+    } else {
+      console.log(`[ENV] ${k} NOT SET`);
+    }
+  }
+
   const missing = REQUIRED.filter(k => !process.env[k]);
 
   for (const [k, label] of Object.entries(OPTIONAL_LABELS)) {
