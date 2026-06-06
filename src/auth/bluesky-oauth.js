@@ -1,4 +1,5 @@
 import { NodeOAuthClient } from '@atproto/oauth-client-node';
+import { Agent } from '@atproto/api';
 import fs from 'fs';
 import path from 'path';
 import { getSpaceHost } from '../config/settings.js';
@@ -80,7 +81,8 @@ export async function getOAuthAgent() {
   if (!did) return null;
   try {
     const session = await client.restore(did);
-    return session;
+    // Wrap the OAuth session in an Agent so .post() and .uploadBlob() work
+    return new Agent(session);
   } catch (err) {
     logger.warn(`Bluesky OAuth restore failed: ${err.message}`);
     return null;
