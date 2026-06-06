@@ -1,7 +1,8 @@
 import fs from 'fs';
 import path from 'path';
+import { dataPath } from '../utils/datadir.js';
 
-const SETTINGS_FILE = path.resolve('data/settings.json');
+const SETTINGS_FILE = dataPath('settings.json');
 
 const DEFAULTS = {
   spaceHost:       '',

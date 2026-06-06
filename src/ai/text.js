@@ -4,14 +4,13 @@ import path from 'path';
 import { logger } from '../utils/logger.js';
 import { sleep } from '../utils/sleep.js';
 import { getSettings } from '../config/settings.js';
+import { dataPath } from '../utils/datadir.js';
 
-// Groq: free tier, 14,400 req/day — works from HF Spaces
 const GROQ_API     = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODEL   = 'llama-3.3-70b-versatile';
-// Mistral: paid but cheap (~$0.0002/call with mistral-small)
 const MISTRAL_API   = 'https://api.mistral.ai/v1/chat/completions';
 const MISTRAL_MODEL = 'mistral-small-latest';
-const CACHE_FILE   = path.resolve('data/caption-cache.json');
+const CACHE_FILE   = dataPath('caption-cache.json');
 
 function sanitiseForPrompt(str) {
   return String(str ?? '')

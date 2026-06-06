@@ -1,7 +1,8 @@
 import fs from 'fs';
 import path from 'path';
+import { dataPath } from './datadir.js';
 
-const BUDGET_FILE = path.resolve('data/budget.json');
+const BUDGET_FILE = dataPath('budget.json');
 
 function loadBudget() {
   try {

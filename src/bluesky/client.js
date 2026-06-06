@@ -4,9 +4,10 @@ import path from 'path';
 import { logger } from '../utils/logger.js';
 import { sleep } from '../utils/sleep.js';
 import { getOAuthAgent } from '../auth/bluesky-oauth.js';
+import { dataPath } from '../utils/datadir.js';
 
-const SESSION_FILE    = path.resolve('data/bsky-session.json');
-const RATELIMIT_FILE  = path.resolve('data/bsky-ratelimit.json');
+const SESSION_FILE    = dataPath('bsky-session.json');
+const RATELIMIT_FILE  = dataPath('bsky-ratelimit.json');
 const SESSION_TTL_MS  = 90 * 60 * 1000;
 const RATELIMIT_COOLDOWN_MS = 15 * 60 * 1000; // wait 15 min after rate limit
 

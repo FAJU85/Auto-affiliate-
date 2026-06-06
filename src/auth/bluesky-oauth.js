@@ -4,9 +4,10 @@ import fs from 'fs';
 import path from 'path';
 import { getSpaceHost } from '../config/settings.js';
 import { logger } from '../utils/logger.js';
+import { dataPath } from '../utils/datadir.js';
 
-const STATE_DIR   = path.resolve('data/oauth/state');
-const SESSION_DIR = path.resolve('data/oauth/sessions');
+const STATE_DIR   = dataPath('oauth/state');
+const SESSION_DIR = dataPath('oauth/sessions');
 
 function ensureDirs() {
   fs.mkdirSync(STATE_DIR,   { recursive: true });

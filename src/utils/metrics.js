@@ -1,7 +1,8 @@
 import fs from 'fs';
 import path from 'path';
+import { dataPath } from './datadir.js';
 
-const METRICS_FILE = path.resolve('data/metrics.json');
+const METRICS_FILE = dataPath('metrics.json');
 
 function load() {
   try {
