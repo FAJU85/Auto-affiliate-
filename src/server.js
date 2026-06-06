@@ -312,6 +312,27 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
         </div>
       </div>
 
+      <div class="section-title" style="margin-top:2rem">AI Post Prompt</div>
+      <p style="font-size:.875rem;color:var(--muted);margin-bottom:1.25rem">
+        Customise what the AI writes. Use <code>{name}</code>, <code>{category}</code>, <code>{description}</code>, <code>{trend}</code> as placeholders.
+      </p>
+      <div style="display:grid;gap:1.25rem;margin-bottom:1.5rem">
+        <div class="field">
+          <label>System Prompt</label>
+          <textarea id="cfg-postSystemPrompt" rows="3"
+            style="background:#0f172a;border:1px solid var(--border);border-radius:8px;padding:.65rem .9rem;color:var(--text);font-size:.875rem;resize:vertical;font-family:inherit;line-height:1.5"
+          ></textarea>
+          <span class="hint">Defines the AI's persona and constraints (tone, length, style).</span>
+        </div>
+        <div class="field">
+          <label>User Message Template</label>
+          <textarea id="cfg-postUserTemplate" rows="3"
+            style="background:#0f172a;border:1px solid var(--border);border-radius:8px;padding:.65rem .9rem;color:var(--text);font-size:.875rem;resize:vertical;font-family:inherit;line-height:1.5"
+          ></textarea>
+          <span class="hint">The actual request sent per post. Placeholders: <code>{name}</code> <code>{category}</code> <code>{description}</code> <code>{trend}</code></span>
+        </div>
+      </div>
+
       <div style="display:flex;gap:1rem;align-items:center">
         <button class="btn btn-primary" onclick="saveConfig()">💾 Save Settings</button>
         <span id="cfg-msg" style="font-size:.85rem;color:var(--muted)"></span>
@@ -470,22 +491,26 @@ loadAccounts();
 async function loadConfig() {
   try {
     const d = await fetch('/api/settings').then(r=>r.json());
-    document.getElementById('cfg-spaceHost').value     = d.spaceHost     || '';
-    document.getElementById('cfg-cronSchedule').value  = d.cronSchedule  || '0 * * * *';
-    document.getElementById('cfg-maxPostLength').value = d.maxPostLength  || 300;
-    document.getElementById('cfg-dailyCostCap').value  = d.dailyCostCap  || 2.00;
-    document.getElementById('cfg-alertThreshold').value= d.alertThreshold|| 1.50;
+    document.getElementById('cfg-spaceHost').value          = d.spaceHost          || '';
+    document.getElementById('cfg-cronSchedule').value       = d.cronSchedule       || '0 * * * *';
+    document.getElementById('cfg-maxPostLength').value      = d.maxPostLength       || 300;
+    document.getElementById('cfg-dailyCostCap').value       = d.dailyCostCap       || 2.00;
+    document.getElementById('cfg-alertThreshold').value     = d.alertThreshold     || 1.50;
+    document.getElementById('cfg-postSystemPrompt').value   = d.postSystemPrompt   || '';
+    document.getElementById('cfg-postUserTemplate').value   = d.postUserTemplate   || '';
   } catch {}
 }
 
 async function saveConfig() {
   const msg = document.getElementById('cfg-msg');
   const payload = {
-    spaceHost:      document.getElementById('cfg-spaceHost').value.trim(),
-    cronSchedule:   document.getElementById('cfg-cronSchedule').value.trim(),
-    maxPostLength:  parseInt(document.getElementById('cfg-maxPostLength').value,10),
-    dailyCostCap:   parseFloat(document.getElementById('cfg-dailyCostCap').value),
-    alertThreshold: parseFloat(document.getElementById('cfg-alertThreshold').value),
+    spaceHost:        document.getElementById('cfg-spaceHost').value.trim(),
+    cronSchedule:     document.getElementById('cfg-cronSchedule').value.trim(),
+    maxPostLength:    parseInt(document.getElementById('cfg-maxPostLength').value,10),
+    dailyCostCap:     parseFloat(document.getElementById('cfg-dailyCostCap').value),
+    alertThreshold:   parseFloat(document.getElementById('cfg-alertThreshold').value),
+    postSystemPrompt: document.getElementById('cfg-postSystemPrompt').value.trim(),
+    postUserTemplate: document.getElementById('cfg-postUserTemplate').value.trim(),
   };
   try {
     const d = await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}).then(r=>r.json());

@@ -4,12 +4,14 @@ import path from 'path';
 const SETTINGS_FILE = path.resolve('data/settings.json');
 
 const DEFAULTS = {
-  spaceHost:       '',   // e.g. https://vooom-fast-growth.hf.space
+  spaceHost:       '',
   cronSchedule:    '0 * * * *',
   maxPostLength:   300,
   dailyCostCap:    2.00,
   alertThreshold:  1.50,
   rateLimitWaitMs: 120000,
+  postSystemPrompt: 'Write short affiliate posts for social media. Max 200 chars. No hashtags. Natural tone.',
+  postUserTemplate: 'Product: "{name}" ({category}). {description}. Trending: {trend}. Write a post with CTA, no URL.',
 };
 
 let _cache = null;

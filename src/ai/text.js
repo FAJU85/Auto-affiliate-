@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { logger } from '../utils/logger.js';
 import { sleep } from '../utils/sleep.js';
+import { getSettings } from '../config/settings.js';
 
 // Groq: free tier, 14,400 req/day — works from HF Spaces
 const GROQ_API     = 'https://api.groq.com/openai/v1/chat/completions';
@@ -56,15 +57,21 @@ function setCached(productId, caption) {
 // --- Prompt builder ---
 
 function buildMessages(product, trends) {
+  const settings     = getSettings();
   const safeName     = sanitiseForPrompt(product.name).slice(0, 80);
   const safeCategory = sanitiseForPrompt(product.category).slice(0, 40);
   const safeDesc     = sanitiseForPrompt(product.description).slice(0, 80);
   const safeTrend    = trends[0] ? sanitiseForPrompt(trends[0].title) : '';
 
-  const system = 'Write short affiliate posts for Bluesky. Max 200 chars. No hashtags. Natural tone.';
-  const user   = safeTrend
-    ? `Trending: ${safeTrend}. Product: "${safeName}" (${safeCategory}). ${safeDesc}. CTA, no URL.`
-    : `Product: "${safeName}" (${safeCategory}). ${safeDesc}. Write a post with CTA, no URL.`;
+  const system = settings.postSystemPrompt;
+
+  // Fill template variables: {name} {category} {description} {trend}
+  const userTemplate = settings.postUserTemplate;
+  const user = userTemplate
+    .replace('{name}',        safeName)
+    .replace('{category}',    safeCategory)
+    .replace('{description}', safeDesc)
+    .replace('{trend}',       safeTrend || 'none');
 
   return { system, user };
 }
