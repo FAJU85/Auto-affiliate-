@@ -2,6 +2,7 @@ import { getAdmitadProduct } from './admitad.js';
 import { getTakeadsProduct } from './takeads.js';
 import { getAdmitadApiProduct } from '../admitad/campaigns.js';
 import { getTravelpayoutsProduct } from './travelpayouts.js';
+import { getAdmitadCatalogProduct } from './admitad-catalog.js';
 import { logger } from '../utils/logger.js';
 
 /**
@@ -16,10 +17,11 @@ import { logger } from '../utils/logger.js';
  */
 export async function getProduct() {
   const tasks = [
-    { key: 'admitad-feed',   fn: getAdmitadProduct,        enabled: !!process.env.ADMITAD_FEED_URL },
-    { key: 'admitad-api',    fn: getAdmitadApiProduct,     enabled: !!(process.env.ADMITAD_CLIENT_ID && process.env.ADMITAD_CLIENT_SECRET) },
-    { key: 'takeads',        fn: getTakeadsProduct,        enabled: !!process.env.TAKEADS_API_KEY },
-    { key: 'travelpayouts',  fn: getTravelpayoutsProduct,  enabled: !!process.env.TRAVELPAYOUTS_TOKEN },
+    { key: 'admitad-feed',    fn: getAdmitadProduct,         enabled: !!process.env.ADMITAD_FEED_URL },
+    { key: 'admitad-api',     fn: getAdmitadApiProduct,      enabled: !!(process.env.ADMITAD_CLIENT_ID && process.env.ADMITAD_CLIENT_SECRET) },
+    { key: 'admitad-catalog', fn: getAdmitadCatalogProduct,  enabled: !!(process.env.ADMITAD_CATALOG_URL_1 || process.env.ADMITAD_CATALOG_URL_2) },
+    { key: 'takeads',         fn: getTakeadsProduct,         enabled: !!process.env.TAKEADS_API_KEY },
+    { key: 'travelpayouts',   fn: getTravelpayoutsProduct,   enabled: !!process.env.TRAVELPAYOUTS_TOKEN },
   ];
 
   const results = await Promise.allSettled(
