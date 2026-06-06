@@ -9,9 +9,6 @@ import { getBskyAgent } from '../bluesky/client.js';
 import { recordRun, wasRecentlyPosted } from '../utils/metrics.js';
 import { getDailySpend } from '../utils/budget.js';
 import { logger } from '../utils/logger.js';
-import { sleep } from '../utils/sleep.js';
-
-const RATE_LIMIT_WAIT_MS = 2 * 60 * 1000; // 2-minute wait between feed fetch and text gen
 
 export async function runPipeline() {
   const startTime = Date.now();
@@ -53,11 +50,7 @@ export async function runPipeline() {
     payload = { ...payload, trend };
     runMeta.trend = trend;
 
-    // Phase 3 — Rate limit wait (canvas phase 7: 2-minute delay)
-    logger.info(`Rate limit wait: ${RATE_LIMIT_WAIT_MS / 1000}s before text generation`);
-    await sleep(RATE_LIMIT_WAIT_MS);
-
-    // Phase 4 — Affiliate URL + duplicate check
+    // Phase 3 — Affiliate URL + duplicate check
     const deeplink = payload.siteUrl;
     payload = { ...payload, deeplink };
     logger.info(`Affiliate URL (deeplink): ${deeplink}`);

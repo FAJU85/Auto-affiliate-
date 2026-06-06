@@ -1,93 +1,79 @@
 import fetch from 'node-fetch';
 import { logger } from '../utils/logger.js';
 
-// URLs that typically return logos, QR codes, or irrelevant images
+// Patterns that indicate a logo, icon, QR code, or other non-product image
 const BAD_URL_PATTERNS = [
-  /qr[_\-.]?code/i, /barcode/i, /captcha/i, /logo\.(png|svg|gif)/i,
+  /qr[_\-.]?code/i, /barcode/i, /captcha/i,
+  /\blogo\b/i, /sprite/i, /icon\.(png|svg|gif|webp)$/i,
   /placeholder/i, /default[-_]image/i, /no[-_]image/i, /blank/i,
-  /selene-static/i, // aviasales generic logo
-  /sprite/i, /icon\.(png|svg)/i,
+  /selene-static/i, /data:image/i,
 ];
 
+// Flight booking sites whose og:image is always a generic site logo, not a product image
+const FLIGHT_SITE_PATTERNS = [/aviasales/i, /skyscanner/i, /kayak/i, /expedia/i, /booking\.com/i];
+
 function isBadImageUrl(url) {
+  if (!url || typeof url !== 'string') return true;
+  if (!url.startsWith('http')) return true;
   return BAD_URL_PATTERNS.some(p => p.test(url));
 }
 
-// For flight products, search for destination city image instead of scraping the booking URL
-function getSearchQuery(productName, source) {
-  if (source === 'travelpayouts' || /flight/i.test(productName)) {
-    // Extract destination: "Flight NYC → DFW" → "DFW city travel"
-    const dest = productName.match(/→\s*([A-Z]{3})/)?.[1];
-    return dest ? `${dest} city travel destination` : `${productName} travel`;
-  }
-  return `${productName} product`;
-}
-
+/**
+ * Returns an image URL scraped directly from the product's own siteUrl.
+ * We only use the page's own og:image/twitter:image so the image always
+ * matches what the user sees when they click the affiliate link.
+ * Third-party image search is intentionally excluded — it returns images
+ * for similarly-named products that may differ from the linked product.
+ */
 export async function findProductImage(productName, siteUrl, source) {
   try {
-    const apiKey = process.env.LANGSEARCH_API_KEY;
+    if (!siteUrl) return null;
 
-    // Step 1: LangSearch with a smart query
-    if (apiKey) {
-      try {
-        const q = encodeURIComponent(getSearchQuery(productName, source));
-        const res = await fetch(`https://langsearch.com/api/v1/search?q=${q}&count=5`, {
-          headers: { Authorization: `Bearer ${apiKey}` },
-          signal: AbortSignal.timeout(10_000),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          for (const result of (data?.results || [])) {
-            const imgUrl = result?.image || result?.thumbnail;
-            if (imgUrl && imgUrl.startsWith('https://') && !isBadImageUrl(imgUrl)) {
-              logger.info(`LangSearch image: ${imgUrl.slice(0, 80)}`);
-              return imgUrl;
-            }
-          }
-        }
-      } catch (err) {
-        logger.warn(`LangSearch failed: ${err.message}`);
-      }
+    // Flight booking pages always return a site logo, not a useful product image
+    if (source === 'travelpayouts' || FLIGHT_SITE_PATTERNS.some(p => p.test(siteUrl))) {
+      logger.info(`Skipping image scrape for flight site: ${siteUrl.slice(0, 60)}`);
+      return null;
     }
 
-    // Step 2: og:image from siteUrl — skip for flight booking pages (just get generic logos)
-    const isFlightUrl = source === 'travelpayouts' || /aviasales|skyscanner|kayak/i.test(siteUrl || '');
-    if (siteUrl && !isFlightUrl) {
-      try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 15_000);
-        let html;
-        try {
-          const res = await fetch(siteUrl, { signal: controller.signal });
-          html = res.ok ? await res.text() : null;
-        } finally { clearTimeout(timeout); }
-
-        if (html) {
-          const ogMatch = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)
-            || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i);
-          const url = ogMatch?.[1];
-          if (url && url.startsWith('https://') && !isBadImageUrl(url)) {
-            logger.info(`og:image: ${url.slice(0, 80)}`);
-            return url;
-          }
-
-          // First non-bad img
-          const imgs = [...html.matchAll(/<img[^>]+src=["'](https:\/\/[^"']+)["']/gi)];
-          for (const m of imgs) {
-            if (!isBadImageUrl(m[1])) {
-              logger.info(`img src: ${m[1].slice(0, 80)}`);
-              return m[1];
-            }
-          }
-        }
-      } catch (err) {
-        logger.warn(`Site image scrape failed: ${err.message}`);
-      }
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+    let html;
+    try {
+      const res = await fetch(siteUrl, {
+        signal: controller.signal,
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; bot/1.0)' },
+      });
+      html = res.ok ? await res.text() : null;
+    } finally {
+      clearTimeout(timeout);
     }
 
+    if (!html) return null;
+
+    // og:image is set explicitly by the site for its own content
+    const ogMatch = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)
+      || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i);
+    const ogUrl = ogMatch?.[1];
+    if (ogUrl && !isBadImageUrl(ogUrl)) {
+      const resolved = ogUrl.startsWith('http') ? ogUrl : new URL(ogUrl, siteUrl).href;
+      logger.info(`og:image for "${productName}": ${resolved.slice(0, 80)}`);
+      return resolved;
+    }
+
+    // twitter:image as secondary fallback
+    const twMatch = html.match(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i)
+      || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image["']/i);
+    const twUrl = twMatch?.[1];
+    if (twUrl && !isBadImageUrl(twUrl)) {
+      const resolved = twUrl.startsWith('http') ? twUrl : new URL(twUrl, siteUrl).href;
+      logger.info(`twitter:image for "${productName}": ${resolved.slice(0, 80)}`);
+      return resolved;
+    }
+
+    logger.info(`No usable image found for "${productName}" at ${siteUrl.slice(0, 60)}`);
     return null;
   } catch (err) {
-    logger.warn(`findProductImage error: ${err.message}`);
+    logger.warn(`findProductImage error for ${siteUrl?.slice(0, 60)}: ${err.message}`);
     return null;
   }
 }
