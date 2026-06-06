@@ -3,11 +3,12 @@ import fs from 'fs';
 import path from 'path';
 import { logger } from '../utils/logger.js';
 import { sleep } from '../utils/sleep.js';
+import { getOAuthAgent } from '../auth/bluesky-oauth.js';
 
-const SESSION_FILE = path.resolve('data/bsky-session.json');
+const SESSION_FILE  = path.resolve('data/bsky-session.json');
 const SESSION_TTL_MS = 90 * 60 * 1000;
 
-let agent = null;
+let agent        = null;
 let sessionExpiry = 0;
 
 function saveSession(sess) {
@@ -31,9 +32,20 @@ export async function getBskyAgent(forceRefresh = false) {
 
   if (agent && Date.now() < sessionExpiry) return agent;
 
+  // 1. Try OAuth session first (one-click connect)
+  const oauthSession = await getOAuthAgent();
+  if (oauthSession) {
+    // OAuth session is an AtpAgent-compatible object
+    agent = oauthSession;
+    sessionExpiry = Date.now() + SESSION_TTL_MS;
+    logger.info('Bluesky authenticated via OAuth');
+    return agent;
+  }
+
+  // 2. Fall back to app password
   const { BSKY_HANDLE, BSKY_APP_PASSWORD } = process.env;
   if (!BSKY_HANDLE || !BSKY_APP_PASSWORD) {
-    throw new Error('Missing BSKY_HANDLE or BSKY_APP_PASSWORD');
+    throw new Error('Bluesky not connected — use the dashboard to connect via OAuth or set BSKY_HANDLE + BSKY_APP_PASSWORD');
   }
 
   const handle   = BSKY_HANDLE.trim();
@@ -41,7 +53,7 @@ export async function getBskyAgent(forceRefresh = false) {
 
   const freshAgent = new BskyAgent({ service: 'https://bsky.social' });
 
-  // Try resuming a saved session first — avoids createSession rate limit
+  // Try resuming a saved session first
   const saved = loadSession();
   if (saved) {
     try {
@@ -55,7 +67,6 @@ export async function getBskyAgent(forceRefresh = false) {
     }
   }
 
-  // Full login — only when no saved session or resume failed
   logger.info(`Bluesky login: identifier="${handle}" password_length=${password.length}`);
 
   for (let attempt = 1; attempt <= 3; attempt++) {

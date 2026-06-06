@@ -1,9 +1,8 @@
-const REQUIRED = [
-  'BSKY_HANDLE',
-  'BSKY_APP_PASSWORD',
-];
+import { getConnectedDid } from '../auth/bluesky-oauth.js';
 
 const OPTIONAL_LABELS = {
+  BSKY_HANDLE:          'Bluesky handle — not needed if connected via OAuth',
+  BSKY_APP_PASSWORD:    'Bluesky app password — not needed if connected via OAuth',
   ADMITAD_FEED_URL:     'Admitad XML product feed URL (no OAuth needed)',
   ADMITAD_CLIENT_ID:    'Admitad OAuth2 client ID (for API campaigns + deeplinks)',
   ADMITAD_CLIENT_SECRET:'Admitad OAuth2 client secret',
@@ -12,31 +11,17 @@ const OPTIONAL_LABELS = {
   TRAVELPAYOUTS_TOKEN:  'Travelpayouts API token (flight & hotel deals)',
   GROQ_API_KEY:         'Groq text generation — free, 14,400 req/day (llama-3.3-70b-versatile)',
   MISTRAL_API_KEY:      'Mistral text generation — mistral-small-latest fallback',
-  HF_API_TOKEN:         'HuggingFace image upscaling (stable-diffusion-x4-upscaler)',
+  HF_API_TOKEN:         'HuggingFace token',
   LANGSEARCH_API_KEY:   'LangSearch image search (og:image scrape used as fallback)',
 };
 
-export function validateEnv() {
-  // Startup diagnostic — shows what's actually received (names + lengths only)
-  const allKeys = [...REQUIRED, ...Object.keys(OPTIONAL_LABELS)];
-  for (const k of allKeys) {
-    const v = process.env[k];
-    if (v !== undefined) {
-      console.log(`[ENV] ${k} set (length=${v.length}, first_char="${v[0]}")`);
-    } else {
-      console.log(`[ENV] ${k} NOT SET`);
-    }
-  }
+export async function validateEnv() {
+  const oauthDid = await getConnectedDid().catch(() => null);
+  const bskyOk = oauthDid || (process.env.BSKY_HANDLE && process.env.BSKY_APP_PASSWORD);
 
-  const missing = REQUIRED.filter(k => !process.env[k]);
+  const missing = bskyOk ? [] : ['BSKY — connect via dashboard or set BSKY_HANDLE + BSKY_APP_PASSWORD'];
 
-  for (const [k, label] of Object.entries(OPTIONAL_LABELS)) {
-    if (!process.env[k]) {
-      console.warn(`[WARN] ${k} not set — ${label}`);
-    }
-  }
-
-  const cap = parseFloat(process.env.DAILY_COST_CAP_USD || '2.00');
+  const cap   = parseFloat(process.env.DAILY_COST_CAP_USD || '2.00');
   const alert = parseFloat(process.env.ALERT_COST_THRESHOLD_USD || '1.50');
   if (alert >= cap) {
     throw new Error(`ALERT_COST_THRESHOLD_USD ($${alert}) must be less than DAILY_COST_CAP_USD ($${cap})`);
