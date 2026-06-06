@@ -46,7 +46,7 @@ export async function runPipeline() {
     runMeta.productsFetched = 1;
     runMeta.productsFiltered = 1;
 
-    // Phase 2 — Merge trend context (canvas phase 6)
+    // Phase 2 — Merge trend context
     const trend = trends[0]?.title || '';
     payload = { ...payload, trend };
     runMeta.trend = trend;
@@ -75,7 +75,7 @@ export async function runPipeline() {
     runMeta.captionChars = caption.length;
 
     // Phase 6 — Image acquisition
-    // Branch: has feed image → use it directly; else → LangSearch / og:image fallback
+    // Branch: has feed image → use it directly; else → og:image from product page
     let imageBuffer = null;
     let imageSource = 'none';
 
@@ -88,18 +88,18 @@ export async function runPipeline() {
     }
 
     if (!imageBuffer) {
-      logger.info('No feed image — trying LangSearch / og:image fallback');
+      logger.info('No feed image — trying og:image from product page');
       const fallbackUrl = await findProductImage(payload.name, payload.siteUrl, payload.source);
       if (fallbackUrl) {
         imageBuffer = await downloadImage(fallbackUrl);
-        if (imageBuffer) imageSource = 'langsearch';
+        if (imageBuffer) imageSource = 'og:image';
       }
     }
 
     payload = { ...payload, imageBuffer, imageSource };
     runMeta.imageSource = imageSource;
 
-    // Phase 7 — HuggingFace upscaling (canvas phase 13)
+    // Phase 7 — HuggingFace upscaling
     if (imageBuffer) {
       imageBuffer = await upscaleImage(imageBuffer);
       payload = { ...payload, imageBuffer };

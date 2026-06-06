@@ -58,7 +58,7 @@ function setCached(productId, caption) {
 function buildMessages(product, trends) {
   const settings        = getSettings();
   const safeName        = sanitiseForPrompt(product.name).slice(0, 80);
-  const safeCategory    = sanitiseForPrompt(product.category).slice(0, 40);
+  const safeCategory    = sanitiseForPrompt(product.category || product.source || '').slice(0, 40);
   const safeDesc        = sanitiseForPrompt(product.description).slice(0, 80);
   const safeTrend       = trends[0] ? sanitiseForPrompt(trends[0].title) : '';
   const safeHighlights  = product.exaHighlights
@@ -124,7 +124,7 @@ async function callChatAPI({ url, model, apiKey, system, user, name }) {
 
 /**
  * Generates affiliate post text.
- * Priority: cache hit → HF Qwen2.5-72B (free) → HF Mistral-7B (free) → template
+ * Priority: cache hit → Groq llama-3.3-70b (free) → Mistral small → template
  */
 export async function generatePostText(product, trends) {
   // 1. Cache hit — zero cost

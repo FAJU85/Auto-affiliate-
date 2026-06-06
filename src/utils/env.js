@@ -1,31 +1,38 @@
 import { getConnectedDid } from '../auth/bluesky-oauth.js';
 
 const OPTIONAL_LABELS = {
-  BSKY_HANDLE:          'Bluesky handle — not needed if connected via OAuth',
-  BSKY_APP_PASSWORD:    'Bluesky app password — not needed if connected via OAuth',
-  ADMITAD_FEED_URL:     'Admitad XML product feed URL (no OAuth needed)',
-  ADMITAD_CLIENT_ID:    'Admitad OAuth2 client ID (for API campaigns + deeplinks)',
-  ADMITAD_CLIENT_SECRET:'Admitad OAuth2 client secret',
-  ADMITAD_WEBSITE_ID:   'Admitad website/ad-space ID (enables deeplink generation)',
-  TAKEADS_API_KEY:      'Takeads CPC network API key',
-  TRAVELPAYOUTS_TOKEN:  'Travelpayouts API token (flight & hotel deals)',
-  GROQ_API_KEY:         'Groq text generation — free, 14,400 req/day (llama-3.3-70b-versatile)',
-  MISTRAL_API_KEY:      'Mistral text generation — mistral-small-latest fallback',
-  HF_API_TOKEN:         'HuggingFace token',
-  LANGSEARCH_API_KEY:   'LangSearch image search (og:image scrape used as fallback)',
+  ADMITAD_FEED_URL:        'Admitad XML product feed URL (no OAuth needed)',
+  ADMITAD_CLIENT_ID:       'Admitad OAuth2 client ID (for API campaigns + deeplinks)',
+  ADMITAD_CLIENT_SECRET:   'Admitad OAuth2 client secret',
+  ADMITAD_WEBSITE_ID:      'Admitad website/ad-space ID (enables deeplink generation)',
+  ADMITAD_CATALOG_URL_1:   'Admitad catalog export URL 1 (XLSX or XML)',
+  ADMITAD_CATALOG_URL_2:   'Admitad catalog export URL 2 (XLSX or XML)',
+  TAKEADS_API_KEY:         'Takeads CPC network API key',
+  TRAVELPAYOUTS_TOKEN:     'Travelpayouts API token (flight deals data)',
+  TRAVELPAYOUTS_MARKER:    'Travelpayouts partner marker ID (for affiliate link tracking)',
+  GROQ_API_KEY:            'Groq text generation — free, 14 400 req/day (llama-3.3-70b-versatile)',
+  MISTRAL_API_KEY:         'Mistral text generation — mistral-small-latest fallback',
+  EXA_API_KEY:             'Exa web search — enriches AI captions with real product highlights',
+  HF_TOKEN:                'HuggingFace token (image upscaling + secret persistence)',
 };
 
 export async function validateEnv() {
-  const oauthDid = await getConnectedDid().catch(() => null);
-  const bskyOk = oauthDid || (process.env.BSKY_HANDLE && process.env.BSKY_APP_PASSWORD);
-
-  const missing = bskyOk ? [] : ['BSKY — connect via dashboard or set BSKY_HANDLE + BSKY_APP_PASSWORD'];
-
-  const cap   = parseFloat(process.env.DAILY_COST_CAP_USD || '2.00');
-  const alert = parseFloat(process.env.ALERT_COST_THRESHOLD_USD || '1.50');
-  if (alert >= cap) {
-    throw new Error(`ALERT_COST_THRESHOLD_USD ($${alert}) must be less than DAILY_COST_CAP_USD ($${cap})`);
+  // Show what is actually configured at startup
+  const allKeys = [...Object.keys(OPTIONAL_LABELS), 'BSKY_HANDLE', 'BSKY_APP_PASSWORD'];
+  for (const k of allKeys) {
+    const v = process.env[k];
+    if (v !== undefined) console.log(`[ENV] ${k} set (length=${v.length})`);
+    else console.log(`[ENV] ${k} NOT SET`);
   }
+
+  for (const [k, label] of Object.entries(OPTIONAL_LABELS)) {
+    if (!process.env[k]) console.warn(`[WARN] ${k} not set — ${label}`);
+  }
+
+  // Bluesky: OK if OAuth session exists OR app-password vars are set
+  const oauthDid = await getConnectedDid().catch(() => null);
+  const bskyOk   = oauthDid || (process.env.BSKY_HANDLE && process.env.BSKY_APP_PASSWORD);
+  const missing  = bskyOk ? [] : ['BSKY — connect via dashboard or set BSKY_HANDLE + BSKY_APP_PASSWORD'];
 
   const schedule = process.env.CRON_SCHEDULE || '0 * * * *';
   if (!isValidCron(schedule)) {

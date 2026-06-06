@@ -89,7 +89,7 @@ function parseOfferBlock(id, body) {
   const description = extractTag(body, 'description') || name || '';
 
   if (!url || !name) return null;
-  try { new URL(url); } catch { return null; }
+  try { new URL(url); } catch { logger.warn(`Admitad: skipping offer ${id} — malformed URL: ${url?.slice(0, 60)}`); return null; }
 
   // First <picture> tag
   const imageUrl = extractTag(body, 'picture') || null;

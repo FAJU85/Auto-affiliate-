@@ -48,7 +48,7 @@ async function _fetchToken() {
 
       const data = await res.json();
       cachedToken = data.access_token;
-      tokenExpiry  = Date.now() + data.expires_in * 1000;
+      tokenExpiry  = Date.now() + (parseInt(data.expires_in, 10) || 3600) * 1000;
       logger.info(`Admitad OAuth token obtained, expires in ${data.expires_in}s`);
       return cachedToken;
     } catch (err) {
