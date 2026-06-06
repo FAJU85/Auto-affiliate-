@@ -21,14 +21,20 @@ export async function getBskyAgent(forceRefresh = false) {
     throw new Error('Missing BSKY_HANDLE or BSKY_APP_PASSWORD');
   }
 
+  // Sanitise — strip accidental whitespace from copy-paste
+  const handle   = BSKY_HANDLE.trim();
+  const password = BSKY_APP_PASSWORD.trim();
+
+  logger.info(`Bluesky login: identifier="${handle}" password_length=${password.length}`);
+
   const freshAgent = new BskyAgent({ service: 'https://bsky.social' });
 
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      await freshAgent.login({ identifier: BSKY_HANDLE, password: BSKY_APP_PASSWORD });
+      await freshAgent.login({ identifier: handle, password });
       agent = freshAgent;
       sessionExpiry = Date.now() + SESSION_TTL_MS;
-      logger.info(`Bluesky authenticated as ${BSKY_HANDLE}`);
+      logger.info(`Bluesky authenticated as ${handle}`);
       return agent;
     } catch (err) {
       logger.warn(`Bluesky login attempt ${attempt} failed: ${err.message}`);
