@@ -125,6 +125,7 @@ function parseCampaignXml(xml) {
 
     // gotolink is the affiliate tracking URL — skip entries that only have a plain site_url
     if (!name || !gotolink) continue;
+    if (!isLikelyEnglishOrNeutral(name)) continue;
     try { new URL(gotolink); } catch { continue; }
 
     // logo is a brand icon, not a product image — leave imageUrl null so the
@@ -166,6 +167,7 @@ function parseYmlCatalog(xml) {
     const price    = parseFloat(extractXmlTag(body, 'price') || '0');
     const currency = extractXmlTag(body, 'currencyId') || 'USD';
     if (!url || !name) continue;
+    if (!isLikelyEnglishOrNeutral(name)) continue;
     try { new URL(url); } catch { continue; }
     offers.push({ id: m[1], name, siteUrl: normaliseAliExpressUrl(url), imageUrl: picture || null, description: desc, price, currency });
   }

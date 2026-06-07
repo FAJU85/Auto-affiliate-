@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { getImpactProduct } from './impact.js';
 
 describe('getImpactProduct', () => {
@@ -22,6 +23,29 @@ describe('getImpactProduct', () => {
     if (saved.sid) process.env.IMPACT_ACCOUNT_SID = saved.sid;
     else delete process.env.IMPACT_ACCOUNT_SID;
     if (saved.tok) process.env.IMPACT_AUTH_TOKEN = saved.tok;
+  });
+});
+
+describe('Impact.com non-Latin filter', () => {
+  function isLatinName(str) {
+    if (!str || str.length < 3) return true;
+    const nonLatin = (str.match(/[^ -ɏ\s\d\p{P}]/gu) || []).length;
+    return nonLatin / str.length < 0.4;
+  }
+
+  it('accepts Latin ad names', () => {
+    assert.ok(isLatinName('Adidas Running Shoes'));
+    assert.ok(isLatinName('H&M Summer Sale'));
+  });
+
+  it('rejects non-Latin ad names', () => {
+    assert.ok(!isLatinName('Магазин модной одежды'));
+    assert.ok(!isLatinName('时尚品牌特卖'));
+  });
+
+  it('isLatinName function exists in impact.js', () => {
+    const src = fs.readFileSync('src/feeds/impact.js', 'utf8');
+    assert.ok(src.includes('isLatinName'), 'non-Latin filter added to impact.js');
   });
 });
 

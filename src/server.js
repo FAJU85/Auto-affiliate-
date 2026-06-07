@@ -1,6 +1,6 @@
 import http from 'http';
 import { getDailySpend } from './utils/budget.js';
-import { getRecentRuns, getDedupStatus, clearPostedStore, wasRecentlyPosted, getDailyNetworkStats } from './utils/metrics.js';
+import { getRecentRuns, getDedupStatus, clearPostedStore, wasRecentlyPosted, getDailyNetworkStats, purgePostedBySource, getDedupBySource, getTopPosts, getNetworkHealth } from './utils/metrics.js';
 import { logger, getRecentLogs } from './utils/logger.js';
 import { getSettings, saveSettings, getSpaceHost } from './config/settings.js';
 import { getOAuthClient, getConnectedDid, disconnectBluesky } from './auth/bluesky-oauth.js';
@@ -25,11 +25,13 @@ function getStatusPayload(isRunning) {
     budget:      { spent: spend, cap, alert, pct: spend / cap },
     stats:       {
       postsToday:   runs.filter(r => r.success && r.timestamp?.startsWith(today)).length,
+      maxPostsPerDay: parseInt(process.env.MAX_POSTS_PER_DAY || '24', 10),
       totalRuns:    runs.length,
       successRate:  runs.length ? Math.round(runs.filter(r=>r.success).length/runs.length*100) : null,
     },
-    lastRun: runs.at(-1) ?? null,
-    runs:    [...runs].reverse(),
+    lastRun:       runs.at(-1) ?? null,
+    runs:          [...runs].reverse(),
+    networkHealth: getNetworkHealth(100),
   };
 }
 
@@ -170,7 +172,7 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
       <div class="card">
         <div class="card-label">Posts today</div>
         <div class="card-value" id="kpi-posts">—</div>
-        <div class="card-sub">Target: 24/day</div>
+        <div class="card-sub" id="kpi-posts-sub">Limit: 24/day</div>
       </div>
       <div class="card">
         <div class="card-label">Success rate</div>
@@ -183,6 +185,11 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
         <div class="card-value" id="kpi-spend">—</div>
         <div class="card-sub" id="kpi-spend-sub">of $— cap</div>
         <div class="budget-bar"><div class="budget-fill" id="budget-fill" style="width:0%"></div></div>
+      </div>
+      <div class="card">
+        <div class="card-label">Avg quality</div>
+        <div class="card-value" id="kpi-quality">—</div>
+        <div class="card-sub">last 20 runs (0–100)</div>
       </div>
       <div class="card">
         <div class="card-label">Schedule</div>
@@ -198,6 +205,7 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
         <div class="last-run-field"><div class="lrf-label">Product</div><div class="lrf-value" id="lr-product">—</div></div>
         <div class="last-run-field"><div class="lrf-label">Network</div><div class="lrf-value" id="lr-source">—</div></div>
         <div class="last-run-field"><div class="lrf-label">Trend</div><div class="lrf-value" id="lr-trend">—</div></div>
+        <div class="last-run-field" style="grid-column:1/-1"><div class="lrf-label">Caption</div><div class="lrf-value" id="lr-caption" style="font-size:.82rem;color:var(--muted);white-space:pre-wrap">—</div></div>
         <div class="last-run-field"><div class="lrf-label">Image</div><div class="lrf-value" id="lr-img">—</div></div>
         <div class="last-run-field"><div class="lrf-label">Duration</div><div class="lrf-value" id="lr-dur">—</div></div>
         <div class="last-run-field"><div class="lrf-label">Post</div>
@@ -215,10 +223,20 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
     <div id="dry-result" style="display:none;margin-top:1rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem;font-size:.875rem"></div>
 
     <div class="section">
-      <div class="section-title">Run history</div>
+      <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:.75rem">
+        <div class="section-title" style="margin-bottom:0">Run history</div>
+        <select id="run-filter-source" onchange="applyRunFilter()" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.25rem .5rem;font-size:.8rem;color:var(--text)">
+          <option value="">All networks</option>
+        </select>
+        <select id="run-filter-status" onchange="applyRunFilter()" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.25rem .5rem;font-size:.8rem;color:var(--text)">
+          <option value="">All statuses</option>
+          <option value="ok">Success only</option>
+          <option value="fail">Failures only</option>
+        </select>
+      </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Status</th><th>Time (UTC)</th><th>Product</th><th>Network</th><th>Post</th><th>Image</th><th>Duration</th><th>Error</th></tr></thead>
+          <thead><tr><th>Status</th><th>Time (UTC)</th><th>Product</th><th>Network</th><th>Post</th><th>Image</th><th>Q</th><th>Duration</th><th>Error</th></tr></thead>
           <tbody id="runs-body"><tr><td colspan="8" style="text-align:center;color:var(--muted);padding:2rem">Loading…</td></tr></tbody>
         </table>
       </div>
@@ -236,6 +254,7 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
         <button id="dedup-clear-btn" onclick="clearDedup()" style="padding:.25rem .75rem;font-size:.8rem;background:#ef4444;color:#fff;border:none;border-radius:6px;cursor:pointer">Clear store</button>
         <span id="dedup-clear-msg" style="font-size:.8rem;color:var(--muted)"></span>
       </div>
+      <div id="dedup-by-source" style="display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:.5rem"></div>
       <div id="dedup-recent" style="display:flex;flex-wrap:wrap;gap:.4rem"></div>
     </div>
   </div>
@@ -390,12 +409,27 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
   <!-- ═══ ANALYTICS TAB ═══ -->
   <div id="tab-analytics" class="tab-panel" style="display:none">
     <div class="section">
-      <div class="section-title">Daily Posts by Network (last 7 days)</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem">
+        <div class="section-title" style="margin:0">Daily Posts by Network</div>
+        <div style="display:flex;gap:.5rem">
+          <button onclick="fetchStats(7)" class="btn btn-outline" style="font-size:.75rem;padding:.25rem .6rem">7d</button>
+          <button onclick="fetchStats(14)" class="btn btn-outline" style="font-size:.75rem;padding:.25rem .6rem">14d</button>
+          <button onclick="fetchStats(30)" class="btn btn-outline" style="font-size:.75rem;padding:.25rem .6rem">30d</button>
+        </div>
+      </div>
       <div id="stats-chart" style="overflow-x:auto;min-height:220px">Loading…</div>
     </div>
     <div class="section">
-      <div class="section-title">Post Totals</div>
+      <div class="section-title" id="stats-totals-title">Post Totals (7 days)</div>
       <div id="stats-totals" style="display:flex;gap:1rem;flex-wrap:wrap"></div>
+    </div>
+    <div class="section">
+      <div class="section-title">Network Health (last 100 runs)</div>
+      <div id="network-health" style="display:flex;gap:.75rem;flex-wrap:wrap">Loading…</div>
+    </div>
+    <div class="section">
+      <div class="section-title">Top Posts by Engagement (last 30 days)</div>
+      <div id="top-posts" style="font-size:.85rem;color:var(--muted)">Loading…</div>
     </div>
   </div>
 
@@ -421,7 +455,12 @@ async function fetchStatus() {
     statusData = status;
     renderStatus(statusData);
     renderNetworks(networks);
-  } catch(e) {}
+  } catch(e) {
+    const pill = document.getElementById('status-pill');
+    if (pill && !pill.classList.contains('running')) {
+      pill.className = 'pill'; pill.innerHTML = '<span class="dot" style="background:#ef4444"></span> Offline';
+    }
+  }
 }
 
 function renderLastRun(lr) {
@@ -430,6 +469,8 @@ function renderLastRun(lr) {
   document.getElementById('lr-product').textContent = lr.product||'—';
   document.getElementById('lr-source').textContent  = lr.productSource||'—';
   document.getElementById('lr-trend').textContent   = lr.trend||'—';
+  const captionEl = document.getElementById('lr-caption');
+  if (captionEl) captionEl.textContent = lr.caption ? lr.caption.slice(0, 200) + (lr.caption.length > 200 ? '…' : '') : '—';
   document.getElementById('lr-img').textContent     = lr.imageSource||'—';
   document.getElementById('lr-dur').textContent     = lr.durationMs?(lr.durationMs/1000).toFixed(1)+'s':'—';
   const ua=document.getElementById('lr-uri');
@@ -437,17 +478,41 @@ function renderLastRun(lr) {
   else{ua.href='#';ua.textContent='—';}
 }
 
+let _allRuns = [];
+function applyRunFilter() {
+  const src = document.getElementById('run-filter-source')?.value || '';
+  const status = document.getElementById('run-filter-status')?.value || '';
+  let filtered = _allRuns;
+  if (src) filtered = filtered.filter(r => r.productSource === src);
+  if (status === 'ok') filtered = filtered.filter(r => r.success);
+  if (status === 'fail') filtered = filtered.filter(r => !r.success);
+  renderRunHistoryRows(filtered);
+}
+
 function renderRunHistory(runs) {
+  _allRuns = runs || [];
+  // Populate source filter
+  const sel = document.getElementById('run-filter-source');
+  if (sel) {
+    const sources = [...new Set(runs.map(r => r.productSource).filter(Boolean))].sort();
+    const current = sel.value;
+    sel.innerHTML = '<option value="">All networks</option>' + sources.map(s => `<option value="${esc(s)}"${s===current?' selected':''}>${esc(s)}</option>`).join('');
+  }
+  applyRunFilter();
+}
+
+function renderRunHistoryRows(runs) {
   const tbody=document.getElementById('runs-body');
-  if (!runs?.length){tbody.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:2rem">No runs yet</td></tr>';return;}
+  if (!runs?.length){tbody.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:2rem">No runs match filter</td></tr>';return;}
   tbody.innerHTML=runs.map(r=>{
     const ok=r.success?'<span class="badge ok">✓ OK</span>':'<span class="badge err">✗ Fail</span>';
     const ts=(r.timestamp||'').replace('T',' ').slice(0,19);
     const src=r.productSource?'<span class="badge img">'+esc(r.productSource)+'</span>':'<span style="color:var(--muted)">—</span>';
     const img=r.imageGenerated?'<span class="badge img">🖼 '+(r.imageSource||'')+'</span>':'<span style="color:var(--muted)">—</span>';
+    const qs=typeof r.qualityScore==='number'?'<span style="font-weight:600;color:'+(r.qualityScore>=70?'var(--green)':r.qualityScore>=40?'var(--yellow)':'var(--red)')+'">'+r.qualityScore+'</span>':'<span style="color:var(--muted)">—</span>';
     const err=r.error?'<span class="err-cell" title="'+esc(r.error)+'">'+esc(r.error.slice(0,50))+'</span>':'<span style="color:var(--muted)">—</span>';
     const postLink=r.postUri?'<a href="'+esc(r.postUri)+'" target="_blank" rel="noopener" style="font-size:.75rem;color:var(--accent)" title="'+esc(r.caption||'')+'">view</a>':'<span style="color:var(--muted)">—</span>';
-    return '<tr><td>'+ok+'</td><td>'+ts+'</td><td title="'+esc(r.caption||'')+'">'+(r.product||'—')+'</td><td>'+src+'</td><td>'+postLink+'</td><td>'+img+'</td><td>'+(r.durationMs?(r.durationMs/1000).toFixed(1)+'s':'—')+'</td><td>'+err+'</td></tr>';
+    return '<tr><td>'+ok+'</td><td>'+ts+'</td><td title="'+esc(r.caption||'')+'">'+(r.product||'—')+'</td><td>'+src+'</td><td>'+postLink+'</td><td>'+img+'</td><td>'+qs+'</td><td>'+(r.durationMs?(r.durationMs/1000).toFixed(1)+'s':'—')+'</td><td>'+err+'</td></tr>';
   }).join('');
 }
 
@@ -466,6 +531,9 @@ function renderStatus(d) {
   }
 
   document.getElementById('kpi-posts').textContent   = d.stats.postsToday;
+  const maxPosts = d.stats.maxPostsPerDay || 24;
+  const postsSub = document.getElementById('kpi-posts-sub');
+  if (postsSub) postsSub.textContent = 'Limit: ' + maxPosts + '/day';
   document.getElementById('kpi-success').textContent = d.stats.successRate!=null ? d.stats.successRate+'%' : '—';
   document.getElementById('kpi-success-sub').textContent = 'last '+d.stats.totalRuns+' runs';
   document.getElementById('kpi-schedule').textContent = d.pipeline.schedule;
@@ -487,9 +555,27 @@ function renderStatus(d) {
   fill.style.width = Math.min(pct*100,100)+'%';
   fill.style.background = pct>=1?'#ef4444':pct>=alert/cap?'#f59e0b':'#22c55e';
 
+  // Average quality score KPI
+  const qualEl = document.getElementById('kpi-quality');
+  if (qualEl && d.runs?.length) {
+    const scored = d.runs.filter(r => r.success && typeof r.qualityScore === 'number');
+    if (scored.length > 0) {
+      const avg = Math.round(scored.reduce((a, r) => a + r.qualityScore, 0) / scored.length);
+      qualEl.textContent = avg + '/100';
+      qualEl.style.color = avg >= 70 ? 'var(--green)' : avg >= 40 ? 'var(--yellow)' : 'var(--red)';
+    } else {
+      qualEl.textContent = '—';
+    }
+  }
+
   renderLastRun(d.lastRun);
   document.getElementById('run-btn').disabled = d.pipeline.running;
   adjustPollRate(d.pipeline.running);
+  if (typeof d.pipeline.paused === 'boolean' && d.pipeline.paused !== _schedulerPaused) {
+    _schedulerPaused = d.pipeline.paused;
+    const pb = document.getElementById('pause-btn');
+    if (pb) pb.textContent = _schedulerPaused ? '▶ Resume scheduler' : '⏸ Pause scheduler';
+  }
   renderSparkline(d.runs);
   renderRunHistory(d.runs);
   document.getElementById('last-updated').textContent='Updated '+new Date().toLocaleTimeString();
@@ -577,6 +663,11 @@ async function fetchDedup() {
     const d = await fetch('/api/dedup').then(r=>r.json());
     const el = document.getElementById('dedup-count');
     if (el) el.textContent = d.total + ' active entries (60-day window)';
+    const bsEl = document.getElementById('dedup-by-source');
+    if (bsEl && d.bySource && Object.keys(d.bySource).length) {
+      bsEl.innerHTML = Object.entries(d.bySource).sort((a,b)=>b[1]-a[1])
+        .map(([src, cnt]) => `<span style="background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:.2rem .6rem;font-size:.78rem;color:var(--muted)"><b style="color:var(--text)">${cnt}</b> ${esc(src)}</span>`).join('');
+    } else if (bsEl) { bsEl.innerHTML = ''; }
     const rEl = document.getElementById('dedup-recent');
     if (rEl && d.recent?.length) {
       rEl.innerHTML = d.recent.map(e =>
@@ -584,7 +675,10 @@ async function fetchDedup() {
         +(e.source?'<span class="badge img" style="padding:.1rem .4rem;font-size:.7rem">'+esc(e.source)+'</span>':'')+esc((e.name||'').slice(0,30))+'</span>'
       ).join('');
     } else if (rEl) { rEl.innerHTML = ''; }
-  } catch(e) {}
+  } catch(e) {
+    const el = document.getElementById('dedup-count');
+    if (el) el.textContent = 'Dedup data unavailable';
+  }
 }
 
 async function clearDedup() {
@@ -755,9 +849,11 @@ const NET_COLORS = {
   temu:'#f59e0b', cj:'#10b981', shareasale:'#ec4899', impact:'#3b82f6',
   takeads:'#f97316', travelpayouts:'#06b6d4', unknown:'#64748b'
 };
-async function fetchStats() {
+async function fetchStats(days = 7) {
   try {
-    const data = await fetch('/api/stats').then(r=>r.json());
+    const data = await fetch('/api/stats?days='+days).then(r=>r.json());
+    const titleEl = document.getElementById('stats-totals-title');
+    if (titleEl) titleEl.textContent = 'Post Totals ('+days+' days)';
     const chartEl = document.getElementById('stats-chart');
     const totalsEl = document.getElementById('stats-totals');
     if (!chartEl || !totalsEl) return;
@@ -804,6 +900,49 @@ async function fetchStats() {
     data.forEach(d => { Object.entries(d.byNetwork).forEach(([k,v]) => { grandTotals[k] = (grandTotals[k]||0)+v; }); });
     totalsEl.innerHTML = Object.entries(grandTotals).sort((a,b)=>b[1]-a[1])
       .map(([k,v]) => `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:.5rem 1rem;text-align:center"><div style="font-size:.75rem;color:var(--muted)">${k}</div><div style="font-size:1.5rem;font-weight:700;color:${NET_COLORS[k]||'#94a3b8'}">${v}</div></div>`).join('');
+
+    // Network health
+    const healthEl = document.getElementById('network-health');
+    if (healthEl && statusData.networkHealth) {
+      const health = statusData.networkHealth;
+      const entries = Object.entries(health).sort((a,b) => b[1].attempts - a[1].attempts);
+      if (entries.length === 0) {
+        healthEl.textContent = 'No data yet.';
+      } else {
+        healthEl.innerHTML = entries.map(([net, h]) => {
+          const pct = Math.round(h.rate * 100);
+          const color = pct >= 80 ? 'var(--green)' : pct >= 50 ? 'var(--yellow)' : 'var(--red)';
+          return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:.6rem 1rem;min-width:130px">` +
+            `<div style="font-size:.75rem;color:var(--muted);margin-bottom:.25rem">${esc(net)}</div>` +
+            `<div style="font-size:1.4rem;font-weight:700;color:${color}">${pct}%</div>` +
+            `<div style="font-size:.72rem;color:var(--muted)">${h.successes}/${h.attempts} runs</div>` +
+            `</div>`;
+        }).join('');
+      }
+    }
+
+    // Top posts
+    const topEl = document.getElementById('top-posts');
+    if (topEl) {
+      try {
+        const top = await fetch('/api/engagement/top').then(r => r.json());
+        if (top.length === 0) {
+          topEl.textContent = 'No engagement data yet — likes/reposts tracked 30min after each post.';
+        } else {
+          topEl.innerHTML = '<table style="width:100%;border-collapse:collapse">' +
+            '<thead><tr><th style="text-align:left;padding:.3rem .5rem;color:var(--muted);font-weight:400">Product</th><th style="text-align:left;padding:.3rem .5rem;color:var(--muted);font-weight:400">Network</th><th style="padding:.3rem .5rem;color:var(--muted);font-weight:400">❤️</th><th style="padding:.3rem .5rem;color:var(--muted);font-weight:400">🔁</th><th style="padding:.3rem .5rem;color:var(--muted);font-weight:400">Link</th></tr></thead>' +
+            '<tbody>' + top.map(r =>
+              `<tr style="border-top:1px solid var(--border)">` +
+              `<td style="padding:.3rem .5rem">${esc(r.product||'—')}</td>` +
+              `<td style="padding:.3rem .5rem"><span class="badge img">${esc(r.productSource||'—')}</span></td>` +
+              `<td style="padding:.3rem .5rem;text-align:center;font-weight:700">${r.likes||0}</td>` +
+              `<td style="padding:.3rem .5rem;text-align:center">${r.reposts||0}</td>` +
+              `<td style="padding:.3rem .5rem">${r.postUri?'<a href="https://bsky.app/profile/post/'+esc(r.postUri.split('/').at(-1))+'" target="_blank" style="color:var(--accent)">view</a>':'—'}</td>` +
+              `</tr>`
+            ).join('') + '</tbody></table>';
+        }
+      } catch { topEl.textContent = 'Engagement data unavailable.'; }
+    }
   } catch(e) {
     const el = document.getElementById('stats-chart');
     if (el) el.textContent = 'Failed to load stats.';
@@ -918,6 +1057,10 @@ async function routeRequest(req, res, url, getIsRunning, triggerRunFn, getMissin
   if (path === '/api/status') {
     const payload = getStatusPayload(getIsRunning());
     payload.missingVars = getMissingVars();
+    try {
+      const { isSchedulerPaused } = await import('./index.js');
+      payload.pipeline.paused = isSchedulerPaused();
+    } catch { payload.pipeline.paused = false; }
     return json(res, 200, payload);
   }
   if (path === '/api/settings' && req.method === 'GET')  return json(res, 200, getSettings());
@@ -942,22 +1085,43 @@ async function routeRequest(req, res, url, getIsRunning, triggerRunFn, getMissin
     }));
     return json(res, 200, networks);
   }
-  if (path === '/api/history' && req.method === 'GET') return json(res, 200, getRecentRuns(50));
+  if (path === '/api/history' && req.method === 'GET') {
+    const n = Math.min(parseInt(url.searchParams.get('n') || '50', 10), 500);
+    return json(res, 200, getRecentRuns(n));
+  }
   if (path === '/api/history/csv' && req.method === 'GET') {
     const runs = getRecentRuns(500);
-    const header = 'timestamp,success,product,source,imageSource,durationMs,error\n';
+    const header = 'timestamp,success,product,source,imageSource,qualityScore,captionChars,likes,reposts,durationMs,postUri,error\n';
     const rows = runs.map(r => [
       r.timestamp||'', r.success?'1':'0',
-      (r.product||'').replace(/,/g,' '), r.productSource||'',
-      r.imageSource||'', r.durationMs||0, (r.error||'').replace(/,/g,' ').replace(/\n/g,' '),
+      '"'+(r.product||'').replace(/"/g,'""')+'"', r.productSource||'',
+      r.imageSource||'', r.qualityScore||0, r.captionChars||0,
+      r.likes||0, r.reposts||0, r.durationMs||0,
+      r.postUri||'', '"'+(r.error||'').replace(/"/g,'""').replace(/\n/g,' ')+'"',
     ].join(',')).join('\n');
     res.writeHead(200, { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename="pipeline-history.csv"' });
     return res.end(header + rows);
   }
   if (path === '/api/logs' && req.method === 'GET') return json(res, 200, getRecentLogs(100));
-  if (path === '/api/stats' && req.method === 'GET') return json(res, 200, getDailyNetworkStats(7));
-  if (path === '/api/dedup' && req.method === 'GET') return json(res, 200, getDedupStatus());
+  if (path === '/api/stats' && req.method === 'GET') {
+    const days = Math.min(parseInt(url.searchParams.get('days') || '7', 10), 90);
+    return json(res, 200, getDailyNetworkStats(days));
+  }
+  if (path === '/api/engagement/top' && req.method === 'GET') return json(res, 200, getTopPosts(30, 10));
+  if (path === '/api/dedup' && req.method === 'GET') {
+    const status = getDedupStatus();
+    return json(res, 200, { ...status, bySource: getDedupBySource() });
+  }
   if (path === '/api/dedup' && req.method === 'DELETE') { clearPostedStore(); return json(res, 200, { ok: true }); }
+  if (path === '/api/dedup/purge-source' && req.method === 'POST') {
+    try {
+      const body = JSON.parse(await readBody(req));
+      if (!body.source) return json(res, 400, { ok: false, error: 'source required' });
+      const removed = purgePostedBySource(body.source);
+      logger.info(`Dedup: purged ${removed} entries for source "${body.source}"`);
+      return json(res, 200, { ok: true, removed });
+    } catch (err) { return json(res, 500, { ok: false, error: err.message }); }
+  }
   if (path === '/api/dedup/check' && req.method === 'POST') {
     try {
       const body = await readBody(req);

@@ -25,14 +25,19 @@ export async function getTakeadsProduct() {
     }
 
     const data = await res.json();
-    const programs = (data.data || []).filter(p => p.websiteUrl && p.avgCommission > 0);
+    const programs = (data.data || []).filter(p => {
+      if (!p.websiteUrl || p.avgCommission <= 0) return false;
+      const name = String(p.name || '');
+      const nonLatin = (name.match(/[^ -ɏ\s\d\p{P}]/gu) || []).length;
+      return nonLatin / (name.length || 1) < 0.4;
+    });
     logger.info(`Takeads: ${programs.length} active programs`);
     if (programs.length === 0) return null;
 
-    // Pick top 5 by avgCommission, random pick
+    // Pick top 10 by avgCommission, random pick for variety
     programs.sort((a, b) => (b.avgCommission || 0) - (a.avgCommission || 0));
-    const top5 = programs.slice(0, 5);
-    const program = top5[Math.floor(Math.random() * top5.length)];
+    const top10 = programs.slice(0, 10);
+    const program = top10[Math.floor(Math.random() * top10.length)];
     logger.info(`Takeads program selected: ${program.name} (avgCommission: ${program.avgCommission})`);
 
     // 2. Resolve to affiliate tracking link

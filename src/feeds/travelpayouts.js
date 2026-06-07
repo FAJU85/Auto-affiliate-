@@ -47,13 +47,18 @@ export async function getTravelpayoutsProduct() {
 
   logger.info('Fetching Travelpayouts flight deals…');
   try {
-    const origin = ORIGINS[Math.floor(Math.random() * ORIGINS.length)];
-    const deals  = await fetchDeals(token, origin);
-    logger.info(`Travelpayouts: ${deals.length} deals from ${origin}`);
-    if (deals.length === 0) return null;
-
-    const picked = deals[Math.floor(Math.random() * Math.min(5, deals.length))];
-    return buildProduct(picked, origin, marker);
+    // Try up to 3 random origins — some may return 0 results
+    const shuffled = [...ORIGINS].sort(() => Math.random() - 0.5);
+    for (const origin of shuffled.slice(0, 3)) {
+      const deals = await fetchDeals(token, origin);
+      logger.info(`Travelpayouts: ${deals.length} deals from ${origin}`);
+      if (deals.length > 0) {
+        const picked = deals[Math.floor(Math.random() * Math.min(5, deals.length))];
+        return buildProduct(picked, origin, marker);
+      }
+    }
+    logger.warn('Travelpayouts: no deals found for any sampled origin');
+    return null;
   } catch (err) {
     logger.warn(`Travelpayouts fetch failed: ${err.message}`);
     return null;

@@ -86,12 +86,14 @@ describe('bad image URL detection', () => {
 
   it('flags bad image URLs (logo, QR, placeholder, etc)', () => {
     const src = (() => {
-      // Inline the isBadImageUrl logic from imagesearch.js
       const BAD_URL_PATTERNS = [
         /qr[_\-.]?code/i, /barcode/i, /captcha/i,
         /\blogo\b/i, /sprite/i, /icon\.(png|svg|gif|webp)$/i,
         /placeholder/i, /default[-_]image/i, /no[-_]image/i, /blank/i,
         /selene-static/i, /data:image/i,
+        /avatar/i, /profile[-_]pic/i, /user[-_]image/i,
+        /1x1\.(gif|png|jpg)/i, /pixel\.(gif|png)/i, /tracking/i,
+        /header[-_]bg/i, /bg[-_]image/i, /hero[-_]bg/i,
       ];
       return url => {
         if (!url || typeof url !== 'string') return true;
@@ -102,6 +104,19 @@ describe('bad image URL detection', () => {
 
     for (const u of BAD_URLS) assert.ok(src(u), `should be bad: ${u}`);
     for (const u of GOOD_URLS) assert.ok(!src(u), `should be good: ${u}`);
+  });
+
+  it('also flags new bad patterns: avatar, tracking pixel, bg image', () => {
+    const BAD_URL_PATTERNS = [
+      /avatar/i, /1x1\.(gif|png|jpg)/i, /tracking/i, /header[-_]bg/i, /bg[-_]image/i,
+    ];
+    const isBad = url => BAD_URL_PATTERNS.some(p => p.test(url));
+
+    assert.ok(isBad('https://example.com/avatar.jpg'), 'avatar bad');
+    assert.ok(isBad('https://example.com/1x1.gif'), '1x1 pixel bad');
+    assert.ok(isBad('https://example.com/tracking.gif'), 'tracking pixel bad');
+    assert.ok(isBad('https://example.com/header_bg.jpg'), 'header bg bad');
+    assert.ok(!isBad('https://cdn.shop.com/products/shoes-123.jpg'), 'product image good');
   });
 });
 

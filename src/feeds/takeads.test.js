@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { getTakeadsProduct } from './takeads.js';
 
 describe('getTakeadsProduct', () => {
@@ -22,5 +23,28 @@ describe('Takeads product shape', () => {
     const required = ['id', 'name', 'description', 'siteUrl', 'imageUrl', 'price', 'currency', 'commissionRate', 'source'];
     for (const key of required) assert.ok(key in product, `missing: ${key}`);
     assert.equal(product.source, 'takeads');
+  });
+});
+
+describe('Takeads non-Latin filter', () => {
+  function isLikelyEnglishOrNeutral(str) {
+    if (!str || str.length < 3) return true;
+    const nonLatin = (str.match(/[^ -ɏ\s\d\p{P}]/gu) || []).length;
+    return nonLatin / str.length < 0.4;
+  }
+
+  it('accepts Latin names', () => {
+    assert.ok(isLikelyEnglishOrNeutral('Nike Running Store'), 'Latin name accepted');
+    assert.ok(isLikelyEnglishOrNeutral('Amazon.com'), 'domain accepted');
+  });
+
+  it('rejects predominantly Cyrillic names', () => {
+    assert.ok(!isLikelyEnglishOrNeutral('Магазин товаров'), 'Cyrillic rejected');
+  });
+
+  it('non-Latin filter exists in takeads.js source', () => {
+    const src = fs.readFileSync('src/feeds/takeads.js', 'utf8');
+    assert.ok(src.includes('nonLatin'), 'non-Latin filter in source');
+    assert.ok(src.includes('top10'), 'top10 candidate pool');
   });
 });

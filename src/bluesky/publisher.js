@@ -72,19 +72,40 @@ export function sourceEmoji(source) {
   return SOURCE_EMOJI[source] || '🔗';
 }
 
+function buildHashtagFacets(text) {
+  const facets = [];
+  const buf = Buffer.from(text, 'utf8');
+  const re = /#([a-zA-Z][a-zA-Z0-9_]*)/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const start = Buffer.byteLength(text.slice(0, m.index), 'utf8');
+    const end   = start + Buffer.byteLength(m[0], 'utf8');
+    facets.push({
+      index: { byteStart: start, byteEnd: end },
+      features: [{ $type: 'app.bsky.richtext.facet#tag', tag: m[1] }],
+    });
+  }
+  return facets;
+}
+
 function buildPostRecord(text, deeplink, maxLen) {
   const combined    = `${text}\n\n${deeplink}`;
   const truncated   = safeByteSlice(combined, maxLen);
   const prefixBytes = Buffer.byteLength(text + '\n\n', 'utf8');
   const linkStart   = prefixBytes;
   const linkEnd     = Math.min(prefixBytes + Buffer.byteLength(deeplink, 'utf8'), Buffer.byteLength(truncated, 'utf8'));
+
+  const facets = [];
+  if (linkStart < linkEnd) {
+    facets.push({ index: { byteStart: linkStart, byteEnd: linkEnd }, features: [{ $type: 'app.bsky.richtext.facet#link', uri: deeplink }] });
+  }
+  facets.push(...buildHashtagFacets(truncated));
+
   return {
     $type: 'app.bsky.feed.post',
     text: truncated,
     createdAt: new Date().toISOString(),
-    facets: linkStart < linkEnd
-      ? [{ index: { byteStart: linkStart, byteEnd: linkEnd }, features: [{ $type: 'app.bsky.richtext.facet#link', uri: deeplink }] }]
-      : [],
+    facets,
   };
 }
 
@@ -117,7 +138,7 @@ function buildExternalEmbed(product, deeplink) {
   const desc  = (product.description || product.name || '').slice(0, 300);
   return {
     $type: 'app.bsky.embed.external',
-    external: { uri: deeplink, title, description: desc, thumb: undefined },
+    external: { uri: deeplink, title, description: desc },
   };
 }
 

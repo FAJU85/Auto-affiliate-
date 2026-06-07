@@ -1,5 +1,6 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 
 describe('getTemuProduct', () => {
   before(() => {
@@ -46,5 +47,15 @@ describe('getTemuProduct', () => {
       names.add(p.name);
     }
     assert.ok(names.size > 3, `expected variety in themes, got ${names.size} unique names`);
+  });
+
+  it('seasonal themes are defined for all 12 months', async () => {
+    const src = fs.readFileSync('src/feeds/temu.js', 'utf8');
+    assert.ok(src.includes('SEASONAL_THEMES'), 'SEASONAL_THEMES defined');
+    assert.ok(src.includes('pickTheme'), 'pickTheme function defined');
+    // All 12 months (0-11) should have an entry
+    for (let m = 0; m <= 11; m++) {
+      assert.ok(src.includes(`${m}:`), `month ${m} entry found`);
+    }
   });
 });

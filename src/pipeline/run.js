@@ -7,7 +7,7 @@ import { upscaleImage } from '../ai/upscale.js';
 import { optimiseImage } from '../ai/imageoptim.js';
 import { publishPost } from '../bluesky/publisher.js';
 import { getBskyAgent } from '../bluesky/client.js';
-import { recordRun, wasRecentlyPosted } from '../utils/metrics.js';
+import { recordRun, wasRecentlyPosted, recordEngagement } from '../utils/metrics.js';
 import { getDailySpend } from '../utils/budget.js';
 import { logger } from '../utils/logger.js';
 import { getProductHighlights } from '../ai/exa.js';
@@ -56,12 +56,25 @@ function initRunMeta() {
     product: null, productSource: null, trend: null, caption: null, captionChars: 0,
     postUri: null, deeplink: null, imageSource: 'none', imageGenerated: false,
     durationMs: 0, dailySpendUsd: 0, productsFetched: 0, productsFiltered: 0,
+    qualityScore: 0,
   };
+}
+
+function computeQualityScore(runMeta) {
+  if (!runMeta.success) return 0;
+  let score = 40; // base score for a successful post
+  if (runMeta.imageGenerated) score += 30;         // +30 for having an image
+  if (runMeta.captionChars > 100) score += 15;     // +15 for substantial caption
+  if (runMeta.imageSource === 'feed') score += 10; // +10 for direct feed image (higher quality)
+  if (runMeta.trend) score += 5;                   // +5 for trend context
+  return Math.min(score, 100);
 }
 
 async function executePost(runMeta) {
   const [product, trends] = await Promise.all([getProduct(wasRecentlyPosted), getTopTrends(5)]);
-  let payload = { ...product, trend: trends[0]?.title || '', deeplink: product.siteUrl };
+  // Normalise description length — long descriptions waste AI context window
+  const safeDescription = (product.description || product.name || '').slice(0, 300);
+  let payload = { ...product, description: safeDescription, trend: trends[0]?.title || '', deeplink: product.siteUrl };
   runMeta.product       = payload.name;
   runMeta.productSource = payload.source || null;
   runMeta.trend         = payload.trend;
@@ -69,8 +82,13 @@ async function executePost(runMeta) {
   runMeta.productsFiltered = 1;
   logger.info(`Affiliate URL (deeplink): ${payload.deeplink}`);
 
+  // Enrich short/missing descriptions with Exa highlights
+  const descTooShort = !payload.description || payload.description.trim().length < 10;
   const exaHighlights = await getProductHighlights(payload.name, payload.category);
-  if (exaHighlights) payload = { ...payload, exaHighlights };
+  if (exaHighlights) {
+    payload = { ...payload, exaHighlights };
+    if (descTooShort) payload = { ...payload, description: exaHighlights.slice(0, 200) };
+  }
 
   const caption = await generatePostText(payload, trends);
   payload = { ...payload, caption };
@@ -112,21 +130,49 @@ export async function runPipeline() {
   }
   runMeta.durationMs    = Date.now() - startTime;
   runMeta.dailySpendUsd = getDailySpend();
+  runMeta.qualityScore  = computeQualityScore(runMeta);
   recordRun(runMeta);
   notifyWebhook(runMeta);
+  if (runMeta.success && runMeta.postUri) {
+    // Fire-and-forget engagement poll after 30 min
+    pollEngagement(runMeta.postUri).catch(() => {});
+  }
   return runMeta;
+}
+
+async function pollEngagement(uri) {
+  if (!uri) return;
+  // Wait 30 minutes then check likes/reposts once
+  await new Promise(r => setTimeout(r, 30 * 60 * 1000));
+  try {
+    const agent = await getBskyAgent();
+    // getPostThread returns the post with like/repost counts
+    const thread = await agent.getPostThread({ uri, depth: 0 });
+    const post = thread?.data?.thread?.post;
+    if (post) {
+      const likes   = post.likeCount   || 0;
+      const reposts = post.repostCount || 0;
+      recordEngagement(uri, likes, reposts);
+      logger.info(`Engagement for ${uri.slice(-20)}: ${likes} likes, ${reposts} reposts`);
+    }
+  } catch (err) {
+    logger.warn(`Engagement poll failed for ${uri.slice(-20)}: ${err.message}`);
+  }
 }
 
 function notifyWebhook(runMeta) {
   const url = process.env.WEBHOOK_URL;
   if (!url) return;
   const payload = {
-    success: runMeta.success,
-    product: runMeta.product,
-    source:  runMeta.productSource,
-    postUri: runMeta.postUri,
-    error:   runMeta.error || null,
-    durationMs: runMeta.durationMs,
+    success:      runMeta.success,
+    product:      runMeta.product,
+    source:       runMeta.productSource,
+    postUri:      runMeta.postUri,
+    error:        runMeta.error || null,
+    durationMs:   runMeta.durationMs,
+    imageSource:  runMeta.imageSource,
+    captionChars: runMeta.captionChars,
+    dailySpendUsd: runMeta.dailySpendUsd,
     ts: new Date().toISOString(),
   };
   fetch(url, {

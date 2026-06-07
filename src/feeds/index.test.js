@@ -85,6 +85,46 @@ describe('TASKS consistency', () => {
   });
 });
 
+describe('inferCategory', () => {
+  // Inline the logic for unit testing
+  const CATEGORY_PATTERNS = [
+    { pattern: /\b(flight|hotel|travel|airline|vacation|trip)\b/i, category: 'Travel' },
+    { pattern: /\b(phone|laptop|earbuds|headphone|camera|smartwatch|tv)\b/i, category: 'Electronics' },
+    { pattern: /\b(dress|shoes|sneakers|jacket|jeans|handbag|ring|necklace)\b/i, category: 'Fashion' },
+    { pattern: /\b(skincare|makeup|lipstick|perfume|hair|shampoo|serum)\b/i, category: 'Beauty' },
+    { pattern: /\b(vitamin|fitness|yoga|gym|running|sport)\b/i, category: 'Health & Fitness' },
+    { pattern: /\b(toy|game|kids|baby|stroller)\b/i, category: 'Toys & Kids' },
+    { pattern: /\b(pet|dog|cat|bird)\b/i, category: 'Pet Supplies' },
+  ];
+  function inferCategory(name) {
+    if (!name) return null;
+    for (const { pattern, category } of CATEGORY_PATTERNS) {
+      if (pattern.test(name)) return category;
+    }
+    return null;
+  }
+
+  it('infers Travel for flight products', () => {
+    assert.equal(inferCategory('Cheap flight NYC to LON'), 'Travel');
+    assert.equal(inferCategory('Hotel deal Miami Beach'), 'Travel');
+  });
+
+  it('infers Electronics for tech products', () => {
+    assert.equal(inferCategory('Wireless Earbuds Pro'), 'Electronics');
+    assert.equal(inferCategory('4K Smart TV 55"'), 'Electronics');
+  });
+
+  it('infers Fashion for clothing/accessories', () => {
+    assert.equal(inferCategory('Women Running Shoes'), 'Fashion');
+    assert.equal(inferCategory('Designer Handbag Sale'), 'Fashion');
+  });
+
+  it('returns null for unrecognized categories', () => {
+    assert.equal(inferCategory('Random Widget 3000'), null);
+    assert.equal(inferCategory(null), null);
+  });
+});
+
 describe('getProduct — product shape validation', () => {
   it('unified product interface has all required keys', () => {
     const product = {

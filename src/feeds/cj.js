@@ -10,14 +10,22 @@ function getCredentials() {
   return { apiKey, websiteId, ready: !!(apiKey && websiteId) };
 }
 
+const SEARCH_KEYWORDS = [
+  'sale', 'discount', 'deal', 'offer', 'promo', 'clearance',
+  'new arrival', 'best seller', 'limited', 'exclusive',
+  'free shipping', 'bundle', 'gift', 'seasonal',
+];
+
 async function fetchLinks(apiKey, websiteId) {
   // Randomise page to spread across the catalogue over successive runs
   const page = Math.ceil(Math.random() * 5);
+  const keyword = SEARCH_KEYWORDS[Math.floor(Math.random() * SEARCH_KEYWORDS.length)];
   const params = new URLSearchParams({
     'website-id':        websiteId,
     'advertiser-ids':    'joined',   // only advertisers you are already joined with
     'records-per-page':  '100',
     'page-number':       String(page),
+    'keywords':          keyword,
   });
 
   const res = await fetch(`${API_BASE}?${params}`, {
@@ -51,10 +59,18 @@ async function fetchLinks(apiKey, websiteId) {
   return Array.isArray(raw) ? raw : [raw];
 }
 
+function isLatinName(str) {
+  if (!str || str.length < 3) return true;
+  const nonLatin = (str.match(/[^ -ɏ\s\d\p{P}]/gu) || []).length;
+  return nonLatin / str.length < 0.4;
+}
+
 function pickLink(links) {
   const valid = links.filter(l => {
     const url = l.destination || l['destination'];
     if (!url) return false;
+    const name = String(l['link-name'] || l['@advertiser-name'] || '');
+    if (!isLatinName(name)) return false;
     try { new URL(url); return true; } catch { return false; }
   });
 

@@ -9,6 +9,9 @@ const BAD_URL_PATTERNS = [
   /selene-static/i, /data:image/i,
   /\bfavicon\b/i, /\.ico$/i, /banner/i, /thumb.*background/i,
   /social[-_]share/i, /og[-_]default/i,
+  /avatar/i, /profile[-_]pic/i, /user[-_]image/i,
+  /1x1\.(gif|png|jpg)/i, /pixel\.(gif|png)/i, /tracking/i,
+  /header[-_]bg/i, /bg[-_]image/i, /hero[-_]bg/i,
 ];
 
 // Flight booking sites whose og:image is always a generic site logo, not a product image

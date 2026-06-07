@@ -167,6 +167,91 @@ describe('clearCaptionCache export', () => {
   });
 });
 
+describe('CTA style rotation', () => {
+  it('CTA_STYLES array exists in text.js', () => {
+    const src = fs.readFileSync('src/ai/text.js', 'utf8');
+    assert.ok(src.includes('CTA_STYLES'), 'CTA_STYLES defined');
+    assert.ok(src.includes('pickCtaStyle'), 'pickCtaStyle function defined');
+  });
+});
+
+describe('isBadCaption quality filter', () => {
+  // Inline the function logic for unit testing
+  function isBadCaption(caption, productName) {
+    if (!caption || !productName) return false;
+    const normalized = caption.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const nameNorm   = productName.toLowerCase().slice(0, 60).replace(/[^a-z0-9]/g, '');
+    if (nameNorm.length > 10 && normalized === nameNorm) return true;
+    const hasVerb = /\b(get|buy|shop|save|discover|check|find|grab|try|explore|see|enjoy)\b/i.test(caption);
+    const hasSentence = caption.includes(' ') && caption.length > 40;
+    return !hasVerb && !hasSentence;
+  }
+
+  it('rejects caption that is identical to product name', () => {
+    assert.equal(isBadCaption('NikeAirMax2024RunningShoe', 'NikeAirMax2024RunningShoe'), true);
+  });
+
+  it('accepts good caption with a verb', () => {
+    assert.equal(isBadCaption('Check out this amazing running shoe deal today!', 'Nike Air Max'), false);
+  });
+
+  it('accepts long caption even without known verb', () => {
+    assert.equal(isBadCaption('Amazing quality headphones with deep bass and comfortable fit.', 'Headphones'), false);
+  });
+
+  it('null inputs return false (no rejection)', () => {
+    assert.equal(isBadCaption(null, 'Product'), false);
+    assert.equal(isBadCaption('Caption text', null), false);
+  });
+});
+
+describe('hashtag appending', () => {
+  // Inline the logic for unit testing
+  const HASHTAG_MAP = [
+    { keywords: ['travel', 'travelpayouts'], tags: ['#travel', '#deals'] },
+    { keywords: ['fashion', 'clothing', 'shoes'], tags: ['#fashion', '#style'] },
+    { keywords: ['tech', 'electronics', 'gadget'], tags: ['#tech', '#deals'] },
+    { keywords: ['temu', 'admitad'], tags: ['#shopping', '#deals'] },
+  ];
+  function pickHashtags(product) {
+    const haystack = [product.source, product.category, product.name].filter(Boolean).join(' ').toLowerCase();
+    for (const { keywords, tags } of HASHTAG_MAP) {
+      if (keywords.some(k => haystack.includes(k))) return tags;
+    }
+    return ['#deals', '#shopping'];
+  }
+  function appendHashtags(caption, product) {
+    const tags = pickHashtags(product).join(' ');
+    const withTags = `${caption} ${tags}`;
+    return withTags.length <= 300 ? withTags : caption;
+  }
+
+  it('appends hashtags for travel source', () => {
+    const p = { source: 'travelpayouts', category: '', name: 'Flight deal' };
+    const result = appendHashtags('Great deal!', p);
+    assert.ok(result.includes('#travel'), 'travel hashtag appended');
+  });
+
+  it('appends default hashtags for unknown source', () => {
+    const p = { source: 'unknown', category: '', name: 'Generic product' };
+    const result = appendHashtags('Buy now!', p);
+    assert.ok(result.includes('#deals'), 'default deals hashtag appended');
+  });
+
+  it('does not append hashtags if caption would exceed 300 chars', () => {
+    const p = { source: 'temu', category: '', name: 'Item' };
+    const longCaption = 'A'.repeat(295);
+    const result = appendHashtags(longCaption, p);
+    assert.equal(result, longCaption, 'caption unchanged when over limit');
+  });
+
+  it('HASHTAG_MAP is defined in text.js', () => {
+    const src = fs.readFileSync('src/ai/text.js', 'utf8');
+    assert.ok(src.includes('HASHTAG_MAP'), 'HASHTAG_MAP defined');
+    assert.ok(src.includes('appendHashtags'), 'appendHashtags function defined');
+  });
+});
+
 describe('SOURCE_PROMPTS coverage', () => {
   it('all expected sources have a prompt entry', () => {
     const src = fs.readFileSync('src/ai/text.js', 'utf8');
