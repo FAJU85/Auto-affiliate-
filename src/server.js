@@ -186,6 +186,11 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
         <div class="budget-bar"><div class="budget-fill" id="budget-fill" style="width:0%"></div></div>
       </div>
       <div class="card">
+        <div class="card-label">Avg quality</div>
+        <div class="card-value" id="kpi-quality">—</div>
+        <div class="card-sub">last 20 runs (0–100)</div>
+      </div>
+      <div class="card">
         <div class="card-label">Schedule</div>
         <div class="card-value" style="font-size:1rem;padding-top:.35rem" id="kpi-schedule">—</div>
         <div class="card-sub" id="kpi-posting-hours">posting hours: —</div>
@@ -230,7 +235,7 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Status</th><th>Time (UTC)</th><th>Product</th><th>Network</th><th>Post</th><th>Image</th><th>Duration</th><th>Error</th></tr></thead>
+          <thead><tr><th>Status</th><th>Time (UTC)</th><th>Product</th><th>Network</th><th>Post</th><th>Image</th><th>Q</th><th>Duration</th><th>Error</th></tr></thead>
           <tbody id="runs-body"><tr><td colspan="8" style="text-align:center;color:var(--muted);padding:2rem">Loading…</td></tr></tbody>
         </table>
       </div>
@@ -490,15 +495,16 @@ function renderRunHistory(runs) {
 
 function renderRunHistoryRows(runs) {
   const tbody=document.getElementById('runs-body');
-  if (!runs?.length){tbody.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:2rem">No runs match filter</td></tr>';return;}
+  if (!runs?.length){tbody.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:2rem">No runs match filter</td></tr>';return;}
   tbody.innerHTML=runs.map(r=>{
     const ok=r.success?'<span class="badge ok">✓ OK</span>':'<span class="badge err">✗ Fail</span>';
     const ts=(r.timestamp||'').replace('T',' ').slice(0,19);
     const src=r.productSource?'<span class="badge img">'+esc(r.productSource)+'</span>':'<span style="color:var(--muted)">—</span>';
     const img=r.imageGenerated?'<span class="badge img">🖼 '+(r.imageSource||'')+'</span>':'<span style="color:var(--muted)">—</span>';
+    const qs=typeof r.qualityScore==='number'?'<span style="font-weight:600;color:'+(r.qualityScore>=70?'var(--green)':r.qualityScore>=40?'var(--yellow)':'var(--red)')+'">'+r.qualityScore+'</span>':'<span style="color:var(--muted)">—</span>';
     const err=r.error?'<span class="err-cell" title="'+esc(r.error)+'">'+esc(r.error.slice(0,50))+'</span>':'<span style="color:var(--muted)">—</span>';
     const postLink=r.postUri?'<a href="'+esc(r.postUri)+'" target="_blank" rel="noopener" style="font-size:.75rem;color:var(--accent)" title="'+esc(r.caption||'')+'">view</a>':'<span style="color:var(--muted)">—</span>';
-    return '<tr><td>'+ok+'</td><td>'+ts+'</td><td title="'+esc(r.caption||'')+'">'+(r.product||'—')+'</td><td>'+src+'</td><td>'+postLink+'</td><td>'+img+'</td><td>'+(r.durationMs?(r.durationMs/1000).toFixed(1)+'s':'—')+'</td><td>'+err+'</td></tr>';
+    return '<tr><td>'+ok+'</td><td>'+ts+'</td><td title="'+esc(r.caption||'')+'">'+(r.product||'—')+'</td><td>'+src+'</td><td>'+postLink+'</td><td>'+img+'</td><td>'+qs+'</td><td>'+(r.durationMs?(r.durationMs/1000).toFixed(1)+'s':'—')+'</td><td>'+err+'</td></tr>';
   }).join('');
 }
 
@@ -537,6 +543,19 @@ function renderStatus(d) {
   const fill = document.getElementById('budget-fill');
   fill.style.width = Math.min(pct*100,100)+'%';
   fill.style.background = pct>=1?'#ef4444':pct>=alert/cap?'#f59e0b':'#22c55e';
+
+  // Average quality score KPI
+  const qualEl = document.getElementById('kpi-quality');
+  if (qualEl && d.runs?.length) {
+    const scored = d.runs.filter(r => r.success && typeof r.qualityScore === 'number');
+    if (scored.length > 0) {
+      const avg = Math.round(scored.reduce((a, r) => a + r.qualityScore, 0) / scored.length);
+      qualEl.textContent = avg + '/100';
+      qualEl.style.color = avg >= 70 ? 'var(--green)' : avg >= 40 ? 'var(--yellow)' : 'var(--red)';
+    } else {
+      qualEl.textContent = '—';
+    }
+  }
 
   renderLastRun(d.lastRun);
   document.getElementById('run-btn').disabled = d.pipeline.running;
