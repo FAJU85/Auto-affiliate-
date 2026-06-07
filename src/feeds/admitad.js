@@ -100,6 +100,8 @@ function parseOfferBlock(id, body) {
   const commissionRate = parseFloat(extractParam(body, 'commissionRate') || '0');
   const discount = extractParam(body, 'discount') || null;
 
+  const category = extractTag(body, 'categoryId') || extractParam(body, 'category') || null;
+
   return {
     id,
     name: name.trim(),
@@ -110,6 +112,7 @@ function parseOfferBlock(id, body) {
     currency,
     commissionRate,
     discount,
+    category: category ? category.trim() : undefined,
     source: 'admitad',
   };
 }
