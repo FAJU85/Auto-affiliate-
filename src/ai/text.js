@@ -83,7 +83,9 @@ function formatPrice(product) {
 function buildMessages(product, trends) {
   const safeName        = sanitiseForPrompt(product.name).slice(0, 80);
   const safeCategory    = sanitiseForPrompt(product.category || product.source || '').slice(0, 40);
-  const safeDesc        = sanitiseForPrompt(product.description).slice(0, 80);
+  // Use description if it's meaningfully different from the name, else empty
+  const rawDesc         = product.description && product.description !== product.name ? product.description : '';
+  const safeDesc        = sanitiseForPrompt(rawDesc).slice(0, 80);
   const safeTrend       = trends[0] ? sanitiseForPrompt(trends[0].title) : '';
   const safeHighlights  = product.exaHighlights
     ? sanitiseForPrompt(product.exaHighlights).slice(0, 200)
