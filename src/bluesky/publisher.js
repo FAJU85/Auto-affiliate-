@@ -112,7 +112,8 @@ async function postWithRetry(record) {
 
 function buildExternalEmbed(product, deeplink) {
   if (typeof product !== 'object' || !product) return null;
-  const title = (product.name || '').slice(0, 300);
+  const priceTag = product.price ? ` — ${product.currency === 'USD' ? '$' : product.currency || ''}${product.price}` : '';
+  const title = ((product.name || '') + priceTag).slice(0, 300);
   const desc  = (product.description || product.name || '').slice(0, 300);
   return {
     $type: 'app.bsky.embed.external',
