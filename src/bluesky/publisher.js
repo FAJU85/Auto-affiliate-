@@ -16,7 +16,23 @@ function isValidHttpUrl(str) {
   }
 }
 
-export async function publishPost(text, deeplink, imageBuffer, productName) {
+function buildAltText(product) {
+  if (!product) return 'Product image';
+  const parts = [];
+  if (product.name)        parts.push(product.name.trim());
+  if (product.category && product.category !== product.name)
+                           parts.push(product.category.trim());
+  if (product.price)       parts.push(`$${product.price} ${product.currency || 'USD'}`);
+  if (product.description && product.description !== product.name)
+                           parts.push(product.description.trim().slice(0, 120));
+  return parts.join(' · ').slice(0, 999) || 'Product image';
+}
+
+export async function publishPost(text, deeplink, imageBuffer, product) {
+  // Accept either a product object or a plain name string (backwards compat)
+  const productName = typeof product === 'string' ? product : product?.name;
+  const altText = typeof product === 'object' ? buildAltText(product) : `${productName || 'Product image'}`;
+
   if (!isValidHttpUrl(deeplink)) {
     throw new Error(`publishPost: deeplink is not a valid URL: ${deeplink}`);
   }
@@ -50,7 +66,7 @@ export async function publishPost(text, deeplink, imageBuffer, productName) {
       const upload = await agent.uploadBlob(imageBuffer, { encoding: 'image/png' });
       postRecord.embed = {
         $type: 'app.bsky.embed.images',
-        images: [{ image: upload.data.blob, alt: productName ? `Product image: ${productName}`.slice(0, 300) : 'Product image' }],
+        images: [{ image: upload.data.blob, alt: altText }],
       };
       logger.info(`Image blob uploaded: ${upload.data.blob.ref}`);
     } catch (err) {
@@ -62,7 +78,7 @@ export async function publishPost(text, deeplink, imageBuffer, productName) {
           const upload = await freshAgent.uploadBlob(imageBuffer, { encoding: 'image/png' });
           postRecord.embed = {
             $type: 'app.bsky.embed.images',
-            images: [{ image: upload.data.blob, alt: productName ? `Product image: ${productName}`.slice(0, 300) : 'Product image' }],
+            images: [{ image: upload.data.blob, alt: altText }],
           };
           logger.info(`Image blob uploaded after re-auth: ${upload.data.blob.ref}`);
         } catch (err2) {

@@ -111,7 +111,7 @@ export async function runPipeline() {
     await getBskyAgent();
 
     // Phase 9 — Blob upload + publish (canvas phases 15-17)
-    const uri = await publishPost(caption, deeplink, imageBuffer, payload.name);
+    const uri = await publishPost(caption, deeplink, imageBuffer, payload);
     payload = { ...payload, postUri: uri };
 
     runMeta.postUri  = uri;
