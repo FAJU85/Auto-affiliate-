@@ -90,3 +90,16 @@ export function wasRecentlyPosted(deeplink, name) {
     return false;
   });
 }
+
+/** Returns the count of active (non-expired) dedup entries and the last 5. */
+export function getDedupStatus() {
+  const entries = loadPosted();
+  const cutoff  = Date.now() - DEDUP_MS;
+  const active  = entries.filter(e => new Date(e.postedAt).getTime() > cutoff);
+  return { total: active.length, recent: active.slice(-5).reverse() };
+}
+
+/** Clears the entire dedup store — use for testing or manual reset. */
+export function clearPostedStore() {
+  savePosted([]);
+}

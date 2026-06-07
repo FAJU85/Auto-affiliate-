@@ -1,6 +1,6 @@
 import http from 'http';
 import { getDailySpend } from './utils/budget.js';
-import { getRecentRuns } from './utils/metrics.js';
+import { getRecentRuns, getDedupStatus, clearPostedStore } from './utils/metrics.js';
 import { logger } from './utils/logger.js';
 import { getSettings, saveSettings, getSpaceHost } from './config/settings.js';
 import { getOAuthClient, getConnectedDid, disconnectBluesky } from './auth/bluesky-oauth.js';
@@ -673,6 +673,8 @@ async function routeRequest(req, res, url, getIsRunning, triggerRunFn, getMissin
   }
   if (path === '/api/networks' && req.method === 'GET') return json(res, 200, getNetworkStatus());
   if (path === '/api/history' && req.method === 'GET') return json(res, 200, getRecentRuns(50));
+  if (path === '/api/dedup' && req.method === 'GET') return json(res, 200, getDedupStatus());
+  if (path === '/api/dedup' && req.method === 'DELETE') { clearPostedStore(); return json(res, 200, { ok: true }); }
   if (path === '/health') return json(res, 200, { ok: true, ts: new Date().toISOString() });
   if (path === '/oauth/bsky/start')  return handleOAuthStart(url, res);
   if (path === '/oauth/callback')    return handleOAuthCallback(url, res);
