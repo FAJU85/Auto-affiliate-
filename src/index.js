@@ -6,6 +6,7 @@ import { validateEnv } from './utils/env.js';
 import { startServer, hasAnyNetworkEnabled } from './server.js';
 import { restoreSessionFromSecrets } from './auth/bluesky-oauth.js';
 import { isWithinPostingWindow } from './utils/schedule.js';
+import { getRecentRuns } from './utils/metrics.js';
 
 // Dashboard always starts first (HF Spaces requires port 7860 to be up fast)
 let missingVars = [];
@@ -23,6 +24,13 @@ async function safePipelineRun(trigger) {
   }
   if (trigger === 'cron' && !isWithinPostingWindow()) {
     logger.info(`[${trigger}] Outside posting window (POSTING_HOURS=${process.env.POSTING_HOURS || '8-22'} UTC) — skipping`);
+    return;
+  }
+  const maxDaily = parseInt(process.env.MAX_POSTS_PER_DAY || '24', 10);
+  const today = new Date().toISOString().slice(0, 10);
+  const todaySuccessful = getRecentRuns(100).filter(r => r.success && r.timestamp?.startsWith(today)).length;
+  if (todaySuccessful >= maxDaily) {
+    logger.info(`[${trigger}] Daily post limit reached (${todaySuccessful}/${maxDaily}) — skipping`);
     return;
   }
   pipelineRunning = true;

@@ -471,7 +471,12 @@ function renderStatus(d) {
   document.getElementById('kpi-posting-hours').textContent = 'posting hours (UTC): ' + (d.pipeline.postingHours || '8-22');
   if (d.pipeline.nextRun) {
     const nr = new Date(d.pipeline.nextRun);
-    document.getElementById('kpi-schedule').title = 'Next run: ' + nr.toUTCString();
+    const diffMs = nr - Date.now();
+    const diffMin = Math.max(0, Math.floor(diffMs / 60000));
+    const countdown = diffMin < 60 ? `${diffMin}m` : `${Math.floor(diffMin/60)}h${diffMin%60 ? diffMin%60+'m' : ''}`;
+    document.getElementById('kpi-posting-hours').textContent = `next run in ${countdown} · hours (UTC): ${d.pipeline.postingHours || '8-22'}`;
+  } else {
+    document.getElementById('kpi-posting-hours').textContent = 'posting hours (UTC): ' + (d.pipeline.postingHours || '8-22');
   }
 
   const {spent:sp,cap,pct,alert} = d.budget;
