@@ -22,6 +22,26 @@ export const TASKS = [
   { key: 'shareasale',      fn: getShareASaleProduct,      env: () => !!(process.env.SHAREASALE_TOKEN && process.env.SHAREASALE_SECRET && process.env.SHAREASALE_AFFILIATE_ID) },
 ];
 
+const CATEGORY_PATTERNS = [
+  { pattern: /\b(flight|hotel|travel|airline|airport|vacation|trip|holiday|tour)\b/i, category: 'Travel' },
+  { pattern: /\b(phone|laptop|tablet|earbuds|headphone|speaker|camera|smartwatch|tv|monitor|router|keyboard|mouse)\b/i, category: 'Electronics' },
+  { pattern: /\b(dress|shirt|shoes|sneakers|jacket|jeans|clothing|fashion|handbag|watch|jewel|ring|necklace)\b/i, category: 'Fashion' },
+  { pattern: /\b(sofa|furniture|decor|curtain|bedding|kitchen|appliance|vacuum|blender|lamp|rug)\b/i, category: 'Home' },
+  { pattern: /\b(skincare|makeup|lipstick|mascara|perfume|hair|shampoo|cream|moisturizer|serum)\b/i, category: 'Beauty' },
+  { pattern: /\b(vitamin|supplement|protein|fitness|yoga|gym|running|bike|treadmill|sport)\b/i, category: 'Health & Fitness' },
+  { pattern: /\b(toy|game|puzzle|lego|kids|baby|stroller|diaper)\b/i, category: 'Toys & Kids' },
+  { pattern: /\b(book|ebook|course|software|app|subscription)\b/i, category: 'Digital' },
+  { pattern: /\b(pet|dog|cat|bird|fish|animal)\b/i, category: 'Pet Supplies' },
+];
+
+function inferCategory(name) {
+  if (!name) return null;
+  for (const { pattern, category } of CATEGORY_PATTERNS) {
+    if (pattern.test(name)) return category;
+  }
+  return null;
+}
+
 // Per-network last error and selection count tracking (in-memory, reset on restart)
 const networkErrors = {};
 const networkSelectCounts = {};
@@ -52,7 +72,7 @@ async function collectCandidates() {
         logger.warn(`Network ${key}: product name too short ("${product.name}") — skipping`);
         continue;
       }
-      if (!product.category) product.category = key;
+      if (!product.category) product.category = inferCategory(product.name) || key;
       candidates.push(product);
       delete networkErrors[key];
       logger.info(`Network available: ${key} → "${product.name}"`);
