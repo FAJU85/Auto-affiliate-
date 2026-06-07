@@ -52,10 +52,12 @@ export async function getAdmitadProduct() {
 
   if (offers.length === 0) return null;
 
-  // Shuffle fully so every product gets a fair chance over time
-  const shuffled = offers.sort(() => Math.random() - 0.5);
-  const picked = shuffled[0];
-  logger.info(`Admitad selected: "${picked.name}" (commission ${picked.commissionRate}%)`);
+  // Prefer products with images; shuffle for variety
+  const withImage   = offers.filter(o => o.imageUrl);
+  const pool        = withImage.length > 0 ? withImage : offers;
+  const shuffled    = pool.sort(() => Math.random() - 0.5);
+  const picked      = shuffled[0];
+  logger.info(`Admitad selected: "${picked.name}" (image: ${!!picked.imageUrl}, commission ${picked.commissionRate}%)`);
   return picked;
 }
 
