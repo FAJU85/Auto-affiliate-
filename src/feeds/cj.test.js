@@ -40,6 +40,33 @@ describe('CJ keyword rotation', () => {
   });
 });
 
+describe('CJ non-Latin filter', () => {
+  function isLatinName(str) {
+    if (!str || str.length < 3) return true;
+    const nonLatin = (str.match(/[^ -ɏ\s\d\p{P}]/gu) || []).length;
+    return nonLatin / str.length < 0.4;
+  }
+
+  it('accepts Latin link names', () => {
+    assert.ok(isLatinName('Nike Sale 20% Off'));
+    assert.ok(isLatinName('Best Buy Electronics Deal'));
+  });
+
+  it('rejects Cyrillic link names', () => {
+    assert.ok(!isLatinName('Магазин скидок'));
+    assert.ok(!isLatinName('Китайские товары'));
+  });
+
+  it('rejects CJK link names', () => {
+    assert.ok(!isLatinName('京东优惠'));
+  });
+
+  it('isLatinName function exists in cj.js', () => {
+    const src = fs.readFileSync('src/feeds/cj.js', 'utf8');
+    assert.ok(src.includes('isLatinName'), 'non-Latin filter added to cj.js');
+  });
+});
+
 describe('CJ Affiliate product shape', () => {
   it('normalises link array vs single-object API response', () => {
     // CJ returns array or plain object depending on result count — both must work

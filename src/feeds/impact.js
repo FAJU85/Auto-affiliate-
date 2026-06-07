@@ -46,10 +46,18 @@ async function fetchAds(accountSid, authToken) {
   return ads;
 }
 
+function isLatinName(str) {
+  if (!str || str.length < 3) return true;
+  const nonLatin = (str.match(/[^ -ɏ\s\d\p{P}]/gu) || []).length;
+  return nonLatin / str.length < 0.4;
+}
+
 function pickAd(ads) {
   const valid = ads.filter(ad => {
     const link = ad.TrackingLink || ad.LandingPageUrl;
     if (!link) return false;
+    const name = String(ad.Name || ad.CampaignName || '');
+    if (!isLatinName(name)) return false;
     try { new URL(link); return true; } catch { return false; }
   });
 

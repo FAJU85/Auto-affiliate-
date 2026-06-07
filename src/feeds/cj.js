@@ -59,10 +59,18 @@ async function fetchLinks(apiKey, websiteId) {
   return Array.isArray(raw) ? raw : [raw];
 }
 
+function isLatinName(str) {
+  if (!str || str.length < 3) return true;
+  const nonLatin = (str.match(/[^ -ɏ\s\d\p{P}]/gu) || []).length;
+  return nonLatin / str.length < 0.4;
+}
+
 function pickLink(links) {
   const valid = links.filter(l => {
     const url = l.destination || l['destination'];
     if (!url) return false;
+    const name = String(l['link-name'] || l['@advertiser-name'] || '');
+    if (!isLatinName(name)) return false;
     try { new URL(url); return true; } catch { return false; }
   });
 
