@@ -34,8 +34,9 @@ export async function runPipeline() {
 
   try {
     // Phase 1 — Fetch product + trends in parallel
+    // Pass dedup function so feeds can skip already-posted products before selecting
     const [product, trends] = await Promise.all([
-      getProduct(),
+      getProduct(wasRecentlyPosted),
       getTopTrends(5),
     ]);
 
@@ -51,18 +52,10 @@ export async function runPipeline() {
     payload = { ...payload, trend };
     runMeta.trend = trend;
 
-    // Phase 3 — Affiliate URL + duplicate check
+    // Phase 3 — Affiliate URL
     const deeplink = payload.siteUrl;
     payload = { ...payload, deeplink };
     logger.info(`Affiliate URL (deeplink): ${deeplink}`);
-
-    if (wasRecentlyPosted(deeplink, payload.name)) {
-      logger.warn(`Duplicate suppressed — "${payload.name}" was already posted in the last 60 days`);
-      runMeta.error = 'duplicate_suppressed';
-      runMeta.durationMs = Date.now() - startTime;
-      recordRun(runMeta);
-      return runMeta;
-    }
 
     // Phase 4b — Exa product context (enriches AI caption, best-effort)
     const exaHighlights = await getProductHighlights(payload.name, payload.category);

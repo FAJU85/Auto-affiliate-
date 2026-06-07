@@ -92,8 +92,9 @@ function parseJsonCatalog(data, url) {
     return null;
   }
 
-  valid.sort((a, b) => parseFloat(b.commission || b.price || 0) - parseFloat(a.commission || a.price || 0));
-  const item = valid.slice(0, 5)[Math.floor(Math.random() * Math.min(5, valid.length))];
+  // Shuffle fully so all products rotate over time
+  valid.sort(() => Math.random() - 0.5);
+  const item = valid[0];
 
   const siteUrl  = item.goto_link || item.gotolink || item.affiliate_url || item.url;
   const imageUrl = item.picture || item.image || item.image_url || null;
@@ -139,7 +140,7 @@ function parseCampaignXml(xml) {
   logger.info(`Admitad catalog XML: ${campaigns.length} campaigns`);
   if (campaigns.length === 0) return null;
 
-  const picked = campaigns[Math.floor(Math.random() * Math.min(10, campaigns.length))];
+  const picked = campaigns[Math.floor(Math.random() * campaigns.length)];
   logger.info(`Admitad catalog XML selected: "${picked.name}"`);
 
   return {
@@ -177,8 +178,7 @@ function parseYmlCatalog(xml) {
   logger.info(`Admitad catalog YML: ${offers.length} offers`);
   if (offers.length === 0) return null;
 
-  const pool = offers.slice(0, 5);
-  const picked = pool[Math.floor(Math.random() * pool.length)];
+  const picked = offers[Math.floor(Math.random() * offers.length)];
   logger.info(`Admitad catalog YML selected: "${picked.name}"`);
 
   return { ...picked, commissionRate: 0, source: 'admitad-catalog' };

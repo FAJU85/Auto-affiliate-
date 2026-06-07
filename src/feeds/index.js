@@ -4,16 +4,18 @@ import { getAdmitadCatalogProduct } from './admitad-catalog.js';
 import { logger } from '../utils/logger.js';
 
 /**
- * Collects one product from each configured affiliate network in parallel,
- * then picks one at random from the successful results.
+ * Collects products from all configured affiliate networks in parallel,
+ * then picks one at random from the successful results, skipping any
+ * that were recently posted (dedup).
  *
  * Unified product interface:
  *   { id, name, description, siteUrl, imageUrl, price, currency, commissionRate, source }
  *
+ * @param {Function} wasPosted - (deeplink, name) => boolean dedup check
  * @returns {Promise<Object>} A single product from one of the networks
- * @throws {Error} If no network yields a product
+ * @throws {Error} If no network yields a fresh product
  */
-export async function getProduct() {
+export async function getProduct(wasPosted) {
   const tasks = [
     { key: 'admitad-feed',    fn: getAdmitadProduct,         enabled: !!process.env.ADMITAD_FEED_URL },
     { key: 'admitad-api',     fn: getAdmitadApiProduct,      enabled: !!(process.env.ADMITAD_CLIENT_ID && process.env.ADMITAD_CLIENT_SECRET && process.env.ADMITAD_WEBSITE_ID) },
@@ -40,7 +42,18 @@ export async function getProduct() {
     throw new Error('No affiliate network returned a product. Configure at least one: ADMITAD_FEED_URL, ADMITAD_CLIENT_ID+SECRET, or ADMITAD_CATALOG_URL_1.');
   }
 
-  const picked = candidates[Math.floor(Math.random() * candidates.length)];
+  // Shuffle candidates then pick the first one not recently posted
+  const shuffled = candidates.sort(() => Math.random() - 0.5);
+  if (wasPosted) {
+    const fresh = shuffled.find(p => !wasPosted(p.siteUrl, p.name));
+    if (fresh) {
+      logger.info(`Selected fresh product from "${fresh.source}": ${fresh.name}`);
+      return fresh;
+    }
+    logger.warn('All candidate products were recently posted — picking least-recently-used anyway');
+  }
+
+  const picked = shuffled[0];
   logger.info(`Selected product from "${picked.source}": ${picked.name}`);
   return picked;
 }

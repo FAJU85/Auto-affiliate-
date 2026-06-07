@@ -36,9 +36,9 @@ export async function getAdmitadApiProduct() {
 
   if (campaigns.length === 0) throw new Error('No valid campaigns from Admitad API');
 
-  campaigns.sort((a, b) => parseFloat(b.avg_ecpc || 0) - parseFloat(a.avg_ecpc || 0));
-  const top5 = campaigns.slice(0, 5);
-  const c = top5[Math.floor(Math.random() * top5.length)];
+  // Shuffle fully so all campaigns rotate over time
+  campaigns.sort(() => Math.random() - 0.5);
+  const c = campaigns[0];
 
   logger.info(`Admitad API campaign selected: ${c.name} (ecpc: ${c.avg_ecpc})`);
 

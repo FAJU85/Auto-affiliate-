@@ -51,10 +51,9 @@ export async function getAdmitadProduct() {
 
   if (offers.length === 0) return null;
 
-  // Sort by commissionRate descending, take top 5, pick one at random
-  offers.sort((a, b) => b.commissionRate - a.commissionRate);
-  const top5 = offers.slice(0, 5);
-  const picked = top5[Math.floor(Math.random() * top5.length)];
+  // Shuffle fully so every product gets a fair chance over time
+  const shuffled = offers.sort(() => Math.random() - 0.5);
+  const picked = shuffled[0];
   logger.info(`Admitad selected: "${picked.name}" (commission ${picked.commissionRate}%)`);
   return picked;
 }
