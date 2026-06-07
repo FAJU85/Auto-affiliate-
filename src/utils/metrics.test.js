@@ -12,6 +12,7 @@ const {
   wasRecentlyPosted, getLastPostedSource, getRecentPostedSources,
   getDailyNetworkStats, purgePostedBySource, recordRun,
   recordEngagement, getTopPosts, getDedupBySource, getRecentRuns,
+  getNetworkHealth,
 } = await import('./metrics.js');
 
 describe('wasRecentlyPosted', () => {
@@ -151,6 +152,30 @@ describe('recordEngagement + getTopPosts', () => {
     // do NOT call recordEngagement — likes stays 0
     const top = getTopPosts(30, 10);
     assert.ok(!top.find(r => r.postUri === uri3), 'zero-likes post excluded');
+  });
+});
+
+describe('getNetworkHealth', () => {
+  it('returns an object', () => {
+    const h = getNetworkHealth(50);
+    assert.ok(h !== null && typeof h === 'object');
+  });
+
+  it('includes rate field between 0 and 1', () => {
+    recordRun({ success: true,  deeplink: 'https://example.com/h1', product: 'HealthA', productSource: 'admitad' });
+    recordRun({ success: false, deeplink: null, product: null, productSource: 'admitad', error: 'fail' });
+    const h = getNetworkHealth(50);
+    assert.ok(typeof h.admitad === 'object', 'admitad key present');
+    assert.ok(h.admitad.rate >= 0 && h.admitad.rate <= 1, 'rate is 0-1');
+    assert.ok(h.admitad.attempts >= 2, 'at least 2 attempts');
+  });
+
+  it('calculates correct success rate', () => {
+    // 1 success + 1 failure = 50% rate
+    const h = getNetworkHealth(50);
+    const admitad = h.admitad;
+    assert.ok(admitad.successes >= 1, 'at least 1 success');
+    assert.equal(admitad.rate, admitad.successes / admitad.attempts);
   });
 });
 

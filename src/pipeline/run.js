@@ -145,12 +145,15 @@ function notifyWebhook(runMeta) {
   const url = process.env.WEBHOOK_URL;
   if (!url) return;
   const payload = {
-    success: runMeta.success,
-    product: runMeta.product,
-    source:  runMeta.productSource,
-    postUri: runMeta.postUri,
-    error:   runMeta.error || null,
-    durationMs: runMeta.durationMs,
+    success:      runMeta.success,
+    product:      runMeta.product,
+    source:       runMeta.productSource,
+    postUri:      runMeta.postUri,
+    error:        runMeta.error || null,
+    durationMs:   runMeta.durationMs,
+    imageSource:  runMeta.imageSource,
+    captionChars: runMeta.captionChars,
+    dailySpendUsd: runMeta.dailySpendUsd,
     ts: new Date().toISOString(),
   };
   fetch(url, {

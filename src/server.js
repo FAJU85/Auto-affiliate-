@@ -1,6 +1,6 @@
 import http from 'http';
 import { getDailySpend } from './utils/budget.js';
-import { getRecentRuns, getDedupStatus, clearPostedStore, wasRecentlyPosted, getDailyNetworkStats, purgePostedBySource, getDedupBySource, getTopPosts } from './utils/metrics.js';
+import { getRecentRuns, getDedupStatus, clearPostedStore, wasRecentlyPosted, getDailyNetworkStats, purgePostedBySource, getDedupBySource, getTopPosts, getNetworkHealth } from './utils/metrics.js';
 import { logger, getRecentLogs } from './utils/logger.js';
 import { getSettings, saveSettings, getSpaceHost } from './config/settings.js';
 import { getOAuthClient, getConnectedDid, disconnectBluesky } from './auth/bluesky-oauth.js';
@@ -28,8 +28,9 @@ function getStatusPayload(isRunning) {
       totalRuns:    runs.length,
       successRate:  runs.length ? Math.round(runs.filter(r=>r.success).length/runs.length*100) : null,
     },
-    lastRun: runs.at(-1) ?? null,
-    runs:    [...runs].reverse(),
+    lastRun:       runs.at(-1) ?? null,
+    runs:          [...runs].reverse(),
+    networkHealth: getNetworkHealth(100),
   };
 }
 

@@ -158,6 +158,26 @@ export function getTopPosts(days = 30, limit = 5) {
 }
 
 /**
+ * Returns per-network success rate over the last N runs.
+ * Result: { [source]: { attempts: N, successes: N, rate: 0-1 } }
+ */
+export function getNetworkHealth(runs = 100) {
+  const recent = load().runs.slice(-runs);
+  const health = {};
+  for (const r of recent) {
+    const src = r.productSource || (r.success ? null : 'unknown');
+    if (!src) continue;
+    if (!health[src]) health[src] = { attempts: 0, successes: 0 };
+    health[src].attempts++;
+    if (r.success) health[src].successes++;
+  }
+  for (const src of Object.keys(health)) {
+    health[src].rate = health[src].attempts ? health[src].successes / health[src].attempts : 0;
+  }
+  return health;
+}
+
+/**
  * Returns daily post counts broken down by network for the last N days.
  * Result: { date: 'YYYY-MM-DD', totals: N, byNetwork: { source: N, ... } }[]
  */
