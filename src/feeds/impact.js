@@ -43,8 +43,11 @@ function pickAd(ads) {
 
   if (valid.length === 0) return null;
 
-  valid.sort(() => Math.random() - 0.5);
-  return valid[0];
+  // Prefer ads with a product image URL
+  const withImage = valid.filter(ad => ad.ImageUrl && /^https?:\/\//.test(ad.ImageUrl));
+  const pool = withImage.length > 0 ? withImage : valid;
+  pool.sort(() => Math.random() - 0.5);
+  return pool[0];
 }
 
 function buildProduct(ad) {

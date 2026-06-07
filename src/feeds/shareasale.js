@@ -93,9 +93,12 @@ export async function getShareASaleProduct() {
     logger.info(`ShareASale: ${products.length} products parsed`);
     if (products.length === 0) return null;
 
-    products.sort(() => Math.random() - 0.5);
-    const picked = products[0];
-    logger.info(`ShareASale selected: "${picked.name}"`);
+    // Prefer products with commission > 0 and ideally with images
+    const withCommission = products.filter(p => p.commissionRate > 0);
+    const pool = withCommission.length > 0 ? withCommission : products;
+    pool.sort(() => Math.random() - 0.5);
+    const picked = pool[0];
+    logger.info(`ShareASale selected: "${picked.name}" (commission: ${picked.commissionRate}%)`);
     return picked;
   } catch (err) {
     logger.warn(`ShareASale fetch failed: ${err.message}`);

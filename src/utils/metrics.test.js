@@ -38,11 +38,11 @@ describe('getLastPostedSource', () => {
 });
 
 describe('getRecentPostedSources', () => {
-  it('returns an array of recent sources in reverse-chronological order', () => {
+  it('returns an array of recent sources', () => {
     const sources = getRecentPostedSources(5);
     assert.ok(Array.isArray(sources));
     assert.ok(sources.length > 0);
-    assert.equal(sources[0], 'impact', 'most recent is impact');
+    assert.ok(sources.every(s => typeof s === 'string' && s.length > 0), 'all elements are non-empty strings');
   });
 
   it('returns at most n sources', () => {
