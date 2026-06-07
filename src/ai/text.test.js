@@ -129,6 +129,14 @@ describe('price formatting', () => {
   });
 });
 
+describe('isLikelyEnglish (via source code)', () => {
+  it('language filter function exists in text.js', () => {
+    const src = fs.readFileSync('src/ai/text.js', 'utf8');
+    assert.ok(src.includes('isLikelyEnglish'), 'isLikelyEnglish function defined');
+    assert.ok(src.includes('nonLatin'), 'uses nonLatin detection');
+  });
+});
+
 describe('clearCaptionCache export', () => {
   it('clearCaptionCache is exported from text.js', () => {
     const src = fs.readFileSync('src/ai/text.js', 'utf8');
