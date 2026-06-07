@@ -478,7 +478,8 @@ function renderNetworks(networks) {
     const color = n.enabled ? (n.lastError ? '#f59e0b' : '#22c55e') : '#6b7280';
     const icon  = n.enabled ? (n.lastError ? '&#9888;' : '&#10003;') : '&#10007;';
     const tip   = n.lastError ? ' title="Last error: '+esc(n.lastError)+'"' : '';
-    return '<span'+tip+' style="display:inline-flex;align-items:center;gap:.3rem;background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:.25rem .75rem;font-size:.8rem;color:'+color+';cursor:'+(n.lastError?'help':'default')+'">'+icon+' '+esc(n.label)+'</span>';
+    const cnt   = n.selectCount > 0 ? ' <span style="opacity:.6;font-size:.7rem">×'+n.selectCount+'</span>' : '';
+    return '<span'+tip+' style="display:inline-flex;align-items:center;gap:.3rem;background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:.25rem .75rem;font-size:.8rem;color:'+color+';cursor:'+(n.lastError?'help':'default')+'">'+icon+' '+esc(n.label)+cnt+'</span>';
   }).join('');
 }
 
@@ -798,12 +799,14 @@ async function routeRequest(req, res, url, getIsRunning, triggerRunFn, getMissin
     return json(res, 200, { ok: true });
   }
   if (path === '/api/networks' && req.method === 'GET') {
-    const { getNetworkErrors } = await import('./feeds/index.js');
+    const { getNetworkErrors, getNetworkSelectCounts } = await import('./feeds/index.js');
     const errors = getNetworkErrors();
+    const counts = getNetworkSelectCounts();
     const networks = getNetworkStatus().map(n => ({
       ...n,
       lastError: errors[n.key]?.error || null,
       lastErrorAt: errors[n.key]?.at || null,
+      selectCount: counts[n.key] || 0,
     }));
     return json(res, 200, networks);
   }

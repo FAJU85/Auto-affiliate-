@@ -22,11 +22,16 @@ const TASKS = [
   { key: 'shareasale',      fn: getShareASaleProduct,      env: () => !!(process.env.SHAREASALE_TOKEN && process.env.SHAREASALE_SECRET && process.env.SHAREASALE_AFFILIATE_ID) },
 ];
 
-// Per-network last error tracking (in-memory, reset on container restart)
+// Per-network last error and selection count tracking (in-memory, reset on restart)
 const networkErrors = {};
+const networkSelectCounts = {};
 
 export function getNetworkErrors() {
   return { ...networkErrors };
+}
+
+export function getNetworkSelectCounts() {
+  return { ...networkSelectCounts };
 }
 
 async function collectCandidates() {
@@ -66,6 +71,7 @@ function pickWithRotation(candidates, wasPosted) {
   if (wasPosted) {
     const fresh = rotated.find(p => !wasPosted(p.siteUrl, p.name));
     if (fresh) {
+      networkSelectCounts[fresh.source] = (networkSelectCounts[fresh.source] || 0) + 1;
       logger.info(`Selected fresh product from "${fresh.source}": ${fresh.name}`);
       return fresh;
     }
@@ -73,6 +79,7 @@ function pickWithRotation(candidates, wasPosted) {
   }
 
   const picked = rotated[0];
+  networkSelectCounts[picked.source] = (networkSelectCounts[picked.source] || 0) + 1;
   logger.info(`Selected product from "${picked.source}": ${picked.name}`);
   return picked;
 }
