@@ -48,6 +48,17 @@ function getCached(productId) {
   return readCache()[cacheKey(productId)] ?? null;
 }
 
+export function clearCaptionCache(productId) {
+  const cache = readCache();
+  const key = cacheKey(productId);
+  if (key in cache) {
+    delete cache[key];
+    writeCache(cache);
+    return true;
+  }
+  return false;
+}
+
 function setCached(productId, caption) {
   const cache = readCache();
   cache[cacheKey(productId)] = caption;

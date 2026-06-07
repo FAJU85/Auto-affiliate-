@@ -129,6 +129,13 @@ describe('price formatting', () => {
   });
 });
 
+describe('clearCaptionCache export', () => {
+  it('clearCaptionCache is exported from text.js', () => {
+    const src = fs.readFileSync('src/ai/text.js', 'utf8');
+    assert.ok(src.includes('export function clearCaptionCache'), 'clearCaptionCache exported');
+  });
+});
+
 describe('SOURCE_PROMPTS coverage', () => {
   it('all expected sources have a prompt entry', () => {
     const src = fs.readFileSync('src/ai/text.js', 'utf8');

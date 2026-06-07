@@ -958,6 +958,18 @@ async function routeRequest(req, res, url, getIsRunning, triggerRunFn, getMissin
     }
   }
 
+  if (path === '/api/caption/regenerate' && req.method === 'POST') {
+    try {
+      const body = JSON.parse(await readBody(req));
+      if (!body.productId) return json(res, 400, { ok: false, error: 'productId required' });
+      const { clearCaptionCache } = await import('./ai/text.js');
+      const cleared = clearCaptionCache(body.productId);
+      return json(res, 200, { ok: true, cleared });
+    } catch (err) {
+      return json(res, 500, { ok: false, error: err.message });
+    }
+  }
+
   if (path === '/api/dry-run' && req.method === 'POST') {
     try {
       const { getProduct } = await import('./feeds/index.js');
