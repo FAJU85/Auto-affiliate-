@@ -209,6 +209,7 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
     <div class="section" style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
       <button class="btn btn-primary" id="run-btn" onclick="triggerRun()">▶ Run now</button>
       <button class="btn btn-outline" id="dry-btn" onclick="dryRun()">🔍 Dry run</button>
+      <button class="btn btn-outline" id="pause-btn" onclick="toggleScheduler()" style="font-size:.85rem">⏸ Pause scheduler</button>
       <span id="run-msg" style="font-size:.85rem;color:var(--muted)"></span>
     </div>
     <div id="dry-result" style="display:none;margin-top:1rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem;font-size:.875rem"></div>
@@ -528,6 +529,22 @@ async function triggerRun() {
     msg.textContent=d.ok?'Run started…':d.error||'Error'; if(d.ok)setTimeout(fetchStatus,1500);
     else btn.disabled=false;
   } catch{msg.textContent='Request failed';btn.disabled=false;}
+}
+
+let _schedulerPaused = false;
+async function toggleScheduler() {
+  const btn = document.getElementById('pause-btn');
+  const msg = document.getElementById('run-msg');
+  const endpoint = _schedulerPaused ? '/api/schedule/resume' : '/api/schedule/pause';
+  try {
+    const d = await fetch(endpoint, { method: 'POST' }).then(r => r.json());
+    if (d.ok) {
+      _schedulerPaused = d.paused;
+      btn.textContent = _schedulerPaused ? '▶ Resume scheduler' : '⏸ Pause scheduler';
+      msg.textContent = _schedulerPaused ? 'Scheduler paused' : 'Scheduler resumed';
+      setTimeout(() => { msg.textContent = ''; }, 4000);
+    }
+  } catch { msg.textContent = 'Request failed'; }
 }
 
 async function dryRun() {
@@ -950,6 +967,26 @@ async function routeRequest(req, res, url, getIsRunning, triggerRunFn, getMissin
     if (getIsRunning()) return json(res, 409, { ok: false, error: 'Pipeline already running' });
     triggerRunFn('manual');
     return json(res, 202, { ok: true, message: 'Run triggered' });
+  }
+
+  if (path === '/api/schedule/pause' && req.method === 'POST') {
+    try {
+      const { pauseScheduler } = await import('./index.js');
+      pauseScheduler();
+      return json(res, 200, { ok: true, paused: true });
+    } catch (err) {
+      return json(res, 500, { ok: false, error: err.message });
+    }
+  }
+
+  if (path === '/api/schedule/resume' && req.method === 'POST') {
+    try {
+      const { resumeScheduler } = await import('./index.js');
+      resumeScheduler();
+      return json(res, 200, { ok: true, paused: false });
+    } catch (err) {
+      return json(res, 500, { ok: false, error: err.message });
+    }
   }
 
   if (path === '/api/network/test' && req.method === 'POST') {

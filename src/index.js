@@ -12,6 +12,11 @@ import { getRecentRuns } from './utils/metrics.js';
 let missingVars = [];
 let configured  = false;
 let pipelineRunning = false;
+let schedulerPaused = false;
+
+export function pauseScheduler()  { schedulerPaused = true;  logger.info('Scheduler paused by user'); }
+export function resumeScheduler() { schedulerPaused = false; logger.info('Scheduler resumed by user'); }
+export function isSchedulerPaused() { return schedulerPaused; }
 
 async function safePipelineRun(trigger) {
   if (!configured) {
@@ -20,6 +25,10 @@ async function safePipelineRun(trigger) {
   }
   if (pipelineRunning) {
     logger.warn(`[${trigger}] Previous run still active — skipping this cycle`);
+    return;
+  }
+  if (trigger === 'cron' && schedulerPaused) {
+    logger.info('[cron] Scheduler is paused — skipping');
     return;
   }
   if (trigger === 'cron' && !isWithinPostingWindow()) {
