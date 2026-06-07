@@ -11,7 +11,7 @@ export async function getTakeadsProduct() {
   try {
     // 1. Get list of active programs sorted by avgCommission
     const res = await fetch(
-      `${API_BASE}/program?limit=50&programStatus=active`,
+      `${API_BASE}/program?limit=50&programStatus=active&sortBy=avgCommission&sortOrder=desc`,
       {
         headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' },
         signal: AbortSignal.timeout(30_000),
