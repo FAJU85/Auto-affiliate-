@@ -358,7 +358,7 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
           <textarea id="cfg-postUserTemplate" rows="3"
             style="background:#0f172a;border:1px solid var(--border);border-radius:8px;padding:.65rem .9rem;color:var(--text);font-size:.875rem;resize:vertical;font-family:inherit;line-height:1.5"
           ></textarea>
-          <span class="hint">The actual request sent per post. Placeholders: <code>{name}</code> <code>{category}</code> <code>{description}</code> <code>{trend}</code></span>
+          <span class="hint">The actual request sent per post. Placeholders: <code>{name}</code> <code>{category}</code> <code>{description}</code> <code>{price}</code> <code>{trend}</code> <code>{highlights}</code></span>
         </div>
       </div>
 
@@ -459,9 +459,10 @@ function renderNetworks(networks) {
   const el = document.getElementById('networks-list');
   if (!el || !Array.isArray(networks)) return;
   el.innerHTML = networks.map(function(n) {
-    const color = n.enabled ? '#22c55e' : '#6b7280';
-    const icon  = n.enabled ? '&#10003;' : '&#10007;';
-    return '<span style="display:inline-flex;align-items:center;gap:.3rem;background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:.25rem .75rem;font-size:.8rem;color:'+color+'">'+icon+' '+esc(n.label)+'</span>';
+    const color = n.enabled ? (n.lastError ? '#f59e0b' : '#22c55e') : '#6b7280';
+    const icon  = n.enabled ? (n.lastError ? '&#9888;' : '&#10003;') : '&#10007;';
+    const tip   = n.lastError ? ' title="Last error: '+esc(n.lastError)+'"' : '';
+    return '<span'+tip+' style="display:inline-flex;align-items:center;gap:.3rem;background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:.25rem .75rem;font-size:.8rem;color:'+color+';cursor:'+(n.lastError?'help':'default')+'">'+icon+' '+esc(n.label)+'</span>';
   }).join('');
 }
 
@@ -735,7 +736,16 @@ async function routeRequest(req, res, url, getIsRunning, triggerRunFn, getMissin
     await disconnectBluesky();
     return json(res, 200, { ok: true });
   }
-  if (path === '/api/networks' && req.method === 'GET') return json(res, 200, getNetworkStatus());
+  if (path === '/api/networks' && req.method === 'GET') {
+    const { getNetworkErrors } = await import('./feeds/index.js');
+    const errors = getNetworkErrors();
+    const networks = getNetworkStatus().map(n => ({
+      ...n,
+      lastError: errors[n.key]?.error || null,
+      lastErrorAt: errors[n.key]?.at || null,
+    }));
+    return json(res, 200, networks);
+  }
   if (path === '/api/history' && req.method === 'GET') return json(res, 200, getRecentRuns(50));
   if (path === '/api/dedup' && req.method === 'GET') return json(res, 200, getDedupStatus());
   if (path === '/api/dedup' && req.method === 'DELETE') { clearPostedStore(); return json(res, 200, { ok: true }); }

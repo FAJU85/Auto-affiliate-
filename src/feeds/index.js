@@ -22,6 +22,13 @@ const TASKS = [
   { key: 'shareasale',      fn: getShareASaleProduct,      env: () => !!(process.env.SHAREASALE_TOKEN && process.env.SHAREASALE_SECRET && process.env.SHAREASALE_AFFILIATE_ID) },
 ];
 
+// Per-network last error tracking (in-memory, reset on container restart)
+const networkErrors = {};
+
+export function getNetworkErrors() {
+  return { ...networkErrors };
+}
+
 async function collectCandidates() {
   const enabled = TASKS.filter(t => t.env());
   const results = await Promise.allSettled(
@@ -29,14 +36,19 @@ async function collectCandidates() {
   );
 
   const candidates = [];
-  for (const r of results) {
+  for (let i = 0; i < results.length; i++) {
+    const r   = results[i];
+    const key = enabled[i].key;
     if (r.status === 'fulfilled' && r.value?.value) {
       candidates.push(r.value.value);
-      logger.info(`Network available: ${r.value.key} → "${r.value.value.name}"`);
+      delete networkErrors[key];
+      logger.info(`Network available: ${key} → "${r.value.value.name}"`);
     } else if (r.status === 'fulfilled') {
-      logger.warn(`Network unavailable: ${r.value?.key || 'unknown'} returned null`);
+      networkErrors[key] = { error: 'returned null', at: new Date().toISOString() };
+      logger.warn(`Network unavailable: ${key} returned null`);
     } else {
-      logger.warn(`Network unavailable: ${r.reason?.message || 'unknown error'}`);
+      networkErrors[key] = { error: r.reason?.message || 'unknown error', at: new Date().toISOString() };
+      logger.warn(`Network unavailable: ${key}: ${r.reason?.message || 'unknown error'}`);
     }
   }
   return candidates;

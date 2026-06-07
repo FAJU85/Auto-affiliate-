@@ -73,6 +73,12 @@ function getSystemPrompt(product) {
   return SOURCE_PROMPTS[product.source] || settings.postSystemPrompt;
 }
 
+function formatPrice(product) {
+  if (!product.price) return '';
+  const sym = product.currency === 'USD' ? '$' : product.currency === 'EUR' ? '€' : (product.currency || '');
+  return `${sym}${product.price}`;
+}
+
 function buildMessages(product, trends) {
   const safeName        = sanitiseForPrompt(product.name).slice(0, 80);
   const safeCategory    = sanitiseForPrompt(product.category || product.source || '').slice(0, 40);
@@ -81,6 +87,7 @@ function buildMessages(product, trends) {
   const safeHighlights  = product.exaHighlights
     ? sanitiseForPrompt(product.exaHighlights).slice(0, 200)
     : '';
+  const safePrice       = sanitiseForPrompt(formatPrice(product));
 
   const system       = getSystemPrompt(product);
   const userTemplate = getSettings().postUserTemplate;
@@ -89,7 +96,8 @@ function buildMessages(product, trends) {
     .replace('{category}',    safeCategory)
     .replace('{description}', safeDesc)
     .replace('{trend}',       safeTrend || 'none')
-    .replace('{highlights}',  safeHighlights || '');
+    .replace('{highlights}',  safeHighlights || '')
+    .replace('{price}',       safePrice || '');
 
   return { system, user };
 }
@@ -174,8 +182,10 @@ export async function generatePostText(product, trends) {
 
 function templateFallback(product, trends) {
   const trend = trends[0]?.title || '';
+  const price = formatPrice(product);
+  const priceStr = price ? ` for ${price}` : ' at a great price';
   const base  = trend
-    ? `${trend} and looking for deals? Check out ${product.name}!`
-    : `Discover ${product.name} — ${product.category} at a great price!`;
+    ? `${trend} and looking for deals? Check out ${product.name}${priceStr}!`
+    : `Discover ${product.name} — ${product.category}${priceStr}!`;
   return base.slice(0, 200);
 }

@@ -1,5 +1,5 @@
 import fetch from 'node-fetch';
-import { getAdmitadToken } from './auth.js';
+import { getAdmitadToken, invalidateAdmitadToken } from './auth.js';
 import { logger } from '../utils/logger.js';
 import { normaliseAliExpressUrl, isAliExpressUrl } from '../utils/aliexpress-url.js';
 
@@ -23,9 +23,17 @@ export async function getAdmitadApiProduct() {
   // Global endpoint only — website-scoped requires advcampaigns_for_website scope
   const endpoint = `${API_BASE}/advcampaigns/?limit=50&order_by=-ecpc`;
 
-  const res = await fetch(endpoint, {
+  let res = await fetch(endpoint, {
     headers: { Authorization: `Bearer ${token}` },
   });
+
+  // Refresh token once on 401 (token may have expired mid-use despite local TTL)
+  if (res.status === 401) {
+    logger.warn('Admitad campaigns: 401 — refreshing token and retrying');
+    invalidateAdmitadToken();
+    const freshToken = await getAdmitadToken();
+    res = await fetch(endpoint, { headers: { Authorization: `Bearer ${freshToken}` } });
+  }
 
   if (!res.ok) {
     const text = await res.text();

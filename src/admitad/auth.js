@@ -8,6 +8,11 @@ let cachedToken = null;
 let tokenExpiry  = 0;
 let refreshPromise = null;
 
+export function invalidateAdmitadToken() {
+  cachedToken = null;
+  tokenExpiry  = 0;
+}
+
 export function getAdmitadToken() {
   if (cachedToken && Date.now() < tokenExpiry - 60_000) return Promise.resolve(cachedToken);
   if (refreshPromise) return refreshPromise;
