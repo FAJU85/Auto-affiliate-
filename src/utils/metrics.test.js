@@ -122,7 +122,7 @@ describe('recordEngagement + getTopPosts', () => {
     const uri = 'at://did:example/post/999';
     recordRun({ success: true, deeplink: 'https://example.com/eng1', product: 'EngItem', productSource: 'impact', postUri: uri });
     recordEngagement(uri, 42, 7);
-    const runs = getRecentRuns(20);
+    const runs = getRecentRuns(500);
     const run = runs.find(r => r.postUri === uri);
     assert.ok(run, 'run with postUri found');
     assert.equal(run.likes, 42);

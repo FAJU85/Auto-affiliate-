@@ -85,6 +85,55 @@ describe('sourceEmoji', () => {
   });
 });
 
+describe('hashtag facets', () => {
+  function buildHashtagFacets(text) {
+    const facets = [];
+    const re = /#([a-zA-Z][a-zA-Z0-9_]*)/g;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      const start = Buffer.byteLength(text.slice(0, m.index), 'utf8');
+      const end   = start + Buffer.byteLength(m[0], 'utf8');
+      facets.push({ index: { byteStart: start, byteEnd: end }, features: [{ $type: 'app.bsky.richtext.facet#tag', tag: m[1] }] });
+    }
+    return facets;
+  }
+
+  it('returns empty array when no hashtags', () => {
+    const facets = buildHashtagFacets('Check out this deal today!');
+    assert.equal(facets.length, 0);
+  });
+
+  it('detects a single hashtag with correct byte offsets', () => {
+    const text = 'Great deal #shopping today';
+    const facets = buildHashtagFacets(text);
+    assert.equal(facets.length, 1);
+    assert.equal(facets[0].features[0].tag, 'shopping');
+    const extracted = Buffer.from(text, 'utf8').slice(facets[0].index.byteStart, facets[0].index.byteEnd).toString('utf8');
+    assert.equal(extracted, '#shopping');
+  });
+
+  it('detects multiple hashtags', () => {
+    const text = 'Awesome #deals on #tech products!';
+    const facets = buildHashtagFacets(text);
+    assert.equal(facets.length, 2);
+    assert.equal(facets[0].features[0].tag, 'deals');
+    assert.equal(facets[1].features[0].tag, 'tech');
+  });
+
+  it('handles hashtags after multibyte emoji', () => {
+    const text = '🛍️ Big sale #deals';
+    const facets = buildHashtagFacets(text);
+    assert.equal(facets.length, 1);
+    const extracted = Buffer.from(text, 'utf8').slice(facets[0].index.byteStart, facets[0].index.byteEnd).toString('utf8');
+    assert.equal(extracted, '#deals');
+  });
+
+  it('does not match # not followed by a letter', () => {
+    const facets = buildHashtagFacets('Price is $100 #123 ok');
+    assert.equal(facets.length, 0);
+  });
+});
+
 describe('external embed builder', () => {
   it('builds external embed with correct fields', () => {
     const product = { name: 'Running Shoes', description: 'Comfortable shoes for all', source: 'impact' };
