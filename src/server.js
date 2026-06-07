@@ -499,6 +499,11 @@ function renderStatus(d) {
   renderLastRun(d.lastRun);
   document.getElementById('run-btn').disabled = d.pipeline.running;
   adjustPollRate(d.pipeline.running);
+  if (typeof d.pipeline.paused === 'boolean' && d.pipeline.paused !== _schedulerPaused) {
+    _schedulerPaused = d.pipeline.paused;
+    const pb = document.getElementById('pause-btn');
+    if (pb) pb.textContent = _schedulerPaused ? '▶ Resume scheduler' : '⏸ Pause scheduler';
+  }
   renderSparkline(d.runs);
   renderRunHistory(d.runs);
   document.getElementById('last-updated').textContent='Updated '+new Date().toLocaleTimeString();
@@ -935,6 +940,10 @@ async function routeRequest(req, res, url, getIsRunning, triggerRunFn, getMissin
   if (path === '/api/status') {
     const payload = getStatusPayload(getIsRunning());
     payload.missingVars = getMissingVars();
+    try {
+      const { isSchedulerPaused } = await import('./index.js');
+      payload.pipeline.paused = isSchedulerPaused();
+    } catch { payload.pipeline.paused = false; }
     return json(res, 200, payload);
   }
   if (path === '/api/settings' && req.method === 'GET')  return json(res, 200, getSettings());
