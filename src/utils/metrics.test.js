@@ -8,7 +8,7 @@ import path from 'path';
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'metrics-test-'));
 process.env.DATA_DIR = tmpDir;
 
-const { wasRecentlyPosted, getLastPostedSource, getRecentPostedSources, recordRun } = await import('./metrics.js');
+const { wasRecentlyPosted, getLastPostedSource, getRecentPostedSources, getDailyNetworkStats, recordRun } = await import('./metrics.js');
 
 describe('wasRecentlyPosted', () => {
   it('returns false when nothing posted yet', () => {
@@ -48,6 +48,27 @@ describe('getRecentPostedSources', () => {
   it('returns at most n sources', () => {
     const sources = getRecentPostedSources(1);
     assert.ok(sources.length <= 1);
+  });
+});
+
+describe('getDailyNetworkStats', () => {
+  it('returns an array of N day objects', () => {
+    const stats = getDailyNetworkStats(7);
+    assert.equal(stats.length, 7);
+    assert.ok(stats.every(d => typeof d.date === 'string' && d.date.length === 10));
+  });
+
+  it('reflects recorded runs in byNetwork', () => {
+    recordRun({ success: true, deeplink: 'https://example.com/d', product: 'Headphones', productSource: 'cj' });
+    const stats = getDailyNetworkStats(1);
+    assert.equal(stats.length, 1);
+    assert.ok(stats[0].byNetwork.cj >= 1);
+  });
+
+  it('counts failed runs separately', () => {
+    recordRun({ success: false, deeplink: null, product: null, productSource: null, error: 'timeout' });
+    const stats = getDailyNetworkStats(1);
+    assert.ok(stats[0].failed >= 1);
   });
 });
 

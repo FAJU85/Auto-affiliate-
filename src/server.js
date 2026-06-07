@@ -1,6 +1,6 @@
 import http from 'http';
 import { getDailySpend } from './utils/budget.js';
-import { getRecentRuns, getDedupStatus, clearPostedStore, wasRecentlyPosted } from './utils/metrics.js';
+import { getRecentRuns, getDedupStatus, clearPostedStore, wasRecentlyPosted, getDailyNetworkStats } from './utils/metrics.js';
 import { logger, getRecentLogs } from './utils/logger.js';
 import { getSettings, saveSettings, getSpaceHost } from './config/settings.js';
 import { getOAuthClient, getConnectedDid, disconnectBluesky } from './auth/bluesky-oauth.js';
@@ -154,6 +154,7 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
     <button class="tab" onclick="showTab('accounts')">🔗 Accounts</button>
     <button class="tab" onclick="showTab('config')">⚙️ Space Config</button>
     <button class="tab" onclick="showTab('logs');fetchLogs()">🪵 Logs</button>
+    <button class="tab" onclick="showTab('analytics');fetchStats()">📈 Analytics</button>
   </div>
 
   <!-- ═══ STATUS TAB ═══ -->
@@ -381,6 +382,18 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
         <button class="btn btn-outline" onclick="fetchLogs()" style="font-size:.8rem;padding:.3rem .75rem">↻ Refresh</button>
       </div>
       <div id="log-output" style="background:#050b15;border:1px solid var(--border);border-radius:var(--radius);padding:1rem;font-family:monospace;font-size:.78rem;line-height:1.6;max-height:600px;overflow-y:auto;color:#94a3b8">Loading…</div>
+    </div>
+  </div>
+
+  <!-- ═══ ANALYTICS TAB ═══ -->
+  <div id="tab-analytics" class="tab-panel" style="display:none">
+    <div class="section">
+      <div class="section-title">Daily Posts by Network (last 7 days)</div>
+      <div id="stats-chart" style="overflow-x:auto;min-height:220px">Loading…</div>
+    </div>
+    <div class="section">
+      <div class="section-title">Post Totals</div>
+      <div id="stats-totals" style="display:flex;gap:1rem;flex-wrap:wrap"></div>
     </div>
   </div>
 
@@ -708,6 +721,67 @@ async function fetchLogs() {
     el.scrollTop = 0;
   } catch(e) { const el=document.getElementById('log-output'); if(el)el.textContent='Failed to load logs.'; }
 }
+
+// ── Analytics ──
+const NET_COLORS = {
+  'admitad-feed':'#6366f1','admitad-api':'#8b5cf6','admitad-catalog':'#a78bfa',
+  temu:'#f59e0b', cj:'#10b981', shareasale:'#ec4899', impact:'#3b82f6',
+  takeads:'#f97316', travelpayouts:'#06b6d4', unknown:'#64748b'
+};
+async function fetchStats() {
+  try {
+    const data = await fetch('/api/stats').then(r=>r.json());
+    const chartEl = document.getElementById('stats-chart');
+    const totalsEl = document.getElementById('stats-totals');
+    if (!chartEl || !totalsEl) return;
+
+    // Gather all networks present
+    const allNets = [...new Set(data.flatMap(d => Object.keys(d.byNetwork)))].sort();
+    const maxVal = Math.max(1, ...data.map(d => d.total));
+
+    // Build SVG bar chart
+    const barW = 40, gap = 12, padL = 32, padB = 30, padT = 10, h = 180;
+    const totalW = padL + data.length * (barW + gap);
+    let svg = `<svg viewBox="0 0 ${totalW} ${h+padB+padT}" style="width:100%;max-width:700px;display:block">`;
+    // Grid lines
+    for (let v of [0, Math.ceil(maxVal/2), maxVal]) {
+      const y = padT + h - Math.round(v / maxVal * h);
+      svg += `<line x1="${padL}" y1="${y}" x2="${totalW}" y2="${y}" stroke="#1e293b" stroke-width="1"/>`;
+      svg += `<text x="${padL-4}" y="${y+4}" text-anchor="end" font-size="10" fill="#64748b">${v}</text>`;
+    }
+    data.forEach((day, i) => {
+      const x = padL + i * (barW + gap);
+      let yOff = h;
+      allNets.forEach(net => {
+        const cnt = day.byNetwork[net] || 0;
+        if (!cnt) return;
+        const barH = Math.round(cnt / maxVal * h);
+        yOff -= barH;
+        svg += `<rect x="${x}" y="${padT+yOff}" width="${barW}" height="${barH}" fill="${NET_COLORS[net]||'#64748b'}" rx="2"><title>${net}: ${cnt}</title></rect>`;
+      });
+      // X label
+      svg += `<text x="${x+barW/2}" y="${padT+h+16}" text-anchor="middle" font-size="10" fill="#94a3b8">${day.date.slice(5)}</text>`;
+      // Total on top
+      if (day.total > 0)
+        svg += `<text x="${x+barW/2}" y="${padT+h-yOff-4}" text-anchor="middle" font-size="10" fill="#e2e8f0">${day.total}</text>`;
+    });
+    svg += '</svg>';
+    // Legend
+    svg += '<div style="display:flex;gap:.75rem;flex-wrap:wrap;margin-top:.5rem">' +
+      allNets.map(n => `<span style="display:flex;align-items:center;gap:.3rem;font-size:.8rem"><span style="width:10px;height:10px;border-radius:2px;background:${NET_COLORS[n]||'#64748b'};display:inline-block"></span>${n}</span>`).join('') +
+      '</div>';
+    chartEl.innerHTML = svg;
+
+    // Totals chips
+    const grandTotals = {};
+    data.forEach(d => { Object.entries(d.byNetwork).forEach(([k,v]) => { grandTotals[k] = (grandTotals[k]||0)+v; }); });
+    totalsEl.innerHTML = Object.entries(grandTotals).sort((a,b)=>b[1]-a[1])
+      .map(([k,v]) => `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:.5rem 1rem;text-align:center"><div style="font-size:.75rem;color:var(--muted)">${k}</div><div style="font-size:1.5rem;font-weight:700;color:${NET_COLORS[k]||'#94a3b8'}">${v}</div></div>`).join('');
+  } catch(e) {
+    const el = document.getElementById('stats-chart');
+    if (el) el.textContent = 'Failed to load stats.';
+  }
+}
 </script>
 </body>
 </html>`;
@@ -848,6 +922,7 @@ async function routeRequest(req, res, url, getIsRunning, triggerRunFn, getMissin
     return res.end(header + rows);
   }
   if (path === '/api/logs' && req.method === 'GET') return json(res, 200, getRecentLogs(100));
+  if (path === '/api/stats' && req.method === 'GET') return json(res, 200, getDailyNetworkStats(7));
   if (path === '/api/dedup' && req.method === 'GET') return json(res, 200, getDedupStatus());
   if (path === '/api/dedup' && req.method === 'DELETE') { clearPostedStore(); return json(res, 200, { ok: true }); }
   if (path === '/api/dedup/check' && req.method === 'POST') {

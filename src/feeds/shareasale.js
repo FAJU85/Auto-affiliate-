@@ -93,9 +93,11 @@ export async function getShareASaleProduct() {
     logger.info(`ShareASale: ${products.length} products parsed`);
     if (products.length === 0) return null;
 
-    // Prefer products with commission > 0 and ideally with images
+    // Prefer products with commission > 0 and valid images
     const withCommission = products.filter(p => p.commissionRate > 0);
-    const pool = withCommission.length > 0 ? withCommission : products;
+    const base = withCommission.length > 0 ? withCommission : products;
+    const withImage = base.filter(p => p.imageUrl && /^https?:\/\//.test(p.imageUrl));
+    const pool = withImage.length > 0 ? withImage : base;
     pool.sort(() => Math.random() - 0.5);
     const picked = pool[0];
     logger.info(`ShareASale selected: "${picked.name}" (commission: ${picked.commissionRate}%)`);

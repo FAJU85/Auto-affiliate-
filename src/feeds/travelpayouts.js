@@ -2,7 +2,7 @@ import fetch from 'node-fetch';
 import { logger } from '../utils/logger.js';
 
 const API_BASE = 'https://api.travelpayouts.com';
-const ORIGINS  = ['NYC', 'LON', 'PAR', 'DXB', 'SIN', 'LAX', 'BKK', 'IST'];
+const ORIGINS  = ['NYC', 'LON', 'PAR', 'DXB', 'SIN', 'LAX', 'BKK', 'IST', 'SYD', 'TYO', 'GRU', 'JNB', 'CDG', 'AMS', 'FCO', 'MEX'];
 
 async function fetchDeals(token, origin) {
   const res = await fetch(

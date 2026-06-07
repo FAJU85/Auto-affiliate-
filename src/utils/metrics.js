@@ -114,3 +114,27 @@ export function getDedupStatus() {
 export function clearPostedStore() {
   savePosted([]);
 }
+
+/**
+ * Returns daily post counts broken down by network for the last N days.
+ * Result: { date: 'YYYY-MM-DD', totals: N, byNetwork: { source: N, ... } }[]
+ */
+export function getDailyNetworkStats(days = 7) {
+  const runs = load().runs;
+  const now = new Date();
+  const result = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(now);
+    d.setUTCDate(d.getUTCDate() - i);
+    const dateStr = d.toISOString().slice(0, 10);
+    const dayRuns = runs.filter(r => r.timestamp && r.timestamp.startsWith(dateStr));
+    const successRuns = dayRuns.filter(r => r.success);
+    const byNetwork = {};
+    for (const r of successRuns) {
+      const src = r.productSource || 'unknown';
+      byNetwork[src] = (byNetwork[src] || 0) + 1;
+    }
+    result.push({ date: dateStr, total: successRuns.length, failed: dayRuns.length - successRuns.length, byNetwork });
+  }
+  return result;
+}
