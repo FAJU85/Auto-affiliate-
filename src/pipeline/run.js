@@ -51,7 +51,7 @@ export async function runPipeline() {
   const startTime = Date.now();
   const runMeta = {
     success: false, error: null, errorStack: null,
-    product: null, trend: null, caption: null, captionChars: 0,
+    product: null, productSource: null, trend: null, caption: null, captionChars: 0,
     postUri: null, imageSource: 'none', imageGenerated: false,
     durationMs: 0, dailySpendUsd: 0, productsFetched: 0, productsFiltered: 0,
   };
@@ -61,8 +61,9 @@ export async function runPipeline() {
   try {
     const [product, trends] = await Promise.all([getProduct(wasRecentlyPosted), getTopTrends(5)]);
     let payload = { ...product, trend: trends[0]?.title || '', deeplink: product.siteUrl };
-    runMeta.product = payload.name;
-    runMeta.trend   = payload.trend;
+    runMeta.product       = payload.name;
+    runMeta.productSource = payload.source || null;
+    runMeta.trend         = payload.trend;
     runMeta.productsFetched  = 1;
     runMeta.productsFiltered = 1;
     logger.info(`Affiliate URL (deeplink): ${payload.deeplink}`);

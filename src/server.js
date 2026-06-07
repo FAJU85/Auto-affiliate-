@@ -192,6 +192,7 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
       <div class="last-run">
         <div class="last-run-field"><div class="lrf-label">Time</div><div class="lrf-value" id="lr-time">—</div></div>
         <div class="last-run-field"><div class="lrf-label">Product</div><div class="lrf-value" id="lr-product">—</div></div>
+        <div class="last-run-field"><div class="lrf-label">Network</div><div class="lrf-value" id="lr-source">—</div></div>
         <div class="last-run-field"><div class="lrf-label">Trend</div><div class="lrf-value" id="lr-trend">—</div></div>
         <div class="last-run-field"><div class="lrf-label">Image</div><div class="lrf-value" id="lr-img">—</div></div>
         <div class="last-run-field"><div class="lrf-label">Duration</div><div class="lrf-value" id="lr-dur">—</div></div>
@@ -210,10 +211,15 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
       <div class="section-title">Run history</div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Status</th><th>Time (UTC)</th><th>Product</th><th>Caption</th><th>Image</th><th>Duration</th><th>Error</th></tr></thead>
-          <tbody id="runs-body"><tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem">Loading…</td></tr></tbody>
+          <thead><tr><th>Status</th><th>Time (UTC)</th><th>Product</th><th>Network</th><th>Caption</th><th>Image</th><th>Duration</th><th>Error</th></tr></thead>
+          <tbody id="runs-body"><tr><td colspan="8" style="text-align:center;color:var(--muted);padding:2rem">Loading…</td></tr></tbody>
         </table>
       </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Affiliate networks</div>
+      <div id="networks-list" style="display:flex;flex-wrap:wrap;gap:.5rem;padding:.25rem 0">Loading…</div>
     </div>
   </div>
 
@@ -356,8 +362,13 @@ function showTab(name) {
 let statusData = {};
 async function fetchStatus() {
   try {
-    statusData = await fetch('/api/status').then(r=>r.json());
+    const [status, networks] = await Promise.all([
+      fetch('/api/status').then(r=>r.json()),
+      fetch('/api/networks').then(r=>r.json()),
+    ]);
+    statusData = status;
     renderStatus(statusData);
+    renderNetworks(networks);
   } catch(e) {}
 }
 
@@ -391,6 +402,7 @@ function renderStatus(d) {
   if (lr) {
     document.getElementById('lr-time').textContent    = (lr.timestamp||'').replace('T',' ').slice(0,19)||'—';
     document.getElementById('lr-product').textContent = lr.product||'—';
+    document.getElementById('lr-source').textContent  = lr.productSource||'—';
     document.getElementById('lr-trend').textContent   = lr.trend||'—';
     document.getElementById('lr-img').textContent     = lr.imageSource||'—';
     document.getElementById('lr-dur').textContent     = lr.durationMs?(lr.durationMs/1000).toFixed(1)+'s':'—';
@@ -402,16 +414,27 @@ function renderStatus(d) {
   document.getElementById('run-btn').disabled = d.pipeline.running;
 
   const tbody=document.getElementById('runs-body');
-  if (!d.runs?.length){tbody.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem">No runs yet</td></tr>';return;}
+  if (!d.runs?.length){tbody.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:2rem">No runs yet</td></tr>';return;}
   tbody.innerHTML=d.runs.map(r=>{
     const ok=r.success?'<span class="badge ok">✓ OK</span>':'<span class="badge err">✗ Fail</span>';
     const ts=(r.timestamp||'').replace('T',' ').slice(0,19);
+    const src=r.productSource?'<span class="badge img">'+esc(r.productSource)+'</span>':'<span style="color:var(--muted)">—</span>';
     const img=r.imageGenerated?'<span class="badge img">🖼 '+(r.imageSource||'')+'</span>':'<span style="color:var(--muted)">—</span>';
     const err=r.error?'<span class="err-cell" title="'+esc(r.error)+'">'+esc(r.error.slice(0,50))+'</span>':'<span style="color:var(--muted)">—</span>';
-    return '<tr><td>'+ok+'</td><td>'+ts+'</td><td>'+(r.product||'—')+'</td><td>'+(r.captionChars?r.captionChars+'c':'—')+'</td><td>'+img+'</td><td>'+(r.durationMs?(r.durationMs/1000).toFixed(1)+'s':'—')+'</td><td>'+err+'</td></tr>';
+    return '<tr><td>'+ok+'</td><td>'+ts+'</td><td>'+(r.product||'—')+'</td><td>'+src+'</td><td>'+(r.captionChars?r.captionChars+'c':'—')+'</td><td>'+img+'</td><td>'+(r.durationMs?(r.durationMs/1000).toFixed(1)+'s':'—')+'</td><td>'+err+'</td></tr>';
   }).join('');
 
   document.getElementById('last-updated').textContent='Updated '+new Date().toLocaleTimeString();
+}
+
+function renderNetworks(networks) {
+  const el = document.getElementById('networks-list');
+  if (!el || !Array.isArray(networks)) return;
+  el.innerHTML = networks.map(function(n) {
+    const color = n.enabled ? '#22c55e' : '#6b7280';
+    const icon  = n.enabled ? '&#10003;' : '&#10007;';
+    return '<span style="display:inline-flex;align-items:center;gap:.3rem;background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:.25rem .75rem;font-size:.8rem;color:'+color+'">'+icon+' '+esc(n.label)+'</span>';
+  }).join('');
 }
 
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
@@ -541,6 +564,19 @@ loadConfig();
 
 // ─── Server ──────────────────────────────────────────────────────────────────
 
+function getNetworkStatus() {
+  const e = process.env;
+  return [
+    { key: 'admitad-feed',    label: 'Admitad XML Feed',     enabled: !!e.ADMITAD_FEED_URL },
+    { key: 'admitad-api',     label: 'Admitad API',          enabled: !!(e.ADMITAD_CLIENT_ID && e.ADMITAD_CLIENT_SECRET && e.ADMITAD_WEBSITE_ID) },
+    { key: 'admitad-catalog', label: 'Admitad Catalog',      enabled: [1,2,3,4,5].some(n => e[`ADMITAD_CATALOG_URL_${n}`]) },
+    { key: 'temu',            label: 'Temu',                 enabled: !!(e.TEMU_AFFILIATE_URL_1 || e.TEMU_AFFILIATE_URL_2) },
+    { key: 'takeads',         label: 'TakeAds',              enabled: !!e.TAKEADS_API_KEY },
+    { key: 'travelpayouts',   label: 'Travelpayouts',        enabled: !!e.TRAVELPAYOUTS_TOKEN },
+    { key: 'impact',          label: 'Impact.com',           enabled: !!(e.IMPACT_ACCOUNT_SID && e.IMPACT_AUTH_TOKEN) },
+  ];
+}
+
 function handleClientMetadata(res) {
   const host = getSpaceHost();
   if (!host) return json(res, 503, { error: 'Space URL not configured' });
@@ -621,6 +657,7 @@ async function routeRequest(req, res, url, getIsRunning, triggerRunFn, getMissin
     await disconnectBluesky();
     return json(res, 200, { ok: true });
   }
+  if (path === '/api/networks' && req.method === 'GET') return json(res, 200, getNetworkStatus());
   if (path === '/oauth/bsky/start')  return handleOAuthStart(url, res);
   if (path === '/oauth/callback')    return handleOAuthCallback(url, res);
   if (path === '/api/run' && req.method === 'POST') {
