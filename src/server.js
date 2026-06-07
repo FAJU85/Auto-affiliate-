@@ -20,7 +20,7 @@ function getStatusPayload(isRunning) {
   const runs  = getRecentRuns(20);
   const today = new Date().toISOString().slice(0, 10);
   return {
-    pipeline:    { running: isRunning, schedule: settings.cronSchedule },
+    pipeline:    { running: isRunning, schedule: settings.cronSchedule, postingHours: process.env.POSTING_HOURS || settings.postingHours || '8-22' },
     budget:      { spent: spend, cap, alert, pct: spend / cap },
     stats:       {
       postsToday:   runs.filter(r => r.success && r.timestamp?.startsWith(today)).length,
@@ -183,7 +183,7 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
       <div class="card">
         <div class="card-label">Schedule</div>
         <div class="card-value" style="font-size:1rem;padding-top:.35rem" id="kpi-schedule">—</div>
-        <div class="card-sub">cron expression</div>
+        <div class="card-sub" id="kpi-posting-hours">posting hours: —</div>
       </div>
     </div>
 
@@ -440,6 +440,7 @@ function renderStatus(d) {
   document.getElementById('kpi-success').textContent = d.stats.successRate!=null ? d.stats.successRate+'%' : '—';
   document.getElementById('kpi-success-sub').textContent = 'last '+d.stats.totalRuns+' runs';
   document.getElementById('kpi-schedule').textContent = d.pipeline.schedule;
+  document.getElementById('kpi-posting-hours').textContent = 'posting hours (UTC): ' + (d.pipeline.postingHours || '8-22');
 
   const {spent:sp,cap,pct,alert} = d.budget;
   document.getElementById('kpi-spend').textContent     = '$'+sp.toFixed(4);
