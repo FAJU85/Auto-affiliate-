@@ -59,8 +59,14 @@ function pickLink(links) {
   });
 
   if (valid.length === 0) return null;
-  valid.sort(() => Math.random() - 0.5);
-  return valid[0];
+  // Prefer links with commission > 0
+  const withCommission = valid.filter(l => {
+    const commStr = l['click-commission'] || l['sale-commission'] || '0';
+    return parseFloat(commStr.replace('%', '')) > 0;
+  });
+  const pool = withCommission.length > 0 ? withCommission : valid;
+  pool.sort(() => Math.random() - 0.5);
+  return pool[0];
 }
 
 function buildProduct(link) {
