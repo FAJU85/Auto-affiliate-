@@ -125,6 +125,7 @@ function parseCampaignXml(xml) {
 
     // gotolink is the affiliate tracking URL — skip entries that only have a plain site_url
     if (!name || !gotolink) continue;
+    if (!isLikelyEnglishOrNeutral(name)) continue;
     try { new URL(gotolink); } catch { continue; }
 
     // logo is a brand icon, not a product image — leave imageUrl null so the
