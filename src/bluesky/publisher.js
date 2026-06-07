@@ -25,7 +25,7 @@ function buildAltText(product) {
 
 async function uploadImageBlob(agentRef, imageBuffer, altText) {
   try {
-    const upload = await agentRef.uploadBlob(imageBuffer, { encoding: 'image/png' });
+    const upload = await agentRef.uploadBlob(imageBuffer, { encoding: 'image/jpeg' });
     logger.info(`Image blob uploaded: ${upload.data.blob.ref}`);
     return { $type: 'app.bsky.embed.images', images: [{ image: upload.data.blob, alt: altText }] };
   } catch (err) {
@@ -37,7 +37,7 @@ async function uploadImageBlob(agentRef, imageBuffer, altText) {
     invalidateAgent();
     try {
       const fresh = await getBskyAgent();
-      const upload = await fresh.uploadBlob(imageBuffer, { encoding: 'image/png' });
+      const upload = await fresh.uploadBlob(imageBuffer, { encoding: 'image/jpeg' });
       logger.info(`Image blob uploaded after re-auth: ${upload.data.blob.ref}`);
       return { $type: 'app.bsky.embed.images', images: [{ image: upload.data.blob, alt: altText }] };
     } catch (err2) {

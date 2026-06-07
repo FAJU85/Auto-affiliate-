@@ -4,6 +4,7 @@ import { getTopTrends } from '../admitad/trends.js';
 import { generatePostText } from '../ai/text.js';
 import { findProductImage } from '../ai/imagesearch.js';
 import { upscaleImage } from '../ai/upscale.js';
+import { optimiseImage } from '../ai/imageoptim.js';
 import { publishPost } from '../bluesky/publisher.js';
 import { getBskyAgent } from '../bluesky/client.js';
 import { recordRun, wasRecentlyPosted } from '../utils/metrics.js';
@@ -79,7 +80,8 @@ export async function runPipeline() {
     runMeta.captionChars = caption.length;
 
     const { imageBuffer: rawImage, imageSource } = await acquireImage(payload);
-    const imageBuffer = rawImage ? await upscaleImage(rawImage) : null;
+    const upscaled   = rawImage ? await upscaleImage(rawImage) : null;
+    const imageBuffer = upscaled ? await optimiseImage(upscaled) : null;
     runMeta.imageSource    = imageSource;
     runMeta.imageGenerated = imageBuffer !== null;
 
