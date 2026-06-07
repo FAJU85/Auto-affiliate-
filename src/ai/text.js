@@ -55,8 +55,20 @@ function setCached(productId, caption) {
 
 // --- Prompt builder ---
 
+// Network-specific system prompts override the default when the source matches
+const SOURCE_PROMPTS = {
+  travelpayouts: 'Write short travel deal posts for social media. Max 200 chars. Mention origin, destination and price. No hashtags. Excited tone.',
+  temu:          'Write short deal-focused posts for social media. Max 200 chars. Emphasise value and variety. No hashtags. Friendly tone.',
+  cj:            'Write short promotional posts for social media. Max 200 chars. Highlight the offer or discount. No hashtags. Persuasive tone.',
+  impact:        'Write short promotional posts for social media. Max 200 chars. Highlight the brand or offer. No hashtags. Confident tone.',
+};
+
+function getSystemPrompt(product) {
+  const settings = getSettings();
+  return SOURCE_PROMPTS[product.source] || settings.postSystemPrompt;
+}
+
 function buildMessages(product, trends) {
-  const settings        = getSettings();
   const safeName        = sanitiseForPrompt(product.name).slice(0, 80);
   const safeCategory    = sanitiseForPrompt(product.category || product.source || '').slice(0, 40);
   const safeDesc        = sanitiseForPrompt(product.description).slice(0, 80);
@@ -65,10 +77,8 @@ function buildMessages(product, trends) {
     ? sanitiseForPrompt(product.exaHighlights).slice(0, 200)
     : '';
 
-  const system = settings.postSystemPrompt;
-
-  // Fill template variables: {name} {category} {description} {trend} {highlights}
-  const userTemplate = settings.postUserTemplate;
+  const system       = getSystemPrompt(product);
+  const userTemplate = getSettings().postUserTemplate;
   const user = userTemplate
     .replace('{name}',        safeName)
     .replace('{category}',    safeCategory)

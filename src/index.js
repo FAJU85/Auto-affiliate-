@@ -5,6 +5,7 @@ import { logger } from './utils/logger.js';
 import { validateEnv } from './utils/env.js';
 import { startServer, hasAnyNetworkEnabled } from './server.js';
 import { restoreSessionFromSecrets } from './auth/bluesky-oauth.js';
+import { isWithinPostingWindow } from './utils/schedule.js';
 
 // Dashboard always starts first (HF Spaces requires port 7860 to be up fast)
 let missingVars = [];
@@ -18,6 +19,10 @@ async function safePipelineRun(trigger) {
   }
   if (pipelineRunning) {
     logger.warn(`[${trigger}] Previous run still active — skipping this cycle`);
+    return;
+  }
+  if (trigger === 'cron' && !isWithinPostingWindow()) {
+    logger.info(`[${trigger}] Outside posting window (POSTING_HOURS=${process.env.POSTING_HOURS || '8-22'} UTC) — skipping`);
     return;
   }
   pipelineRunning = true;
