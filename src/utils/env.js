@@ -15,6 +15,8 @@ const OPTIONAL_LABELS = {
   TEMU_AFFILIATE_URL_3:    'Temu affiliate landing page link 3 (temu.to/k/...)',
   IMPACT_ACCOUNT_SID:      'Impact.com publisher Account SID (Settings → API)',
   IMPACT_AUTH_TOKEN:       'Impact.com publisher Auth Token (Settings → API)',
+  CJ_API_KEY:              'CJ Affiliate personal access token (developers.cj.com → API Keys)',
+  CJ_WEBSITE_ID:           'CJ Affiliate publisher CID / website ID (members.cj.com → Account)',
   TAKEADS_API_KEY:         'Takeads CPC network API key',
   TRAVELPAYOUTS_TOKEN:     'Travelpayouts API token (flight deals data)',
   TRAVELPAYOUTS_MARKER:    'Travelpayouts partner marker ID (for affiliate link tracking)',
