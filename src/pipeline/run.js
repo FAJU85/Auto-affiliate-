@@ -56,8 +56,8 @@ export async function runPipeline() {
     payload = { ...payload, deeplink };
     logger.info(`Affiliate URL (deeplink): ${deeplink}`);
 
-    if (wasRecentlyPosted(deeplink)) {
-      logger.warn(`Duplicate suppressed — "${payload.name}" was already posted in the last 6h`);
+    if (wasRecentlyPosted(deeplink, payload.name)) {
+      logger.warn(`Duplicate suppressed — "${payload.name}" was already posted in the last 60 days`);
       runMeta.error = 'duplicate_suppressed';
       runMeta.durationMs = Date.now() - startTime;
       recordRun(runMeta);
