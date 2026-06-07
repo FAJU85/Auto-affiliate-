@@ -101,7 +101,10 @@ async function postWithRetry(record) {
         invalidateAgent();
         try { currentAgent = await getBskyAgent(); } catch {}
       }
-      if (attempt < 3) await sleep(attempt * 2000);
+      // Bluesky rate-limit: response may include Retry-After or status 429
+      const isRateLimit = /rate.?limit|429/i.test(err.message);
+      const waitMs = isRateLimit ? 30_000 : attempt * 2000;
+      if (attempt < 3) await sleep(waitMs);
       else throw err;
     }
   }
