@@ -1,5 +1,6 @@
 import fetch from 'node-fetch';
 import { logger } from '../utils/logger.js';
+import { sleep } from '../utils/sleep.js';
 
 const API_BASE = 'https://link-search.api.cj.com/v2/link-search';
 
@@ -26,6 +27,19 @@ async function fetchLinks(apiKey, websiteId) {
     },
     signal: AbortSignal.timeout(30_000),
   });
+
+  if (res.status === 429) {
+    logger.warn('CJ Affiliate rate limited, backing off 10s');
+    await sleep(10_000);
+    const res2 = await fetch(`${API_BASE}?${params}`, {
+      headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' },
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!res2.ok) throw new Error(`CJ API ${res2.status} (retry)`);
+    const data2 = await res2.json();
+    const raw2 = data2?.links?.link ?? [];
+    return Array.isArray(raw2) ? raw2 : [raw2];
+  }
 
   if (!res.ok) {
     const text = await res.text();
