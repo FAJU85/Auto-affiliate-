@@ -11,122 +11,10 @@ import { getDailySpend } from '../utils/budget.js';
 import { logger } from '../utils/logger.js';
 import { getProductHighlights } from '../ai/exa.js';
 
-export async function runPipeline() {
-  const startTime = Date.now();
-  const runMeta = {
-    success: false,
-    error: null,
-    errorStack: null,
-    product: null,
-    trend: null,
-    caption: null,
-    captionChars: 0,
-    postUri: null,
-    imageSource: 'none',
-    imageGenerated: false,
-    durationMs: 0,
-    dailySpendUsd: 0,
-    productsFetched: 0,
-    productsFiltered: 0,
-  };
-
-  logger.info('=== Pipeline v2 run starting ===');
-
-  try {
-    // Phase 1 — Fetch product + trends in parallel
-    // Pass dedup function so feeds can skip already-posted products before selecting
-    const [product, trends] = await Promise.all([
-      getProduct(wasRecentlyPosted),
-      getTopTrends(5),
-    ]);
-
-    // Payload starts here — single accumulating object
-    let payload = { ...product };
-
-    runMeta.product = payload.name;
-    runMeta.productsFetched = 1;
-    runMeta.productsFiltered = 1;
-
-    // Phase 2 — Merge trend context
-    const trend = trends[0]?.title || '';
-    payload = { ...payload, trend };
-    runMeta.trend = trend;
-
-    // Phase 3 — Affiliate URL
-    const deeplink = payload.siteUrl;
-    payload = { ...payload, deeplink };
-    logger.info(`Affiliate URL (deeplink): ${deeplink}`);
-
-    // Phase 4b — Exa product context (enriches AI caption, best-effort)
-    const exaHighlights = await getProductHighlights(payload.name, payload.category);
-    if (exaHighlights) payload = { ...payload, exaHighlights };
-
-    // Phase 5 — Text generation
-    const caption = await generatePostText(payload, trends);
-    payload = { ...payload, caption };
-    runMeta.caption = caption;
-    runMeta.captionChars = caption.length;
-
-    // Phase 6 — Image acquisition
-    // Branch: has feed image → use it directly; else → og:image from product page
-    let imageBuffer = null;
-    let imageSource = 'none';
-
-    const feedImageUrl = payload.imageUrl || null;
-
-    if (feedImageUrl) {
-      logger.info(`Direct image from feed: ${feedImageUrl.slice(0, 80)}`);
-      imageBuffer = await downloadImage(feedImageUrl);
-      if (imageBuffer) imageSource = payload.source || 'feed';
-    }
-
-    if (!imageBuffer) {
-      logger.info('No feed image — trying og:image from product page');
-      const fallbackUrl = await findProductImage(payload.name, payload.siteUrl, payload.source);
-      if (fallbackUrl) {
-        imageBuffer = await downloadImage(fallbackUrl);
-        if (imageBuffer) imageSource = 'og:image';
-      }
-    }
-
-    payload = { ...payload, imageBuffer, imageSource };
-    runMeta.imageSource = imageSource;
-
-    // Phase 7 — HuggingFace upscaling
-    if (imageBuffer) {
-      imageBuffer = await upscaleImage(imageBuffer);
-      payload = { ...payload, imageBuffer };
-    }
-
-    runMeta.imageGenerated = imageBuffer !== null;
-
-    // Phase 8 — Bluesky auth (reuse persisted session, login only when needed)
-    await getBskyAgent();
-
-    // Phase 9 — Blob upload + publish (canvas phases 15-17)
-    const uri = await publishPost(caption, deeplink, imageBuffer, payload);
-    payload = { ...payload, postUri: uri };
-
-    runMeta.postUri  = uri;
-    runMeta.deeplink = deeplink;
-    runMeta.success  = true;
-    logger.info(`=== Pipeline v2 complete. Post: ${uri} ===`);
-  } catch (err) {
-    runMeta.error = err.message;
-    runMeta.errorStack = err.stack?.split('\n').slice(0, 5).join(' | ') || null;
-    logger.error(`Pipeline failed: ${err.message}`);
-  }
-
-  runMeta.durationMs = Date.now() - startTime;
-  runMeta.dailySpendUsd = getDailySpend();
-  recordRun(runMeta);
-  return runMeta;
-}
-
 async function downloadImage(url) {
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30_000);
+    const timeout    = setTimeout(() => controller.abort(), 30_000);
     let res;
     try {
       res = await fetch(url, { signal: controller.signal });
@@ -141,4 +29,71 @@ async function downloadImage(url) {
     logger.warn(`Image download failed (${url.slice(0, 60)}): ${err.message}`);
     return null;
   }
+}
+
+async function acquireImage(payload) {
+  const feedUrl = payload.imageUrl || null;
+  if (feedUrl) {
+    logger.info(`Direct image from feed: ${feedUrl.slice(0, 80)}`);
+    const buf = await downloadImage(feedUrl);
+    if (buf) return { imageBuffer: buf, imageSource: payload.source || 'feed' };
+  }
+  logger.info('No feed image — trying og:image from product page');
+  const fallbackUrl = await findProductImage(payload.name, payload.siteUrl, payload.source);
+  if (fallbackUrl) {
+    const buf = await downloadImage(fallbackUrl);
+    if (buf) return { imageBuffer: buf, imageSource: 'og:image' };
+  }
+  return { imageBuffer: null, imageSource: 'none' };
+}
+
+export async function runPipeline() {
+  const startTime = Date.now();
+  const runMeta = {
+    success: false, error: null, errorStack: null,
+    product: null, trend: null, caption: null, captionChars: 0,
+    postUri: null, imageSource: 'none', imageGenerated: false,
+    durationMs: 0, dailySpendUsd: 0, productsFetched: 0, productsFiltered: 0,
+  };
+
+  logger.info('=== Pipeline v2 run starting ===');
+
+  try {
+    const [product, trends] = await Promise.all([getProduct(wasRecentlyPosted), getTopTrends(5)]);
+    let payload = { ...product, trend: trends[0]?.title || '', deeplink: product.siteUrl };
+    runMeta.product = payload.name;
+    runMeta.trend   = payload.trend;
+    runMeta.productsFetched  = 1;
+    runMeta.productsFiltered = 1;
+    logger.info(`Affiliate URL (deeplink): ${payload.deeplink}`);
+
+    const exaHighlights = await getProductHighlights(payload.name, payload.category);
+    if (exaHighlights) payload = { ...payload, exaHighlights };
+
+    const caption = await generatePostText(payload, trends);
+    payload = { ...payload, caption };
+    runMeta.caption      = caption;
+    runMeta.captionChars = caption.length;
+
+    const { imageBuffer: rawImage, imageSource } = await acquireImage(payload);
+    const imageBuffer = rawImage ? await upscaleImage(rawImage) : null;
+    runMeta.imageSource    = imageSource;
+    runMeta.imageGenerated = imageBuffer !== null;
+
+    await getBskyAgent();
+    const uri = await publishPost(caption, payload.deeplink, imageBuffer, payload);
+    runMeta.postUri  = uri;
+    runMeta.deeplink = payload.deeplink;
+    runMeta.success  = true;
+    logger.info(`=== Pipeline v2 complete. Post: ${uri} ===`);
+  } catch (err) {
+    runMeta.error      = err.message;
+    runMeta.errorStack = err.stack?.split('\n').slice(0, 5).join(' | ') || null;
+    logger.error(`Pipeline failed: ${err.message}`);
+  }
+
+  runMeta.durationMs    = Date.now() - startTime;
+  runMeta.dailySpendUsd = getDailySpend();
+  recordRun(runMeta);
+  return runMeta;
 }

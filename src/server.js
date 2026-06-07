@@ -541,130 +541,105 @@ loadConfig();
 
 // ─── Server ──────────────────────────────────────────────────────────────────
 
-export function startServer(getIsRunning, triggerRun, getMissingVars = () => []) {
+function handleClientMetadata(res) {
+  const host = getSpaceHost();
+  if (!host) return json(res, 503, { error: 'Space URL not configured' });
+  return json(res, 200, {
+    client_id:                  `${host}/client-metadata.json`,
+    client_name:                'Auto Affiliate Pipeline',
+    client_uri:                 host,
+    redirect_uris:              [`${host}/oauth/callback`],
+    scope:                      'atproto transition:generic',
+    grant_types:                ['authorization_code', 'refresh_token'],
+    response_types:             ['code'],
+    token_endpoint_auth_method: 'none',
+    application_type:           'web',
+    dpop_bound_access_tokens:   true,
+  });
+}
 
+async function handleSettingsPost(req, res) {
+  try {
+    const body    = await readBody(req);
+    const updates = JSON.parse(body);
+    if (updates.alertThreshold >= updates.dailyCostCap) {
+      return json(res, 400, { ok: false, error: 'Alert threshold must be less than daily cost cap' });
+    }
+    const saved = saveSettings(updates);
+    logger.info('Settings updated via dashboard');
+    return json(res, 200, { ok: true, ...saved });
+  } catch (err) {
+    return json(res, 400, { ok: false, error: err.message });
+  }
+}
+
+async function handleOAuthStart(url, res) {
+  const handle = url.searchParams.get('handle');
+  if (!handle) return json(res, 400, { error: 'handle param required' });
+  const client = getOAuthClient();
+  if (!client) return json(res, 503, { error: 'Space URL not configured — set it in Space Config tab' });
+  try {
+    const authUrl = await client.authorize(handle, { scope: 'atproto transition:generic' });
+    return json(res, 200, { url: authUrl.toString() });
+  } catch (err) {
+    logger.warn(`Bluesky OAuth start failed: ${err.message}`);
+    return json(res, 500, { error: err.message });
+  }
+}
+
+async function handleOAuthCallback(url, res) {
+  const client = getOAuthClient();
+  if (!client) { res.writeHead(302, { Location: '/?error=no_client' }); return res.end(); }
+  try {
+    const { session } = await client.callback(new URLSearchParams(Object.fromEntries(url.searchParams)));
+    logger.info(`Bluesky OAuth connected: ${session.did}`);
+    res.writeHead(302, { Location: '/?tab=accounts&connected=1' });
+    return res.end();
+  } catch (err) {
+    logger.warn(`Bluesky OAuth callback failed: ${err.message}`);
+    res.writeHead(302, { Location: '/?tab=accounts&error=' + encodeURIComponent(err.message) });
+    return res.end();
+  }
+}
+
+async function routeRequest(req, res, url, getIsRunning, triggerRunFn, getMissingVars) {
+  const path = url.pathname;
+  if (path === '/health') { res.writeHead(200, { 'Content-Type': 'text/plain' }); return res.end('ok'); }
+  if (path === '/client-metadata.json') return handleClientMetadata(res);
+  if (path === '/api/status') {
+    const payload = getStatusPayload(getIsRunning());
+    payload.missingVars = getMissingVars();
+    return json(res, 200, payload);
+  }
+  if (path === '/api/settings' && req.method === 'GET')  return json(res, 200, getSettings());
+  if (path === '/api/settings' && req.method === 'POST') return handleSettingsPost(req, res);
+  if (path === '/api/accounts' && req.method === 'GET') {
+    const did = await getConnectedDid().catch(() => null);
+    return json(res, 200, { spaceConfigured: !!getSpaceHost(), bluesky: { connected: !!did, did } });
+  }
+  if (path === '/api/accounts/bluesky/disconnect' && req.method === 'POST') {
+    await disconnectBluesky();
+    return json(res, 200, { ok: true });
+  }
+  if (path === '/oauth/bsky/start')  return handleOAuthStart(url, res);
+  if (path === '/oauth/callback')    return handleOAuthCallback(url, res);
+  if (path === '/api/run' && req.method === 'POST') {
+    const missing = getMissingVars();
+    if (missing.length) return json(res, 503, { ok: false, error: `Not ready: ${missing.join(', ')}` });
+    if (getIsRunning()) return json(res, 409, { ok: false, error: 'Pipeline already running' });
+    triggerRunFn('manual');
+    return json(res, 202, { ok: true, message: 'Run triggered' });
+  }
+  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+  res.end(DASHBOARD_HTML);
+}
+
+export function startServer(getIsRunning, triggerRun, getMissingVars = () => []) {
   const server = http.createServer(async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
-
-    const url = new URL(req.url, `http://localhost`);
-    const path = url.pathname;
-
-    // ── Health ──
-    if (path === '/health') {
-      res.writeHead(200, { 'Content-Type': 'text/plain' });
-      return res.end('ok');
-    }
-
-    // ── Client metadata (required by AT Protocol OAuth) ──
-    if (path === '/client-metadata.json') {
-      const host = getSpaceHost();
-      if (!host) return json(res, 503, { error: 'Space URL not configured' });
-      return json(res, 200, {
-        client_id:                  `${host}/client-metadata.json`,
-        client_name:                'Auto Affiliate Pipeline',
-        client_uri:                 host,
-        redirect_uris:              [`${host}/oauth/callback`],
-        scope:                      'atproto transition:generic',
-        grant_types:                ['authorization_code', 'refresh_token'],
-        response_types:             ['code'],
-        token_endpoint_auth_method: 'none',
-        application_type:           'web',
-        dpop_bound_access_tokens:   true,
-      });
-    }
-
-    // ── Status API ──
-    if (path === '/api/status') {
-      const payload = getStatusPayload(getIsRunning());
-      payload.missingVars = getMissingVars();
-      return json(res, 200, payload);
-    }
-
-    // ── Settings GET ──
-    if (path === '/api/settings' && req.method === 'GET') {
-      return json(res, 200, getSettings());
-    }
-
-    // ── Settings POST ──
-    if (path === '/api/settings' && req.method === 'POST') {
-      try {
-        const body = await readBody(req);
-        const updates = JSON.parse(body);
-        if (updates.alertThreshold >= updates.dailyCostCap) {
-          return json(res, 400, { ok: false, error: 'Alert threshold must be less than daily cost cap' });
-        }
-        const saved = saveSettings(updates);
-        logger.info('Settings updated via dashboard');
-        return json(res, 200, { ok: true, ...saved });
-      } catch (err) {
-        return json(res, 400, { ok: false, error: err.message });
-      }
-    }
-
-    // ── Accounts status ──
-    if (path === '/api/accounts' && req.method === 'GET') {
-      const did = await getConnectedDid().catch(() => null);
-      return json(res, 200, {
-        spaceConfigured: !!getSpaceHost(),
-        bluesky: { connected: !!did, did },
-      });
-    }
-
-    // ── Disconnect Bluesky ──
-    if (path === '/api/accounts/bluesky/disconnect' && req.method === 'POST') {
-      await disconnectBluesky();
-      return json(res, 200, { ok: true });
-    }
-
-    // ── OAuth: start Bluesky flow ──
-    if (path === '/oauth/bsky/start') {
-      const handle = url.searchParams.get('handle');
-      if (!handle) return json(res, 400, { error: 'handle param required' });
-      const client = getOAuthClient();
-      if (!client) return json(res, 503, { error: 'Space URL not configured — set it in Space Config tab' });
-      try {
-        const authUrl = await client.authorize(handle, { scope: 'atproto transition:generic' });
-        return json(res, 200, { url: authUrl.toString() });
-      } catch (err) {
-        logger.warn(`Bluesky OAuth start failed: ${err.message}`);
-        return json(res, 500, { error: err.message });
-      }
-    }
-
-    // ── OAuth: callback ──
-    if (path === '/oauth/callback') {
-      const client = getOAuthClient();
-      if (!client) {
-        res.writeHead(302, { Location: '/?error=no_client' });
-        return res.end();
-      }
-      try {
-        const params = Object.fromEntries(url.searchParams);
-        const { session } = await client.callback(new URLSearchParams(params));
-        logger.info(`Bluesky OAuth connected: ${session.did}`);
-        res.writeHead(302, { Location: '/?tab=accounts&connected=1' });
-        return res.end();
-      } catch (err) {
-        logger.warn(`Bluesky OAuth callback failed: ${err.message}`);
-        res.writeHead(302, { Location: '/?tab=accounts&error=' + encodeURIComponent(err.message) });
-        return res.end();
-      }
-    }
-
-    // ── Run trigger ──
-    if (path === '/api/run' && req.method === 'POST') {
-      const missing = getMissingVars();
-      if (missing.length) return json(res, 503, { ok: false, error: `Not ready: ${missing.join(', ')}` });
-      if (getIsRunning()) return json(res, 409, { ok: false, error: 'Pipeline already running' });
-      triggerRun('manual');
-      return json(res, 202, { ok: true, message: 'Run triggered' });
-    }
-
-    // ── Dashboard ──
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    res.end(DASHBOARD_HTML);
+    const url = new URL(req.url, 'http://localhost');
+    await routeRequest(req, res, url, getIsRunning, triggerRun, getMissingVars);
   });
-
   server.listen(PORT, () => {
     logger.info(`Dashboard listening on http://localhost:${PORT}`);
     startKeepAlive(PORT);
