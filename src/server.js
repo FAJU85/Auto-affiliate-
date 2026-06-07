@@ -216,7 +216,17 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
     <div id="dry-result" style="display:none;margin-top:1rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem;font-size:.875rem"></div>
 
     <div class="section">
-      <div class="section-title">Run history</div>
+      <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:.75rem">
+        <div class="section-title" style="margin-bottom:0">Run history</div>
+        <select id="run-filter-source" onchange="applyRunFilter()" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.25rem .5rem;font-size:.8rem;color:var(--text)">
+          <option value="">All networks</option>
+        </select>
+        <select id="run-filter-status" onchange="applyRunFilter()" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.25rem .5rem;font-size:.8rem;color:var(--text)">
+          <option value="">All statuses</option>
+          <option value="ok">Success only</option>
+          <option value="fail">Failures only</option>
+        </select>
+      </div>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Status</th><th>Time (UTC)</th><th>Product</th><th>Network</th><th>Post</th><th>Image</th><th>Duration</th><th>Error</th></tr></thead>
@@ -450,9 +460,32 @@ function renderLastRun(lr) {
   else{ua.href='#';ua.textContent='—';}
 }
 
+let _allRuns = [];
+function applyRunFilter() {
+  const src = document.getElementById('run-filter-source')?.value || '';
+  const status = document.getElementById('run-filter-status')?.value || '';
+  let filtered = _allRuns;
+  if (src) filtered = filtered.filter(r => r.productSource === src);
+  if (status === 'ok') filtered = filtered.filter(r => r.success);
+  if (status === 'fail') filtered = filtered.filter(r => !r.success);
+  renderRunHistoryRows(filtered);
+}
+
 function renderRunHistory(runs) {
+  _allRuns = runs || [];
+  // Populate source filter
+  const sel = document.getElementById('run-filter-source');
+  if (sel) {
+    const sources = [...new Set(runs.map(r => r.productSource).filter(Boolean))].sort();
+    const current = sel.value;
+    sel.innerHTML = '<option value="">All networks</option>' + sources.map(s => `<option value="${esc(s)}"${s===current?' selected':''}>${esc(s)}</option>`).join('');
+  }
+  applyRunFilter();
+}
+
+function renderRunHistoryRows(runs) {
   const tbody=document.getElementById('runs-body');
-  if (!runs?.length){tbody.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:2rem">No runs yet</td></tr>';return;}
+  if (!runs?.length){tbody.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:2rem">No runs match filter</td></tr>';return;}
   tbody.innerHTML=runs.map(r=>{
     const ok=r.success?'<span class="badge ok">✓ OK</span>':'<span class="badge err">✗ Fail</span>';
     const ts=(r.timestamp||'').replace('T',' ').slice(0,19);
