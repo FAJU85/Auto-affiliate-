@@ -45,6 +45,20 @@ describe('getProduct — dedup and fallback logic', () => {
   });
 });
 
+describe('TASKS consistency', () => {
+  it('TASKS covers the same 9 networks as getNetworkStatus', async () => {
+    const { readFileSync } = await import('fs');
+    const expectedKeys = [
+      'admitad-feed', 'admitad-api', 'admitad-catalog',
+      'temu', 'takeads', 'travelpayouts', 'impact', 'cj', 'shareasale',
+    ];
+    const src = readFileSync('src/feeds/index.js', 'utf8');
+    for (const key of expectedKeys) {
+      assert.ok(src.includes(`'${key}'`), `TASKS missing network key: ${key}`);
+    }
+  });
+});
+
 describe('getProduct — product shape validation', () => {
   it('unified product interface has all required keys', () => {
     const product = {
