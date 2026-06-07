@@ -25,7 +25,7 @@ function buildProduct(deal, origin, marker) {
   const siteUrl = `https://www.aviasales.com/${origin}-${destination}/?marker=${marker}`;
   logger.info(`Travelpayouts deal: ${origin}→${destination} $${price} (${airline})`);
   return {
-    id:             `tp-${origin}-${destination}`,
+    id:             `tp-${origin}-${destination}-${new Date().toISOString().slice(0, 10)}`,
     name:           `Flight ${origin} → ${destination}${airline ? ` (${airline})` : ''}`,
     description:    `From $${price}. Fly ${origin} to ${destination}${departs ? ` departing ${departs}` : ''}.`,
     siteUrl,
