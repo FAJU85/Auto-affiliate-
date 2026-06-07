@@ -488,9 +488,15 @@ async function dryRun() {
     const d=await fetch('/api/dry-run',{method:'POST'}).then(r=>r.json());
     if (d.ok) {
       box.style.display='block';
-      box.innerHTML='<strong>Product:</strong> '+esc(d.product.name)+' <span class="badge img">'+esc(d.product.source)+'</span>'
+      const priceStr = d.product.price ? ' · '+(d.product.currency==='USD'?'$':d.product.currency||'')+d.product.price : '';
+      const imgHtml = d.product.imageUrl
+        ? '<br><img src="'+esc(d.product.imageUrl)+'" alt="" style="max-width:200px;max-height:140px;border-radius:8px;margin-top:.5rem;object-fit:cover">'
+        : '';
+      box.innerHTML='<strong>Product:</strong> '+esc(d.product.name)+priceStr+' <span class="badge img">'+esc(d.product.source)+'</span>'
         +'<br><strong>URL:</strong> <a href="'+esc(d.product.siteUrl)+'" target="_blank" rel="noopener" style="color:var(--accent);font-size:.8rem">'+esc(d.product.siteUrl.slice(0,60))+'…</a>'
-        +'<br><br><strong>Caption preview:</strong><br><em style="color:var(--muted)">'+esc(d.caption)+'</em>';
+        +imgHtml
+        +'<br><br><strong>Caption preview:</strong><br><em style="color:var(--muted)">'+esc(d.caption)+'</em>'
+        +'<br><button onclick="navigator.clipboard.writeText('+JSON.stringify(d.caption+'\n\n'+d.product.siteUrl)+')" style="margin-top:.5rem;padding:.2rem .6rem;font-size:.75rem;background:#1e293b;border:1px solid var(--border);border-radius:6px;color:var(--text);cursor:pointer">Copy text</button>';
       msg.textContent='Dry run complete ✓';
     } else {
       msg.textContent='Dry run error: '+(d.error||'unknown');
@@ -781,7 +787,11 @@ async function routeRequest(req, res, url, getIsRunning, triggerRunFn, getMissin
       const { getTopTrends } = await import('./admitad/trends.js');
       const [product, trends] = await Promise.all([getProduct(wasRecentlyPosted), getTopTrends(3)]);
       const caption = await generatePostText(product, trends);
-      return json(res, 200, { ok: true, product: { name: product.name, source: product.source, siteUrl: product.siteUrl }, caption });
+      return json(res, 200, {
+        ok: true,
+        product: { name: product.name, source: product.source, siteUrl: product.siteUrl, imageUrl: product.imageUrl || null, price: product.price || null, currency: product.currency || null },
+        caption,
+      });
     } catch (err) {
       return json(res, 500, { ok: false, error: err.message });
     }
