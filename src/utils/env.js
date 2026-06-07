@@ -24,6 +24,8 @@ const OPTIONAL_LABELS = {
   TRAVELPAYOUTS_TOKEN:     'Travelpayouts API token (flight deals data)',
   TRAVELPAYOUTS_MARKER:    'Travelpayouts partner marker ID (for affiliate link tracking)',
   POSTING_HOURS:           'UTC hour window for auto-posts, format "start-end" e.g. "8-22" (default: 8-22)',
+  MAX_POSTS_PER_DAY:       'Hard cap on successful posts per day (default: 24)',
+  WEBHOOK_URL:             'Optional HTTP POST endpoint to receive run results (Discord, Slack, custom)',
   GROQ_API_KEY:            'Groq text generation — free, 14 400 req/day (llama-3.3-70b-versatile)',
   MISTRAL_API_KEY:         'Mistral text generation — mistral-small-latest fallback',
   EXA_API_KEY:             'Exa web search — enriches AI captions with real product highlights',

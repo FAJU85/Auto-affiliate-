@@ -11,7 +11,7 @@ export async function getTakeadsProduct() {
   try {
     // 1. Get list of active programs sorted by avgCommission
     const res = await fetch(
-      `${API_BASE}/program?limit=50&programStatus=active`,
+      `${API_BASE}/program?limit=50&programStatus=active&sortBy=avgCommission&sortOrder=desc`,
       {
         headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' },
         signal: AbortSignal.timeout(30_000),
@@ -38,15 +38,18 @@ export async function getTakeadsProduct() {
     // 2. Resolve to affiliate tracking link
     const trackingLink = await resolveLink(apiKey, program.websiteUrl);
 
+    const name = String(program.name || '').trim();
+    const description = (program.description || program.shortDescription || name).trim().slice(0, 300);
     return {
       id:             String(program.id || program.merchantId || ''),
-      name:           String(program.name || '').trim(),
-      description:    String(program.name || '').trim(),
+      name,
+      description,
       siteUrl:        trackingLink || program.websiteUrl,
-      imageUrl:       program.imageUrl || null,
+      imageUrl:       program.imageUrl || program.logoUrl || null,
       price:          null,
       currency:       'USD',
       commissionRate: parseFloat(program.avgCommission || 0),
+      category:       program.category || program.verticalName || null,
       source:         'takeads',
     };
   } catch (err) {

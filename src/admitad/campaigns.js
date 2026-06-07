@@ -1,7 +1,8 @@
 import fetch from 'node-fetch';
-import { getAdmitadToken } from './auth.js';
+import { getAdmitadToken, invalidateAdmitadToken } from './auth.js';
 import { logger } from '../utils/logger.js';
 import { normaliseAliExpressUrl, isAliExpressUrl } from '../utils/aliexpress-url.js';
+import { sleepRetryAfter } from '../utils/rate-limit.js';
 
 const API_BASE = 'https://api.admitad.com';
 
@@ -23,9 +24,18 @@ export async function getAdmitadApiProduct() {
   // Global endpoint only — website-scoped requires advcampaigns_for_website scope
   const endpoint = `${API_BASE}/advcampaigns/?limit=50&order_by=-ecpc`;
 
-  const res = await fetch(endpoint, {
+  let res = await fetch(endpoint, {
     headers: { Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(20_000),
   });
+
+  // Refresh token once on 401 (token may have expired mid-use despite local TTL)
+  if (res.status === 401) {
+    logger.warn('Admitad campaigns: 401 — refreshing token and retrying');
+    invalidateAdmitadToken();
+    const freshToken = await getAdmitadToken();
+    res = await fetch(endpoint, { headers: { Authorization: `Bearer ${freshToken}` }, signal: AbortSignal.timeout(20_000) });
+  }
 
   if (!res.ok) {
     const text = await res.text();
@@ -69,10 +79,18 @@ async function generateDeeplink(token, websiteId, campaignId, targetUrl) {
     subid: `auto-${Date.now()}`,
   });
 
-  const res = await fetch(
+  let res = await fetch(
     `${API_BASE}/deeplink/${websiteId}/advcampaign/${campaignId}/?${params}`,
-    { headers: { Authorization: `Bearer ${token}` } },
+    { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(20_000) },
   );
+
+  if (res.status === 429) {
+    await sleepRetryAfter(res.headers.get('Retry-After'), { name: 'Admitad deeplink', fallbackMs: 10_000 });
+    res = await fetch(
+      `${API_BASE}/deeplink/${websiteId}/advcampaign/${campaignId}/?${params}`,
+      { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(20_000) },
+    );
+  }
 
   if (!res.ok) throw new Error(`Deeplink API ${res.status}`);
 

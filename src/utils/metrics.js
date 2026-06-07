@@ -74,6 +74,17 @@ export function getLastPostedSource() {
   return last.source || null;
 }
 
+/** Returns the sources of the last N posted products (most recent first). */
+export function getRecentPostedSources(n = 3) {
+  const entries = loadPosted();
+  if (!entries.length) return [];
+  return entries
+    .filter(e => e.source)
+    .sort((a, b) => new Date(b.postedAt) - new Date(a.postedAt))
+    .slice(0, n)
+    .map(e => e.source);
+}
+
 /**
  * Returns true if this deeplink OR product name was posted in the last 60 days.
  * Catches duplicates even when the URL differs slightly between runs.
@@ -96,10 +107,34 @@ export function getDedupStatus() {
   const entries = loadPosted();
   const cutoff  = Date.now() - DEDUP_MS;
   const active  = entries.filter(e => new Date(e.postedAt).getTime() > cutoff);
-  return { total: active.length, recent: active.slice(-5).reverse() };
+  return { total: active.length, recent: active.slice(-10).reverse() };
 }
 
 /** Clears the entire dedup store — use for testing or manual reset. */
 export function clearPostedStore() {
   savePosted([]);
+}
+
+/**
+ * Returns daily post counts broken down by network for the last N days.
+ * Result: { date: 'YYYY-MM-DD', totals: N, byNetwork: { source: N, ... } }[]
+ */
+export function getDailyNetworkStats(days = 7) {
+  const runs = load().runs;
+  const now = new Date();
+  const result = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(now);
+    d.setUTCDate(d.getUTCDate() - i);
+    const dateStr = d.toISOString().slice(0, 10);
+    const dayRuns = runs.filter(r => r.timestamp && r.timestamp.startsWith(dateStr));
+    const successRuns = dayRuns.filter(r => r.success);
+    const byNetwork = {};
+    for (const r of successRuns) {
+      const src = r.productSource || 'unknown';
+      byNetwork[src] = (byNetwork[src] || 0) + 1;
+    }
+    result.push({ date: dateStr, total: successRuns.length, failed: dayRuns.length - successRuns.length, byNetwork });
+  }
+  return result;
 }

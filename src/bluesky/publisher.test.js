@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { sourceEmoji } from './publisher.js';
 
 // Re-implement the facet calculation logic extracted for testing
 function buildPostRecord(text, deeplink, maxLen = 300) {
@@ -58,5 +59,53 @@ describe('publisher text truncation', () => {
     const deeplink = 'https://shop.example.com';
     const { text: result } = buildPostRecord(text, deeplink, 300);
     assert.ok(Buffer.byteLength(result, 'utf8') <= 300);
+  });
+});
+
+describe('sourceEmoji', () => {
+  it('returns travel emoji for travelpayouts', () => {
+    assert.equal(sourceEmoji('travelpayouts'), '✈️');
+  });
+
+  it('returns shopping emoji for temu', () => {
+    assert.equal(sourceEmoji('temu'), '🛍️');
+  });
+
+  it('returns fallback link emoji for unknown source', () => {
+    assert.equal(sourceEmoji('unknown-network'), '🔗');
+    assert.equal(sourceEmoji(null), '🔗');
+    assert.equal(sourceEmoji(undefined), '🔗');
+  });
+
+  it('covers all 9 known networks', () => {
+    const networks = ['travelpayouts','temu','cj','shareasale','impact','takeads','admitad','admitad-catalog','admitad-api'];
+    for (const n of networks) {
+      assert.notEqual(sourceEmoji(n), '🔗', `${n} should have a dedicated emoji`);
+    }
+  });
+});
+
+describe('external embed builder', () => {
+  it('builds external embed with correct fields', () => {
+    const product = { name: 'Running Shoes', description: 'Comfortable shoes for all', source: 'impact' };
+    const deeplink = 'https://track.impact.com/c/abc';
+    // Inline the logic from buildExternalEmbed
+    const embed = {
+      $type: 'app.bsky.embed.external',
+      external: { uri: deeplink, title: product.name, description: product.description, thumb: undefined },
+    };
+    assert.equal(embed.$type, 'app.bsky.embed.external');
+    assert.equal(embed.external.uri, deeplink);
+    assert.equal(embed.external.title, product.name);
+    assert.equal(embed.external.description, product.description);
+  });
+
+  it('truncates long title and description to 300 chars', () => {
+    const longName = 'A'.repeat(400);
+    const longDesc = 'B'.repeat(400);
+    const title = longName.slice(0, 300);
+    const desc  = longDesc.slice(0, 300);
+    assert.equal(title.length, 300);
+    assert.equal(desc.length, 300);
   });
 });

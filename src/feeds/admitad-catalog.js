@@ -72,7 +72,9 @@ function parseJsonCatalog(data, url) {
   const valid = items.filter(o => {
     const link = o.goto_link || o.gotolink || o.affiliate_url || o.url;
     if (!link) return false;
-    try { new URL(link); return true; } catch { return false; }
+    try { new URL(link); } catch { return false; }
+    const name = String(o.name || o.title || '').trim();
+    return isLikelyEnglishOrNeutral(name);
   });
 
   if (valid.length === 0) {
@@ -80,9 +82,14 @@ function parseJsonCatalog(data, url) {
     return null;
   }
 
-  // Shuffle fully so all products rotate over time
-  valid.sort(() => Math.random() - 0.5);
-  const item = valid[0];
+  // Prefer products with images
+  const withImage = valid.filter(o => {
+    const img = o.picture || o.image || o.image_url;
+    return img && /^https?:\/\//.test(img) && !/\blogo\b|sprite|placeholder/i.test(img);
+  });
+  const pool = withImage.length > 0 ? withImage : valid;
+  pool.sort(() => Math.random() - 0.5);
+  const item = pool[0];
 
   const siteUrl  = normaliseAliExpressUrl(item.goto_link || item.gotolink || item.affiliate_url || item.url);
   const imageUrl = item.picture || item.image || item.image_url || null;
@@ -173,6 +180,12 @@ function parseYmlCatalog(xml) {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+function isLikelyEnglishOrNeutral(str) {
+  if (!str || str.length < 3) return true;
+  const nonLatin = (str.match(/[^ -ɏ\s\d\p{P}]/gu) || []).length;
+  return nonLatin / str.length < 0.4;
+}
 
 function extractXmlTag(xml, tag) {
   const m = xml.match(new RegExp(

@@ -1,5 +1,6 @@
 import fetch from 'node-fetch';
 import { logger } from '../utils/logger.js';
+import { sleepRetryAfter } from '../utils/rate-limit.js';
 
 const API_BASE = 'https://link-search.api.cj.com/v2/link-search';
 
@@ -27,6 +28,18 @@ async function fetchLinks(apiKey, websiteId) {
     signal: AbortSignal.timeout(30_000),
   });
 
+  if (res.status === 429) {
+    await sleepRetryAfter(res.headers.get('Retry-After'), { name: 'CJ Affiliate', fallbackMs: 10_000 });
+    const res2 = await fetch(`${API_BASE}?${params}`, {
+      headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' },
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!res2.ok) throw new Error(`CJ API ${res2.status} (retry)`);
+    const data2 = await res2.json();
+    const raw2 = data2?.links?.link ?? [];
+    return Array.isArray(raw2) ? raw2 : [raw2];
+  }
+
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`CJ API ${res.status}: ${text.slice(0, 200)}`);
@@ -46,8 +59,14 @@ function pickLink(links) {
   });
 
   if (valid.length === 0) return null;
-  valid.sort(() => Math.random() - 0.5);
-  return valid[0];
+  // Prefer links with commission > 0
+  const withCommission = valid.filter(l => {
+    const commStr = l['click-commission'] || l['sale-commission'] || '0';
+    return parseFloat(commStr.replace('%', '')) > 0;
+  });
+  const pool = withCommission.length > 0 ? withCommission : valid;
+  pool.sort(() => Math.random() - 0.5);
+  return pool[0];
 }
 
 function buildProduct(link) {
@@ -58,7 +77,8 @@ function buildProduct(link) {
   const commStr  = link['click-commission'] || link['sale-commission'] || '0';
   const commission = parseFloat(commStr.replace('%', '')) || 0;
 
-  logger.info(`CJ link selected: "${name}" (${link['@advertiser-name']}) → ${siteUrl.slice(0, 60)}`);
+  const advertiserName = String(link['@advertiser-name'] || '').trim();
+  logger.info(`CJ link selected: "${name}" (${advertiserName}) → ${siteUrl.slice(0, 60)}`);
 
   return {
     id:             String(link['@id'] || link['link-id'] || ''),
@@ -69,6 +89,7 @@ function buildProduct(link) {
     price:          null,
     currency:       'USD',
     commissionRate: commission,
+    category:       String(link['link-type'] || link['category'] || advertiserName || '').trim() || null,
     source:         'cj',
   };
 }

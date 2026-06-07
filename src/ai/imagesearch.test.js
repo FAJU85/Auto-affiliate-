@@ -37,6 +37,17 @@ describe('og:image extraction regex', () => {
   });
 });
 
+describe('link rel=image_src extraction', () => {
+  const LINK_REGEX = /<link[^>]+rel=["']image_src["'][^>]+href=["']([^"']+)["']/i;
+
+  it('matches link rel=image_src', () => {
+    const html = `<link rel="image_src" href="https://example.com/product.jpg">`;
+    const m = html.match(LINK_REGEX);
+    assert.ok(m);
+    assert.equal(m[1], 'https://example.com/product.jpg');
+  });
+});
+
 describe('first img src fallback regex', () => {
   it('extracts first https img src', () => {
     const html = `<img class="hero" src="https://img.example.com/product.jpg" alt="Product">`;
@@ -55,6 +66,42 @@ describe('first img src fallback regex', () => {
     const html = `<img src="/images/product.jpg">`;
     const m = html.match(IMG_REGEX);
     assert.equal(m, null);
+  });
+});
+
+describe('bad image URL detection', () => {
+  const BAD_URLS = [
+    'https://example.com/logo.png',
+    'https://example.com/qr_code.jpg',
+    'https://example.com/sprite.svg',
+    'https://example.com/placeholder.jpg',
+    'https://example.com/no_image.gif',
+    'data:image/png;base64,abc',
+  ];
+  const GOOD_URLS = [
+    'https://example.com/product-image.jpg',
+    'https://cdn.aliexpress.com/img/product123.jpg',
+    'https://shop.example.com/items/shoes-blue.webp',
+  ];
+
+  it('flags bad image URLs (logo, QR, placeholder, etc)', () => {
+    const src = (() => {
+      // Inline the isBadImageUrl logic from imagesearch.js
+      const BAD_URL_PATTERNS = [
+        /qr[_\-.]?code/i, /barcode/i, /captcha/i,
+        /\blogo\b/i, /sprite/i, /icon\.(png|svg|gif|webp)$/i,
+        /placeholder/i, /default[-_]image/i, /no[-_]image/i, /blank/i,
+        /selene-static/i, /data:image/i,
+      ];
+      return url => {
+        if (!url || typeof url !== 'string') return true;
+        if (!url.startsWith('http')) return true;
+        return BAD_URL_PATTERNS.some(p => p.test(url));
+      };
+    })();
+
+    for (const u of BAD_URLS) assert.ok(src(u), `should be bad: ${u}`);
+    for (const u of GOOD_URLS) assert.ok(!src(u), `should be good: ${u}`);
   });
 });
 

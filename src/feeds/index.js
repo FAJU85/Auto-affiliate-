@@ -8,9 +8,9 @@ import { getImpactProduct } from './impact.js';
 import { getCJProduct } from './cj.js';
 import { getShareASaleProduct } from './shareasale.js';
 import { logger } from '../utils/logger.js';
-import { getLastPostedSource } from '../utils/metrics.js';
+import { getLastPostedSource, getRecentPostedSources } from '../utils/metrics.js';
 
-const TASKS = [
+export const TASKS = [
   { key: 'admitad-feed',    fn: getAdmitadProduct,         env: () => !!process.env.ADMITAD_FEED_URL },
   { key: 'admitad-api',     fn: getAdmitadApiProduct,      env: () => !!(process.env.ADMITAD_CLIENT_ID && process.env.ADMITAD_CLIENT_SECRET && process.env.ADMITAD_WEBSITE_ID) },
   { key: 'admitad-catalog', fn: getAdmitadCatalogProduct,  env: () => [1,2,3,4,5].some(n => process.env[`ADMITAD_CATALOG_URL_${n}`]) },
@@ -22,6 +22,18 @@ const TASKS = [
   { key: 'shareasale',      fn: getShareASaleProduct,      env: () => !!(process.env.SHAREASALE_TOKEN && process.env.SHAREASALE_SECRET && process.env.SHAREASALE_AFFILIATE_ID) },
 ];
 
+// Per-network last error and selection count tracking (in-memory, reset on restart)
+const networkErrors = {};
+const networkSelectCounts = {};
+
+export function getNetworkErrors() {
+  return { ...networkErrors };
+}
+
+export function getNetworkSelectCounts() {
+  return { ...networkSelectCounts };
+}
+
 async function collectCandidates() {
   const enabled = TASKS.filter(t => t.env());
   const results = await Promise.allSettled(
@@ -29,29 +41,38 @@ async function collectCandidates() {
   );
 
   const candidates = [];
-  for (const r of results) {
+  for (let i = 0; i < results.length; i++) {
+    const r   = results[i];
+    const key = enabled[i].key;
     if (r.status === 'fulfilled' && r.value?.value) {
-      candidates.push(r.value.value);
-      logger.info(`Network available: ${r.value.key} → "${r.value.value.name}"`);
+      const product = r.value.value;
+      if (!product.category) product.category = key;
+      candidates.push(product);
+      delete networkErrors[key];
+      logger.info(`Network available: ${key} → "${product.name}"`);
     } else if (r.status === 'fulfilled') {
-      logger.warn(`Network unavailable: ${r.value?.key || 'unknown'} returned null`);
+      networkErrors[key] = { error: 'returned null', at: new Date().toISOString() };
+      logger.warn(`Network unavailable: ${key} returned null`);
     } else {
-      logger.warn(`Network unavailable: ${r.reason?.message || 'unknown error'}`);
+      networkErrors[key] = { error: r.reason?.message || 'unknown error', at: new Date().toISOString() };
+      logger.warn(`Network unavailable: ${key}: ${r.reason?.message || 'unknown error'}`);
     }
   }
   return candidates;
 }
 
 function pickWithRotation(candidates, wasPosted) {
-  const lastSource = getLastPostedSource();
-  const shuffled   = candidates.sort(() => Math.random() - 0.5);
-  const rotated    = lastSource
-    ? [...shuffled.filter(p => p.source !== lastSource), ...shuffled.filter(p => p.source === lastSource)]
+  const recentSources = getRecentPostedSources(3);
+  const shuffled = candidates.sort(() => Math.random() - 0.5);
+  // Move recently-used sources to the end (last used = least priority)
+  const rotated = recentSources.length
+    ? [...shuffled.filter(p => !recentSources.includes(p.source)), ...shuffled.filter(p => recentSources.includes(p.source))]
     : shuffled;
 
   if (wasPosted) {
     const fresh = rotated.find(p => !wasPosted(p.siteUrl, p.name));
     if (fresh) {
+      networkSelectCounts[fresh.source] = (networkSelectCounts[fresh.source] || 0) + 1;
       logger.info(`Selected fresh product from "${fresh.source}": ${fresh.name}`);
       return fresh;
     }
@@ -59,6 +80,7 @@ function pickWithRotation(candidates, wasPosted) {
   }
 
   const picked = rotated[0];
+  networkSelectCounts[picked.source] = (networkSelectCounts[picked.source] || 0) + 1;
   logger.info(`Selected product from "${picked.source}": ${picked.name}`);
   return picked;
 }

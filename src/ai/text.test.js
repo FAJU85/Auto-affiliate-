@@ -6,8 +6,15 @@ import os from 'node:os';
 
 // Inline the sanitiser to test without network
 function sanitiseForPrompt(str) {
-  return str
+  return String(str ?? '')
     .replace(/<\|[^|>]*\|>/g, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#?\w+;/g, ' ')
     .replace(/[\x00-\x1F\x7F]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -37,6 +44,22 @@ describe('prompt sanitisation', () => {
 
   it('collapses whitespace', () => {
     assert.equal(sanitiseForPrompt('  too   many   spaces  '), 'too many spaces');
+  });
+
+  it('strips HTML tags', () => {
+    const html = '<p>Great <strong>product</strong> for <em>home</em> use</p>';
+    const result = sanitiseForPrompt(html);
+    assert.ok(!result.includes('<'), 'HTML tags removed');
+    assert.ok(result.includes('Great'), 'text content preserved');
+    assert.ok(result.includes('product'), 'inner text preserved');
+  });
+
+  it('decodes common HTML entities', () => {
+    const input = 'Price &amp; quality &lt;unbeatable&gt; &nbsp;value';
+    const result = sanitiseForPrompt(input);
+    assert.ok(result.includes('&'), 'amp decoded');
+    assert.ok(result.includes('<'), 'lt decoded');
+    assert.ok(!result.includes('&nbsp;'), 'nbsp removed');
   });
 
   it('empty string stays empty', () => {
@@ -115,6 +138,34 @@ describe('provider config', () => {
   });
 });
 
+
+describe('price formatting', () => {
+  it('includes USD price in template fallback', () => {
+    const src = fs.readFileSync('src/ai/text.js', 'utf8');
+    assert.ok(src.includes('formatPrice'), 'formatPrice function present');
+    assert.ok(src.includes("currency === 'USD'"), 'USD symbol logic present');
+  });
+
+  it('{price} placeholder exists in default user template', () => {
+    const src = fs.readFileSync('src/config/settings.js', 'utf8');
+    assert.ok(src.includes('{price}'), 'price placeholder in default template');
+  });
+});
+
+describe('isLikelyEnglish (via source code)', () => {
+  it('language filter function exists in text.js', () => {
+    const src = fs.readFileSync('src/ai/text.js', 'utf8');
+    assert.ok(src.includes('isLikelyEnglish'), 'isLikelyEnglish function defined');
+    assert.ok(src.includes('nonLatin'), 'uses nonLatin detection');
+  });
+});
+
+describe('clearCaptionCache export', () => {
+  it('clearCaptionCache is exported from text.js', () => {
+    const src = fs.readFileSync('src/ai/text.js', 'utf8');
+    assert.ok(src.includes('export function clearCaptionCache'), 'clearCaptionCache exported');
+  });
+});
 
 describe('SOURCE_PROMPTS coverage', () => {
   it('all expected sources have a prompt entry', () => {

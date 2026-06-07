@@ -45,6 +45,46 @@ describe('getProduct — dedup and fallback logic', () => {
   });
 });
 
+describe('getNetworkErrors', () => {
+  it('exports getNetworkErrors returning an object', async () => {
+    const { getNetworkErrors } = await import('./index.js');
+    const errs = getNetworkErrors();
+    assert.ok(errs !== null && typeof errs === 'object');
+  });
+});
+
+describe('getNetworkSelectCounts', () => {
+  it('exports getNetworkSelectCounts returning an object', async () => {
+    const { getNetworkSelectCounts } = await import('./index.js');
+    const counts = getNetworkSelectCounts();
+    assert.ok(counts !== null && typeof counts === 'object');
+  });
+});
+
+describe('TASKS consistency', () => {
+  it('TASKS covers all 9 networks', async () => {
+    const { TASKS } = await import('./index.js');
+    const expectedKeys = [
+      'admitad-feed', 'admitad-api', 'admitad-catalog',
+      'temu', 'takeads', 'travelpayouts', 'impact', 'cj', 'shareasale',
+    ];
+    assert.ok(Array.isArray(TASKS), 'TASKS is an array');
+    assert.equal(TASKS.length, 9, 'TASKS has 9 networks');
+    for (const key of expectedKeys) {
+      assert.ok(TASKS.some(t => t.key === key), `TASKS missing: ${key}`);
+    }
+  });
+
+  it('each TASK has key, fn, and env properties', async () => {
+    const { TASKS } = await import('./index.js');
+    for (const task of TASKS) {
+      assert.ok(typeof task.key === 'string', `key is string: ${task.key}`);
+      assert.ok(typeof task.fn === 'function', `fn is function: ${task.key}`);
+      assert.ok(typeof task.env === 'function', `env is function: ${task.key}`);
+    }
+  });
+});
+
 describe('getProduct — product shape validation', () => {
   it('unified product interface has all required keys', () => {
     const product = {

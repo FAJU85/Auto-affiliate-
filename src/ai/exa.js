@@ -8,13 +8,18 @@ const EXA_API = 'https://api.exa.ai/search';
  * Returns a short enrichment string (≤300 chars) to append to the AI prompt,
  * or null if EXA_API_KEY is not set or the search fails.
  */
+function safeQuery(name, category) {
+  const clean = String(name || '').replace(/[^\w\s\-]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
+  return category && category !== name
+    ? `${clean} ${category} review features benefits`
+    : `${clean} review features why buy`;
+}
+
 export async function getProductHighlights(productName, category) {
   const apiKey = process.env.EXA_API_KEY;
   if (!apiKey) return null;
 
-  const query = category && category !== productName
-    ? `${productName} ${category} review features benefits`
-    : `${productName} review features why buy`;
+  const query = safeQuery(productName, category);
 
   try {
     const res = await fetch(EXA_API, {

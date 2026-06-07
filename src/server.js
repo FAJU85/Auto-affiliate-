@@ -1,9 +1,10 @@
 import http from 'http';
 import { getDailySpend } from './utils/budget.js';
-import { getRecentRuns, getDedupStatus, clearPostedStore } from './utils/metrics.js';
-import { logger } from './utils/logger.js';
+import { getRecentRuns, getDedupStatus, clearPostedStore, wasRecentlyPosted, getDailyNetworkStats } from './utils/metrics.js';
+import { logger, getRecentLogs } from './utils/logger.js';
 import { getSettings, saveSettings, getSpaceHost } from './config/settings.js';
 import { getOAuthClient, getConnectedDid, disconnectBluesky } from './auth/bluesky-oauth.js';
+import { nextCronRun } from './utils/cron-next.js';
 
 const PORT = parseInt(process.env.PORT || '7860', 10);
 
@@ -20,7 +21,7 @@ function getStatusPayload(isRunning) {
   const runs  = getRecentRuns(20);
   const today = new Date().toISOString().slice(0, 10);
   return {
-    pipeline:    { running: isRunning, schedule: settings.cronSchedule },
+    pipeline:    { running: isRunning, schedule: settings.cronSchedule, postingHours: process.env.POSTING_HOURS || settings.postingHours || '8-22', nextRun: nextCronRun(settings.cronSchedule || '0 * * * *')?.toISOString() || null },
     budget:      { spent: spend, cap, alert, pct: spend / cap },
     stats:       {
       postsToday:   runs.filter(r => r.success && r.timestamp?.startsWith(today)).length,
@@ -153,6 +154,8 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
     <button class="tab active" onclick="showTab('status')">📊 Status</button>
     <button class="tab" onclick="showTab('accounts')">🔗 Accounts</button>
     <button class="tab" onclick="showTab('config')">⚙️ Space Config</button>
+    <button class="tab" onclick="showTab('logs');fetchLogs()">🪵 Logs</button>
+    <button class="tab" onclick="showTab('analytics');fetchStats()">📈 Analytics</button>
   </div>
 
   <!-- ═══ STATUS TAB ═══ -->
@@ -173,6 +176,7 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
         <div class="card-label">Success rate</div>
         <div class="card-value" id="kpi-success">—</div>
         <div class="card-sub" id="kpi-success-sub">last runs</div>
+        <svg id="sparkline" viewBox="0 0 100 30" preserveAspectRatio="none" style="width:100%;height:30px;margin-top:.5rem;display:block"></svg>
       </div>
       <div class="card">
         <div class="card-label">Daily spend</div>
@@ -183,7 +187,7 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
       <div class="card">
         <div class="card-label">Schedule</div>
         <div class="card-value" style="font-size:1rem;padding-top:.35rem" id="kpi-schedule">—</div>
-        <div class="card-sub">cron expression</div>
+        <div class="card-sub" id="kpi-posting-hours">posting hours: —</div>
       </div>
     </div>
 
@@ -202,10 +206,13 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
       </div>
     </div>
 
-    <div class="section" style="display:flex;align-items:center;gap:1rem">
+    <div class="section" style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
       <button class="btn btn-primary" id="run-btn" onclick="triggerRun()">▶ Run now</button>
+      <button class="btn btn-outline" id="dry-btn" onclick="dryRun()">🔍 Dry run</button>
+      <button class="btn btn-outline" id="pause-btn" onclick="toggleScheduler()" style="font-size:.85rem">⏸ Pause scheduler</button>
       <span id="run-msg" style="font-size:.85rem;color:var(--muted)"></span>
     </div>
+    <div id="dry-result" style="display:none;margin-top:1rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem;font-size:.875rem"></div>
 
     <div class="section">
       <div class="section-title">Run history</div>
@@ -224,11 +231,12 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
 
     <div class="section">
       <div class="section-title">60-day dedup store</div>
-      <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:.75rem">
         <span id="dedup-count" style="font-size:.9rem;color:var(--muted)">Loading…</span>
         <button id="dedup-clear-btn" onclick="clearDedup()" style="padding:.25rem .75rem;font-size:.8rem;background:#ef4444;color:#fff;border:none;border-radius:6px;cursor:pointer">Clear store</button>
         <span id="dedup-clear-msg" style="font-size:.8rem;color:var(--muted)"></span>
       </div>
+      <div id="dedup-recent" style="display:flex;flex-wrap:wrap;gap:.4rem"></div>
     </div>
   </div>
 
@@ -286,6 +294,13 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
         <button class="btn btn-success" onclick="connectBlueSky()">Connect →</button>
       </div>
       <p id="bsky-connect-msg" style="margin-top:.75rem;font-size:.8rem;color:var(--muted)"></p>
+    </div>
+
+    <!-- App-password alternative -->
+    <div id="bsky-apppass-box" class="connect-box" style="display:none;margin-top:1rem">
+      <h3>Or connect with App Password</h3>
+      <p>Set <code>BSKY_HANDLE</code> and <code>BSKY_APP_PASSWORD</code> in your Space secrets — the pipeline will use them automatically on next run.</p>
+      <p style="margin-top:.5rem;font-size:.8rem">Create an app password at <strong>bsky.app → Settings → App Passwords</strong>.</p>
     </div>
 
   </div>
@@ -349,7 +364,7 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
           <textarea id="cfg-postUserTemplate" rows="3"
             style="background:#0f172a;border:1px solid var(--border);border-radius:8px;padding:.65rem .9rem;color:var(--text);font-size:.875rem;resize:vertical;font-family:inherit;line-height:1.5"
           ></textarea>
-          <span class="hint">The actual request sent per post. Placeholders: <code>{name}</code> <code>{category}</code> <code>{description}</code> <code>{trend}</code></span>
+          <span class="hint">The actual request sent per post. Placeholders: <code>{name}</code> <code>{category}</code> <code>{description}</code> <code>{price}</code> <code>{trend}</code> <code>{highlights}</code></span>
         </div>
       </div>
 
@@ -361,9 +376,32 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
 
   </div>
 
+  <!-- ═══ LOGS TAB ═══ -->
+  <div id="tab-logs" class="tab-panel">
+    <div class="section">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+        <div class="section-title" style="margin-bottom:0">Live Log Buffer (last 100)</div>
+        <button class="btn btn-outline" onclick="fetchLogs()" style="font-size:.8rem;padding:.3rem .75rem">↻ Refresh</button>
+      </div>
+      <div id="log-output" style="background:#050b15;border:1px solid var(--border);border-radius:var(--radius);padding:1rem;font-family:monospace;font-size:.78rem;line-height:1.6;max-height:600px;overflow-y:auto;color:#94a3b8">Loading…</div>
+    </div>
+  </div>
+
+  <!-- ═══ ANALYTICS TAB ═══ -->
+  <div id="tab-analytics" class="tab-panel" style="display:none">
+    <div class="section">
+      <div class="section-title">Daily Posts by Network (last 7 days)</div>
+      <div id="stats-chart" style="overflow-x:auto;min-height:220px">Loading…</div>
+    </div>
+    <div class="section">
+      <div class="section-title">Post Totals</div>
+      <div id="stats-totals" style="display:flex;gap:1rem;flex-wrap:wrap"></div>
+    </div>
+  </div>
+
 </main>
 
-<footer>Auto-Affiliate Pipeline · <a href="/health" style="color:var(--muted)">/health</a></footer>
+<footer>Auto-Affiliate Pipeline · <a href="/health" style="color:var(--muted)">/health</a> · <a href="/api/history/csv" style="color:var(--muted)">Export CSV</a></footer>
 
 <script>
 // ── Tab switching ──
@@ -408,8 +446,8 @@ function renderRunHistory(runs) {
     const src=r.productSource?'<span class="badge img">'+esc(r.productSource)+'</span>':'<span style="color:var(--muted)">—</span>';
     const img=r.imageGenerated?'<span class="badge img">🖼 '+(r.imageSource||'')+'</span>':'<span style="color:var(--muted)">—</span>';
     const err=r.error?'<span class="err-cell" title="'+esc(r.error)+'">'+esc(r.error.slice(0,50))+'</span>':'<span style="color:var(--muted)">—</span>';
-    const postLink=r.postUri?'<a href="'+esc(r.postUri)+'" target="_blank" rel="noopener" style="font-size:.75rem;color:var(--accent)">view</a>':'<span style="color:var(--muted)">—</span>';
-    return '<tr><td>'+ok+'</td><td>'+ts+'</td><td>'+(r.product||'—')+'</td><td>'+src+'</td><td>'+postLink+'</td><td>'+img+'</td><td>'+(r.durationMs?(r.durationMs/1000).toFixed(1)+'s':'—')+'</td><td>'+err+'</td></tr>';
+    const postLink=r.postUri?'<a href="'+esc(r.postUri)+'" target="_blank" rel="noopener" style="font-size:.75rem;color:var(--accent)" title="'+esc(r.caption||'')+'">view</a>':'<span style="color:var(--muted)">—</span>';
+    return '<tr><td>'+ok+'</td><td>'+ts+'</td><td title="'+esc(r.caption||'')+'">'+(r.product||'—')+'</td><td>'+src+'</td><td>'+postLink+'</td><td>'+img+'</td><td>'+(r.durationMs?(r.durationMs/1000).toFixed(1)+'s':'—')+'</td><td>'+err+'</td></tr>';
   }).join('');
 }
 
@@ -431,6 +469,16 @@ function renderStatus(d) {
   document.getElementById('kpi-success').textContent = d.stats.successRate!=null ? d.stats.successRate+'%' : '—';
   document.getElementById('kpi-success-sub').textContent = 'last '+d.stats.totalRuns+' runs';
   document.getElementById('kpi-schedule').textContent = d.pipeline.schedule;
+  document.getElementById('kpi-posting-hours').textContent = 'posting hours (UTC): ' + (d.pipeline.postingHours || '8-22');
+  if (d.pipeline.nextRun) {
+    const nr = new Date(d.pipeline.nextRun);
+    const diffMs = nr - Date.now();
+    const diffMin = Math.max(0, Math.floor(diffMs / 60000));
+    const countdown = diffMin < 60 ? `${diffMin}m` : `${Math.floor(diffMin/60)}h${diffMin%60 ? diffMin%60+'m' : ''}`;
+    document.getElementById('kpi-posting-hours').textContent = `next run in ${countdown} · hours (UTC): ${d.pipeline.postingHours || '8-22'}`;
+  } else {
+    document.getElementById('kpi-posting-hours').textContent = 'posting hours (UTC): ' + (d.pipeline.postingHours || '8-22');
+  }
 
   const {spent:sp,cap,pct,alert} = d.budget;
   document.getElementById('kpi-spend').textContent     = '$'+sp.toFixed(4);
@@ -441,6 +489,8 @@ function renderStatus(d) {
 
   renderLastRun(d.lastRun);
   document.getElementById('run-btn').disabled = d.pipeline.running;
+  adjustPollRate(d.pipeline.running);
+  renderSparkline(d.runs);
   renderRunHistory(d.runs);
   document.getElementById('last-updated').textContent='Updated '+new Date().toLocaleTimeString();
 }
@@ -449,13 +499,27 @@ function renderNetworks(networks) {
   const el = document.getElementById('networks-list');
   if (!el || !Array.isArray(networks)) return;
   el.innerHTML = networks.map(function(n) {
-    const color = n.enabled ? '#22c55e' : '#6b7280';
-    const icon  = n.enabled ? '&#10003;' : '&#10007;';
-    return '<span style="display:inline-flex;align-items:center;gap:.3rem;background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:.25rem .75rem;font-size:.8rem;color:'+color+'">'+icon+' '+esc(n.label)+'</span>';
+    const color = n.enabled ? (n.lastError ? '#f59e0b' : '#22c55e') : '#6b7280';
+    const icon  = n.enabled ? (n.lastError ? '&#9888;' : '&#10003;') : '&#10007;';
+    const tip   = n.lastError ? ' title="Last error: '+esc(n.lastError)+'"' : '';
+    const cnt   = n.selectCount > 0 ? ' <span style="opacity:.6;font-size:.7rem">×'+n.selectCount+'</span>' : '';
+    const testBtn = n.enabled ? ' <button onclick="testNetwork(\''+esc(n.key)+'\')" style="padding:0 .4rem;font-size:.7rem;background:#1e293b;border:1px solid #334155;border-radius:4px;color:#94a3b8;cursor:pointer;line-height:1.5">test</button>' : '';
+    return '<span'+tip+' style="display:inline-flex;align-items:center;gap:.3rem;background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:.25rem .75rem;font-size:.8rem;color:'+color+';cursor:'+(n.lastError?'help':'default')+'">'+icon+' '+esc(n.label)+cnt+testBtn+'</span>';
   }).join('');
 }
 
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+function renderSparkline(runs) {
+  const svg = document.getElementById('sparkline');
+  if (!svg || !runs?.length) return;
+  const pts = runs.slice(-20).map(r => r.success ? 1 : 0);
+  if (pts.length < 2) return;
+  const w = 100, h = 30, step = w / (pts.length - 1);
+  const points = pts.map((v,i) => `${(i*step).toFixed(1)},${v ? 4 : h-4}`).join(' ');
+  svg.innerHTML = '<polyline points="'+points+'" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'
+    + pts.map((v,i)=>'<circle cx="'+(i*step).toFixed(1)+'" cy="'+(v?4:h-4)+'" r="2.5" fill="'+(v?'#22c55e':'#ef4444')+'"/>').join('');
+}
 
 async function triggerRun() {
   const btn=document.getElementById('run-btn'),msg=document.getElementById('run-msg');
@@ -467,11 +531,59 @@ async function triggerRun() {
   } catch{msg.textContent='Request failed';btn.disabled=false;}
 }
 
+let _schedulerPaused = false;
+async function toggleScheduler() {
+  const btn = document.getElementById('pause-btn');
+  const msg = document.getElementById('run-msg');
+  const endpoint = _schedulerPaused ? '/api/schedule/resume' : '/api/schedule/pause';
+  try {
+    const d = await fetch(endpoint, { method: 'POST' }).then(r => r.json());
+    if (d.ok) {
+      _schedulerPaused = d.paused;
+      btn.textContent = _schedulerPaused ? '▶ Resume scheduler' : '⏸ Pause scheduler';
+      msg.textContent = _schedulerPaused ? 'Scheduler paused' : 'Scheduler resumed';
+      setTimeout(() => { msg.textContent = ''; }, 4000);
+    }
+  } catch { msg.textContent = 'Request failed'; }
+}
+
+async function dryRun() {
+  const btn=document.getElementById('dry-btn'), msg=document.getElementById('run-msg');
+  const box=document.getElementById('dry-result');
+  btn.disabled=true; msg.textContent='Running dry test…'; box.style.display='none';
+  try {
+    const d=await fetch('/api/dry-run',{method:'POST'}).then(r=>r.json());
+    if (d.ok) {
+      box.style.display='block';
+      const priceStr = d.product.price ? ' · '+(d.product.currency==='USD'?'$':d.product.currency||'')+d.product.price : '';
+      const imgHtml = d.product.imageUrl
+        ? '<br><img src="'+esc(d.product.imageUrl)+'" alt="" style="max-width:200px;max-height:140px;border-radius:8px;margin-top:.5rem;object-fit:cover">'
+        : '';
+      box.innerHTML='<strong>Product:</strong> '+esc(d.product.name)+priceStr+' <span class="badge img">'+esc(d.product.source)+'</span>'
+        +'<br><strong>URL:</strong> <a href="'+esc(d.product.siteUrl)+'" target="_blank" rel="noopener" style="color:var(--accent);font-size:.8rem">'+esc(d.product.siteUrl.slice(0,60))+'…</a>'
+        +imgHtml
+        +'<br><br><strong>Caption preview:</strong><br><em style="color:var(--muted)">'+esc(d.caption)+'</em>'
+        +'<br><button onclick="navigator.clipboard.writeText('+JSON.stringify(d.caption+'\n\n'+d.product.siteUrl)+')" style="margin-top:.5rem;padding:.2rem .6rem;font-size:.75rem;background:#1e293b;border:1px solid var(--border);border-radius:6px;color:var(--text);cursor:pointer">Copy text</button>';
+      msg.textContent='Dry run complete ✓';
+    } else {
+      msg.textContent='Dry run error: '+(d.error||'unknown');
+    }
+  } catch(e) { msg.textContent='Request failed'; }
+  btn.disabled=false;
+}
+
 async function fetchDedup() {
   try {
     const d = await fetch('/api/dedup').then(r=>r.json());
     const el = document.getElementById('dedup-count');
     if (el) el.textContent = d.total + ' active entries (60-day window)';
+    const rEl = document.getElementById('dedup-recent');
+    if (rEl && d.recent?.length) {
+      rEl.innerHTML = d.recent.map(e =>
+        '<span title="'+esc(e.postedAt.replace('T',' ').slice(0,16))+' UTC" style="display:inline-flex;align-items:center;gap:.3rem;background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:.2rem .6rem;font-size:.75rem;color:var(--muted)">'
+        +(e.source?'<span class="badge img" style="padding:.1rem .4rem;font-size:.7rem">'+esc(e.source)+'</span>':'')+esc((e.name||'').slice(0,30))+'</span>'
+      ).join('');
+    } else if (rEl) { rEl.innerHTML = ''; }
   } catch(e) {}
 }
 
@@ -488,7 +600,12 @@ async function clearDedup() {
 
 fetchStatus();
 fetchDedup();
-setInterval(fetchStatus, 20000);
+// Poll faster (5s) while pipeline is running, slow (20s) when idle
+let _statusInterval = setInterval(fetchStatus, 20000);
+function adjustPollRate(running) {
+  clearInterval(_statusInterval);
+  _statusInterval = setInterval(fetchStatus, running ? 5000 : 20000);
+}
 setInterval(fetchDedup, 60000);
 
 // ── Accounts ──
@@ -522,6 +639,7 @@ function renderBskyStatus(bsky) {
 function showConnectBox() {
   const box = document.getElementById('bsky-connect-box');
   box.style.display = 'block';
+  document.getElementById('bsky-apppass-box').style.display = 'block';
   fetch('/api/accounts').then(r=>r.json()).then(d=>{
     const noHost = document.getElementById('bsky-no-host');
     const row = document.getElementById('bsky-connect-row');
@@ -599,6 +717,98 @@ async function saveConfig() {
 }
 
 loadConfig();
+
+// ── Network test ──
+async function testNetwork(key) {
+  const msg = document.getElementById('run-msg');
+  msg.textContent = 'Testing '+key+'…';
+  try {
+    const d = await fetch('/api/network/test', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({network:key})}).then(r=>r.json());
+    if (d.ok) {
+      msg.textContent = '✓ '+key+': "'+d.product.name+'"'+(d.product.price?' $'+d.product.price:'');
+    } else {
+      msg.textContent = '✗ '+key+': '+(d.error||'failed');
+    }
+  } catch(e) { msg.textContent = '✗ '+key+': request error'; }
+  setTimeout(()=>{ msg.textContent=''; }, 8000);
+}
+
+// ── Logs ──
+const LEVEL_COLOR = { error:'#ef4444', warn:'#f59e0b', info:'#94a3b8', debug:'#4b5563' };
+async function fetchLogs() {
+  try {
+    const logs = await fetch('/api/logs').then(r=>r.json());
+    const el = document.getElementById('log-output');
+    if (!el) return;
+    if (!logs?.length) { el.textContent = 'No logs yet.'; return; }
+    el.innerHTML = logs.slice().reverse().map(l => {
+      const color = LEVEL_COLOR[l.level] || '#94a3b8';
+      return '<div><span style="color:#4b5563">'+esc(l.ts.replace('T',' ').slice(0,19))+'</span> <span style="color:'+color+';font-weight:600">['+l.level.toUpperCase()+']</span> '+esc(l.msg)+'</div>';
+    }).join('');
+    el.scrollTop = 0;
+  } catch(e) { const el=document.getElementById('log-output'); if(el)el.textContent='Failed to load logs.'; }
+}
+
+// ── Analytics ──
+const NET_COLORS = {
+  'admitad-feed':'#6366f1','admitad-api':'#8b5cf6','admitad-catalog':'#a78bfa',
+  temu:'#f59e0b', cj:'#10b981', shareasale:'#ec4899', impact:'#3b82f6',
+  takeads:'#f97316', travelpayouts:'#06b6d4', unknown:'#64748b'
+};
+async function fetchStats() {
+  try {
+    const data = await fetch('/api/stats').then(r=>r.json());
+    const chartEl = document.getElementById('stats-chart');
+    const totalsEl = document.getElementById('stats-totals');
+    if (!chartEl || !totalsEl) return;
+
+    // Gather all networks present
+    const allNets = [...new Set(data.flatMap(d => Object.keys(d.byNetwork)))].sort();
+    const maxVal = Math.max(1, ...data.map(d => d.total));
+
+    // Build SVG bar chart
+    const barW = 40, gap = 12, padL = 32, padB = 30, padT = 10, h = 180;
+    const totalW = padL + data.length * (barW + gap);
+    let svg = `<svg viewBox="0 0 ${totalW} ${h+padB+padT}" style="width:100%;max-width:700px;display:block">`;
+    // Grid lines
+    for (let v of [0, Math.ceil(maxVal/2), maxVal]) {
+      const y = padT + h - Math.round(v / maxVal * h);
+      svg += `<line x1="${padL}" y1="${y}" x2="${totalW}" y2="${y}" stroke="#1e293b" stroke-width="1"/>`;
+      svg += `<text x="${padL-4}" y="${y+4}" text-anchor="end" font-size="10" fill="#64748b">${v}</text>`;
+    }
+    data.forEach((day, i) => {
+      const x = padL + i * (barW + gap);
+      let yOff = h;
+      allNets.forEach(net => {
+        const cnt = day.byNetwork[net] || 0;
+        if (!cnt) return;
+        const barH = Math.round(cnt / maxVal * h);
+        yOff -= barH;
+        svg += `<rect x="${x}" y="${padT+yOff}" width="${barW}" height="${barH}" fill="${NET_COLORS[net]||'#64748b'}" rx="2"><title>${net}: ${cnt}</title></rect>`;
+      });
+      // X label
+      svg += `<text x="${x+barW/2}" y="${padT+h+16}" text-anchor="middle" font-size="10" fill="#94a3b8">${day.date.slice(5)}</text>`;
+      // Total on top
+      if (day.total > 0)
+        svg += `<text x="${x+barW/2}" y="${padT+h-yOff-4}" text-anchor="middle" font-size="10" fill="#e2e8f0">${day.total}</text>`;
+    });
+    svg += '</svg>';
+    // Legend
+    svg += '<div style="display:flex;gap:.75rem;flex-wrap:wrap;margin-top:.5rem">' +
+      allNets.map(n => `<span style="display:flex;align-items:center;gap:.3rem;font-size:.8rem"><span style="width:10px;height:10px;border-radius:2px;background:${NET_COLORS[n]||'#64748b'};display:inline-block"></span>${n}</span>`).join('') +
+      '</div>';
+    chartEl.innerHTML = svg;
+
+    // Totals chips
+    const grandTotals = {};
+    data.forEach(d => { Object.entries(d.byNetwork).forEach(([k,v]) => { grandTotals[k] = (grandTotals[k]||0)+v; }); });
+    totalsEl.innerHTML = Object.entries(grandTotals).sort((a,b)=>b[1]-a[1])
+      .map(([k,v]) => `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:.5rem 1rem;text-align:center"><div style="font-size:.75rem;color:var(--muted)">${k}</div><div style="font-size:1.5rem;font-weight:700;color:${NET_COLORS[k]||'#94a3b8'}">${v}</div></div>`).join('');
+  } catch(e) {
+    const el = document.getElementById('stats-chart');
+    if (el) el.textContent = 'Failed to load stats.';
+  }
+}
 </script>
 </body>
 </html>`;
@@ -688,7 +898,22 @@ async function handleOAuthCallback(url, res) {
 
 async function routeRequest(req, res, url, getIsRunning, triggerRunFn, getMissingVars) {
   const path = url.pathname;
-  if (path === '/health') { res.writeHead(200, { 'Content-Type': 'text/plain' }); return res.end('ok'); }
+  if (path === '/health') {
+    const runs = getRecentRuns(20);
+    const last = runs.at(-1);
+    const successRate = runs.length ? (runs.filter(r => r.success).length / runs.length * 100).toFixed(0) : null;
+    const lastSuccess = runs.slice().reverse().find(r => r.success);
+    const hoursSinceSuccess = lastSuccess ? (Date.now() - new Date(lastSuccess.timestamp).getTime()) / 3600000 : null;
+    const healthy = runs.length === 0 || (successRate >= 50 && (hoursSinceSuccess === null || hoursSinceSuccess < 26));
+    res.writeHead(healthy ? 200 : 503, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({
+      status: healthy ? 'ok' : 'degraded',
+      ts: new Date().toISOString(),
+      successRate: successRate !== null ? `${successRate}%` : null,
+      hoursSinceLastSuccess: hoursSinceSuccess !== null ? Math.round(hoursSinceSuccess) : null,
+      lastRun: last ? { success: last.success, ts: last.timestamp, source: last.productSource } : null,
+    }));
+  }
   if (path === '/client-metadata.json') return handleClientMetadata(res);
   if (path === '/api/status') {
     const payload = getStatusPayload(getIsRunning());
@@ -705,11 +930,41 @@ async function routeRequest(req, res, url, getIsRunning, triggerRunFn, getMissin
     await disconnectBluesky();
     return json(res, 200, { ok: true });
   }
-  if (path === '/api/networks' && req.method === 'GET') return json(res, 200, getNetworkStatus());
+  if (path === '/api/networks' && req.method === 'GET') {
+    const { getNetworkErrors, getNetworkSelectCounts } = await import('./feeds/index.js');
+    const errors = getNetworkErrors();
+    const counts = getNetworkSelectCounts();
+    const networks = getNetworkStatus().map(n => ({
+      ...n,
+      lastError: errors[n.key]?.error || null,
+      lastErrorAt: errors[n.key]?.at || null,
+      selectCount: counts[n.key] || 0,
+    }));
+    return json(res, 200, networks);
+  }
   if (path === '/api/history' && req.method === 'GET') return json(res, 200, getRecentRuns(50));
+  if (path === '/api/history/csv' && req.method === 'GET') {
+    const runs = getRecentRuns(500);
+    const header = 'timestamp,success,product,source,imageSource,durationMs,error\n';
+    const rows = runs.map(r => [
+      r.timestamp||'', r.success?'1':'0',
+      (r.product||'').replace(/,/g,' '), r.productSource||'',
+      r.imageSource||'', r.durationMs||0, (r.error||'').replace(/,/g,' ').replace(/\n/g,' '),
+    ].join(',')).join('\n');
+    res.writeHead(200, { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename="pipeline-history.csv"' });
+    return res.end(header + rows);
+  }
+  if (path === '/api/logs' && req.method === 'GET') return json(res, 200, getRecentLogs(100));
+  if (path === '/api/stats' && req.method === 'GET') return json(res, 200, getDailyNetworkStats(7));
   if (path === '/api/dedup' && req.method === 'GET') return json(res, 200, getDedupStatus());
   if (path === '/api/dedup' && req.method === 'DELETE') { clearPostedStore(); return json(res, 200, { ok: true }); }
-  if (path === '/health') return json(res, 200, { ok: true, ts: new Date().toISOString() });
+  if (path === '/api/dedup/check' && req.method === 'POST') {
+    try {
+      const body = await readBody(req);
+      const { url, name } = JSON.parse(body);
+      return json(res, 200, { posted: wasRecentlyPosted(url, name) });
+    } catch (err) { return json(res, 400, { ok: false, error: err.message }); }
+  }
   if (path === '/oauth/bsky/start')  return handleOAuthStart(url, res);
   if (path === '/oauth/callback')    return handleOAuthCallback(url, res);
   if (path === '/api/run' && req.method === 'POST') {
@@ -718,6 +973,71 @@ async function routeRequest(req, res, url, getIsRunning, triggerRunFn, getMissin
     if (getIsRunning()) return json(res, 409, { ok: false, error: 'Pipeline already running' });
     triggerRunFn('manual');
     return json(res, 202, { ok: true, message: 'Run triggered' });
+  }
+
+  if (path === '/api/schedule/pause' && req.method === 'POST') {
+    try {
+      const { pauseScheduler } = await import('./index.js');
+      pauseScheduler();
+      return json(res, 200, { ok: true, paused: true });
+    } catch (err) {
+      return json(res, 500, { ok: false, error: err.message });
+    }
+  }
+
+  if (path === '/api/schedule/resume' && req.method === 'POST') {
+    try {
+      const { resumeScheduler } = await import('./index.js');
+      resumeScheduler();
+      return json(res, 200, { ok: true, paused: false });
+    } catch (err) {
+      return json(res, 500, { ok: false, error: err.message });
+    }
+  }
+
+  if (path === '/api/network/test' && req.method === 'POST') {
+    try {
+      const body = await readBody(req);
+      const { network } = JSON.parse(body);
+      const { TASKS } = await import('./feeds/index.js');
+      const task = TASKS.find(t => t.key === network);
+      if (!task) return json(res, 404, { ok: false, error: `Unknown network: ${network}` });
+      if (!task.env()) return json(res, 200, { ok: false, error: `${network} not configured (missing env vars)` });
+      const product = await task.fn();
+      if (!product) return json(res, 200, { ok: false, error: `${network} returned null (no product available)` });
+      return json(res, 200, { ok: true, product: { name: product.name, source: product.source, siteUrl: product.siteUrl, price: product.price || null } });
+    } catch (err) {
+      return json(res, 500, { ok: false, error: err.message });
+    }
+  }
+
+  if (path === '/api/caption/regenerate' && req.method === 'POST') {
+    try {
+      const body = JSON.parse(await readBody(req));
+      if (!body.productId) return json(res, 400, { ok: false, error: 'productId required' });
+      const { clearCaptionCache } = await import('./ai/text.js');
+      const cleared = clearCaptionCache(body.productId);
+      return json(res, 200, { ok: true, cleared });
+    } catch (err) {
+      return json(res, 500, { ok: false, error: err.message });
+    }
+  }
+
+  if (path === '/api/dry-run' && req.method === 'POST') {
+    try {
+      const { getProduct } = await import('./feeds/index.js');
+      const { generatePostText } = await import('./ai/text.js');
+      const { getTopTrends } = await import('./admitad/trends.js');
+      const [product, trends] = await Promise.all([getProduct(wasRecentlyPosted), getTopTrends(3)]);
+      const caption = await generatePostText(product, trends);
+      return json(res, 200, {
+        ok: true,
+        product: { name: product.name, source: product.source, siteUrl: product.siteUrl, imageUrl: product.imageUrl || null, price: product.price || null, currency: product.currency || null },
+        caption,
+      });
+    } catch (err) {
+      return json(res, 500, { ok: false, error: err.message });
+    }
   }
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
   res.end(DASHBOARD_HTML);

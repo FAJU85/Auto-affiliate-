@@ -56,6 +56,22 @@ function safeByteSlice(str, maxBytes) {
   return buf.slice(0, end).toString('utf8');
 }
 
+const SOURCE_EMOJI = {
+  travelpayouts:    '✈️',
+  temu:             '🛍️',
+  cj:               '🏷️',
+  shareasale:       '🎁',
+  impact:           '⭐',
+  takeads:          '💼',
+  admitad:          '🛒',
+  'admitad-catalog':'🛒',
+  'admitad-api':    '🛒',
+};
+
+export function sourceEmoji(source) {
+  return SOURCE_EMOJI[source] || '🔗';
+}
+
 function buildPostRecord(text, deeplink, maxLen) {
   const combined    = `${text}\n\n${deeplink}`;
   const truncated   = safeByteSlice(combined, maxLen);
@@ -85,27 +101,50 @@ async function postWithRetry(record) {
         invalidateAgent();
         try { currentAgent = await getBskyAgent(); } catch {}
       }
-      if (attempt < 3) await sleep(attempt * 2000);
+      // Bluesky rate-limit: response may include Retry-After or status 429
+      const isRateLimit = /rate.?limit|429/i.test(err.message);
+      const waitMs = isRateLimit ? 30_000 : attempt * 2000;
+      if (attempt < 3) await sleep(waitMs);
       else throw err;
     }
   }
 }
 
+function buildExternalEmbed(product, deeplink) {
+  if (typeof product !== 'object' || !product) return null;
+  const priceTag = product.price ? ` — ${product.currency === 'USD' ? '$' : product.currency || ''}${product.price}` : '';
+  const title = ((product.name || '') + priceTag).slice(0, 300);
+  const desc  = (product.description || product.name || '').slice(0, 300);
+  return {
+    $type: 'app.bsky.embed.external',
+    external: { uri: deeplink, title, description: desc, thumb: undefined },
+  };
+}
+
 export async function publishPost(text, deeplink, imageBuffer, product) {
   const productName = typeof product === 'string' ? product : product?.name;
   const altText = typeof product === 'object' ? buildAltText(product) : `${productName || 'Product image'}`;
+  const source  = typeof product === 'object' ? product?.source : null;
+  const emoji   = sourceEmoji(source);
+  const prefixed = text.startsWith(emoji) ? text : `${emoji} ${text}`;
 
   if (!isValidHttpUrl(deeplink)) {
     throw new Error(`publishPost: deeplink is not a valid URL: ${deeplink}`);
   }
 
+  // Bluesky facet URIs have a practical length limit
+  const truncatedDeeplink = deeplink.length > 2048 ? deeplink.slice(0, 2048) : deeplink;
+
   const maxLen = parseInt(process.env.MAX_POST_LENGTH || '300', 10);
-  const record = buildPostRecord(text, deeplink, maxLen);
+  const record = buildPostRecord(prefixed, truncatedDeeplink, maxLen);
 
   if (imageBuffer) {
     const agent = await getBskyAgent();
     const embed = await uploadImageBlob(agent, imageBuffer, altText);
     if (embed) record.embed = embed;
+  } else {
+    const extEmbed = buildExternalEmbed(product, truncatedDeeplink);
+    if (extEmbed) record.embed = extEmbed;
   }
 
   return postWithRetry(record);

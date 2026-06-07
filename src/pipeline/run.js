@@ -76,6 +76,7 @@ async function executePost(runMeta) {
   payload = { ...payload, caption };
   runMeta.caption      = caption;
   runMeta.captionChars = caption.length;
+  logger.info(`Caption (${caption.length} chars): ${caption.slice(0, 100)}${caption.length > 100 ? '…' : ''}`);
 
   const { imageBuffer: rawImage, imageSource } = await acquireImage(payload);
   const upscaled    = rawImage ? await upscaleImage(rawImage) : null;
@@ -91,12 +92,19 @@ async function executePost(runMeta) {
   logger.info(`=== Pipeline v2 complete. Post: ${uri} ===`);
 }
 
+const PIPELINE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes max per run
+
 export async function runPipeline() {
   const startTime = Date.now();
   const runMeta   = initRunMeta();
   logger.info('=== Pipeline v2 run starting ===');
   try {
-    await executePost(runMeta);
+    await Promise.race([
+      executePost(runMeta),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Pipeline timeout after 5 minutes')), PIPELINE_TIMEOUT_MS)
+      ),
+    ]);
   } catch (err) {
     runMeta.error      = err.message;
     runMeta.errorStack = err.stack?.split('\n').slice(0, 5).join(' | ') || null;
@@ -105,5 +113,31 @@ export async function runPipeline() {
   runMeta.durationMs    = Date.now() - startTime;
   runMeta.dailySpendUsd = getDailySpend();
   recordRun(runMeta);
+  notifyWebhook(runMeta);
   return runMeta;
+}
+
+function notifyWebhook(runMeta) {
+  const url = process.env.WEBHOOK_URL;
+  if (!url) return;
+  const payload = {
+    success: runMeta.success,
+    product: runMeta.product,
+    source:  runMeta.productSource,
+    postUri: runMeta.postUri,
+    error:   runMeta.error || null,
+    durationMs: runMeta.durationMs,
+    ts: new Date().toISOString(),
+  };
+  fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(10_000),
+  }).then(r => {
+    if (!r.ok) logger.warn(`Webhook delivery failed: HTTP ${r.status}`);
+    else logger.info(`Webhook delivered: ${url.slice(0, 60)}`);
+  }).catch(err => {
+    logger.warn(`Webhook error: ${err.message}`);
+  });
 }
