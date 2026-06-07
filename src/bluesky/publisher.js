@@ -50,16 +50,27 @@ export async function publishPost(text, deeplink, imageBuffer, productName) {
       const upload = await agent.uploadBlob(imageBuffer, { encoding: 'image/png' });
       postRecord.embed = {
         $type: 'app.bsky.embed.images',
-        images: [
-          {
-            image: upload.data.blob,
-            alt: productName ? `Product image: ${productName}`.slice(0, 300) : 'Product image',
-          },
-        ],
+        images: [{ image: upload.data.blob, alt: productName ? `Product image: ${productName}`.slice(0, 300) : 'Product image' }],
       };
       logger.info(`Image blob uploaded: ${upload.data.blob.ref}`);
     } catch (err) {
-      logger.warn(`Image upload failed: ${err.message}. Posting without image.`);
+      if (/deleted|revoked|expired/i.test(err.message)) {
+        logger.warn(`Image upload session error: ${err.message} — re-authenticating`);
+        invalidateAgent();
+        try {
+          const freshAgent = await getBskyAgent();
+          const upload = await freshAgent.uploadBlob(imageBuffer, { encoding: 'image/png' });
+          postRecord.embed = {
+            $type: 'app.bsky.embed.images',
+            images: [{ image: upload.data.blob, alt: productName ? `Product image: ${productName}`.slice(0, 300) : 'Product image' }],
+          };
+          logger.info(`Image blob uploaded after re-auth: ${upload.data.blob.ref}`);
+        } catch (err2) {
+          logger.warn(`Image upload failed after re-auth: ${err2.message}. Posting without image.`);
+        }
+      } else {
+        logger.warn(`Image upload failed: ${err.message}. Posting without image.`);
+      }
     }
   }
 

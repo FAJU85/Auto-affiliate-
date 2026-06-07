@@ -1,6 +1,5 @@
 import fetch from 'node-fetch';
 import { logger } from '../utils/logger.js';
-import { read as xlsxRead, utils as xlsxUtils } from 'xlsx';
 
 /**
  * Fetches one of the two Admitad Catalog export formats:
@@ -35,99 +34,76 @@ export async function getAdmitadCatalogProduct() {
 
     const contentType = res.headers.get('content-type') || '';
 
-    // XLSX binary export
-    if (
-      contentType.includes('spreadsheetml') ||
-      contentType.includes('octet-stream') ||
-      contentType.includes('zip')
-    ) {
-      return await parseXlsx(res, url);
+    // JSON API response (e.g. catalog.store.admitad.com/api/v1/offers/)
+    if (contentType.includes('json')) {
+      return parseJsonCatalog(await res.json(), url);
     }
 
-    // XML advcampaigns feed (served as text/html by Admitad but is XML)
     const text = await res.text();
+
+    // XML advcampaigns feed (served as text/html by Admitad but is XML)
     if (text.trimStart().startsWith('<?xml') || text.includes('<advcampaigns>')) {
       return parseCampaignXml(text);
     }
 
-    // YML product catalog (same as ADMITAD_FEED_URL but via this path)
+    // YML product catalog
     if (text.includes('<yml_catalog') || text.includes('<offers>')) {
       return parseYmlCatalog(text);
     }
 
-    logger.warn(`Admitad catalog: unrecognised format from ${url.slice(0, 60)}`);
-    return null;
+    // Last attempt: try parsing body as JSON regardless of content-type
+    try {
+      return parseJsonCatalog(JSON.parse(text), url);
+    } catch {
+      logger.warn(`Admitad catalog: unrecognised format from ${url.slice(0, 60)}`);
+      return null;
+    }
   } catch (err) {
     logger.warn(`Admitad catalog fetch failed: ${err.message}`);
     return null;
   }
 }
 
-// ── XLSX parser ──────────────────────────────────────────────────────────────
+// ── JSON API parser ───────────────────────────────────────────────────────────
 
-async function parseXlsx(res, url) {
-  try {
-    const buf = Buffer.from(await res.arrayBuffer());
-    const wb = xlsxRead(buf, { type: 'buffer' });
-    const sheet = wb.Sheets[wb.SheetNames[0]];
-    const rows = xlsxUtils.sheet_to_json(sheet, { defval: '' });
-
-    if (rows.length === 0) {
-      logger.warn('Admitad catalog XLSX: no rows');
-      return null;
-    }
-
-    logger.info(`Admitad catalog XLSX: ${rows.length} rows`);
-
-    // Normalise column names to lowercase for resilience
-    const normalised = rows.map(r => {
-      const out = {};
-      for (const [k, v] of Object.entries(r)) out[k.toLowerCase().trim()] = v;
-      return out;
-    });
-
-    // Filter rows that have at least a name and a URL
-    const candidates = normalised.filter(r => {
-      const hasUrl = r.url || r.link || r['site url'] || r['product url'] || r.deeplink;
-      const hasName = r.name || r['product name'] || r.title;
-      return hasUrl && hasName;
-    });
-
-    if (candidates.length === 0) {
-      logger.warn('Admitad catalog XLSX: no usable rows');
-      return null;
-    }
-
-    // Pick one at random from the top 20
-    const pool = candidates.slice(0, 20);
-    const row = pool[Math.floor(Math.random() * pool.length)];
-
-    const name        = String(row.name || row['product name'] || row.title || '').trim();
-    const siteUrl     = String(row.url || row.link || row['site url'] || row['product url'] || row.deeplink || '').trim();
-    const imageUrl    = String(row.image || row['image url'] || row.picture || row.photo || '').trim() || null;
-    const description = String(row.description || row.desc || row.category || name).trim();
-    const price       = parseFloat(row.price || row.cost || '0') || null;
-    const currency    = String(row.currency || row.currencyid || 'USD').trim();
-
-    if (!siteUrl || !name) return null;
-    try { new URL(siteUrl); } catch { return null; }
-
-    logger.info(`Admitad catalog XLSX selected: "${name}"`);
-    return {
-      id:             String(row.id || row.offer_id || Math.random()),
-      name,
-      description,
-      siteUrl,
-      imageUrl: imageUrl && imageUrl.startsWith('http') ? imageUrl : null,
-      price,
-      currency,
-      commissionRate: parseFloat(row.commission || row.commissionrate || '0') || 0,
-      source:         'admitad-catalog',
-    };
-  } catch (err) {
-    logger.warn(`Admitad catalog XLSX parse error: ${err.message}`);
+function parseJsonCatalog(data, url) {
+  const items = data?.results || data?.data || data?.offers || (Array.isArray(data) ? data : null);
+  if (!items || items.length === 0) {
+    logger.warn(`Admitad catalog: no items in JSON from ${url.slice(0, 60)}`);
     return null;
   }
+
+  logger.info(`Admitad catalog JSON: ${items.length} offers`);
+
+  const valid = items.filter(o => {
+    const link = o.goto_link || o.gotolink || o.affiliate_url || o.url;
+    if (!link) return false;
+    try { new URL(link); return true; } catch { return false; }
+  });
+
+  if (valid.length === 0) {
+    logger.warn('Admitad catalog JSON: no offers with valid affiliate links');
+    return null;
+  }
+
+  valid.sort((a, b) => parseFloat(b.commission || b.price || 0) - parseFloat(a.commission || a.price || 0));
+  const item = valid.slice(0, 5)[Math.floor(Math.random() * Math.min(5, valid.length))];
+
+  const siteUrl  = item.goto_link || item.gotolink || item.affiliate_url || item.url;
+  const imageUrl = item.picture || item.image || item.image_url || null;
+
+  logger.info(`Admitad catalog JSON selected: "${item.name || item.title}"`);
+  return {
+    id:             String(item.id || item.product_id || ''),
+    name:           String(item.name || item.title || '').trim(),
+    description:    String(item.description || item.name || item.title || '').trim(),
+    siteUrl,
+    imageUrl:       imageUrl && /^https?:\/\//.test(imageUrl) && !/\blogo\b|sprite|placeholder/i.test(imageUrl) ? imageUrl : null,
+    price:          parseFloat(item.price || 0) || null,
+    currency:       String(item.currency || item.currencyId || 'USD'),
+    commissionRate: parseFloat(item.commission || 0),
+    source:         'admitad-catalog',
+  };
 }
 
 // ── XML <advcampaigns> parser ─────────────────────────────────────────────────

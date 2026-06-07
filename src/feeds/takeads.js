@@ -1,7 +1,7 @@
 import fetch from 'node-fetch';
 import { logger } from '../utils/logger.js';
 
-const API_BASE = 'https://api.takeads.com/monetize-api/v2';
+const API_BASE = 'https://api.takeads.com/v3';
 
 export async function getTakeadsProduct() {
   const apiKey = process.env.TAKEADS_API_KEY;
