@@ -91,6 +91,16 @@ async function postWithRetry(record) {
   }
 }
 
+function buildExternalEmbed(product, deeplink) {
+  if (typeof product !== 'object' || !product) return null;
+  const title = (product.name || '').slice(0, 300);
+  const desc  = (product.description || product.name || '').slice(0, 300);
+  return {
+    $type: 'app.bsky.embed.external',
+    external: { uri: deeplink, title, description: desc, thumb: undefined },
+  };
+}
+
 export async function publishPost(text, deeplink, imageBuffer, product) {
   const productName = typeof product === 'string' ? product : product?.name;
   const altText = typeof product === 'object' ? buildAltText(product) : `${productName || 'Product image'}`;
@@ -106,6 +116,9 @@ export async function publishPost(text, deeplink, imageBuffer, product) {
     const agent = await getBskyAgent();
     const embed = await uploadImageBlob(agent, imageBuffer, altText);
     if (embed) record.embed = embed;
+  } else {
+    const extEmbed = buildExternalEmbed(product, deeplink);
+    if (extEmbed) record.embed = extEmbed;
   }
 
   return postWithRetry(record);
