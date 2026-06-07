@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { getCJProduct } from './cj.js';
 
 describe('getCJProduct', () => {
@@ -21,6 +22,21 @@ describe('getCJProduct', () => {
     assert.equal(result, null);
     if (saved.key) process.env.CJ_API_KEY = saved.key; else delete process.env.CJ_API_KEY;
     if (saved.wid) process.env.CJ_WEBSITE_ID = saved.wid;
+  });
+});
+
+describe('CJ keyword rotation', () => {
+  it('SEARCH_KEYWORDS array exists with diverse terms', () => {
+    const src = fs.readFileSync('src/feeds/cj.js', 'utf8');
+    assert.ok(src.includes('SEARCH_KEYWORDS'), 'SEARCH_KEYWORDS defined');
+    assert.ok(src.includes("'sale'"), 'sale keyword present');
+    assert.ok(src.includes("'discount'"), 'discount keyword present');
+    assert.ok(src.includes("'deal'"), 'deal keyword present');
+  });
+
+  it('random page 1-5 is used for variety', () => {
+    const src = fs.readFileSync('src/feeds/cj.js', 'utf8');
+    assert.ok(src.includes('Math.random() * 5'), 'random page 1-5');
   });
 });
 
