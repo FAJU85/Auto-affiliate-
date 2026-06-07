@@ -566,7 +566,7 @@ loadConfig();
 
 function getNetworkStatus() {
   const e = process.env;
-  return [
+  const networks = [
     { key: 'admitad-feed',    label: 'Admitad XML Feed',     enabled: !!e.ADMITAD_FEED_URL },
     { key: 'admitad-api',     label: 'Admitad API',          enabled: !!(e.ADMITAD_CLIENT_ID && e.ADMITAD_CLIENT_SECRET && e.ADMITAD_WEBSITE_ID) },
     { key: 'admitad-catalog', label: 'Admitad Catalog',      enabled: [1,2,3,4,5].some(n => e[`ADMITAD_CATALOG_URL_${n}`]) },
@@ -575,6 +575,11 @@ function getNetworkStatus() {
     { key: 'travelpayouts',   label: 'Travelpayouts',        enabled: !!e.TRAVELPAYOUTS_TOKEN },
     { key: 'impact',          label: 'Impact.com',           enabled: !!(e.IMPACT_ACCOUNT_SID && e.IMPACT_AUTH_TOKEN) },
   ];
+  return networks;
+}
+
+export function hasAnyNetworkEnabled() {
+  return getNetworkStatus().some(n => n.enabled);
 }
 
 function handleClientMetadata(res) {

@@ -22,8 +22,10 @@ async function downloadImage(url) {
       clearTimeout(timeout);
     }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const ct = res.headers.get('content-type') || '';
+    if (!ct.startsWith('image/')) throw new Error(`Not an image (content-type: ${ct})`);
     const buf = Buffer.from(await res.arrayBuffer());
-    logger.info(`Image downloaded: ${buf.length} bytes from ${url.slice(0, 60)}`);
+    logger.info(`Image downloaded: ${buf.length} bytes (${ct}) from ${url.slice(0, 60)}`);
     return buf;
   } catch (err) {
     logger.warn(`Image download failed (${url.slice(0, 60)}): ${err.message}`);

@@ -47,13 +47,21 @@ async function uploadImageBlob(agentRef, imageBuffer, altText) {
   }
 }
 
+function safeByteSlice(str, maxBytes) {
+  const buf = Buffer.from(str, 'utf8');
+  if (buf.length <= maxBytes) return str;
+  // Walk back from maxBytes until we land on a valid UTF-8 sequence boundary
+  let end = maxBytes;
+  while (end > 0 && (buf[end] & 0xc0) === 0x80) end--;
+  return buf.slice(0, end).toString('utf8');
+}
+
 function buildPostRecord(text, deeplink, maxLen) {
-  const combined      = `${text}\n\n${deeplink}`;
-  const combinedBytes = Buffer.from(combined, 'utf8');
-  const truncated     = combinedBytes.slice(0, maxLen).toString('utf8');
-  const prefixBytes   = Buffer.byteLength(text + '\n\n', 'utf8');
-  const linkStart     = prefixBytes;
-  const linkEnd       = Math.min(prefixBytes + Buffer.byteLength(deeplink, 'utf8'), Buffer.byteLength(truncated, 'utf8'));
+  const combined    = `${text}\n\n${deeplink}`;
+  const truncated   = safeByteSlice(combined, maxLen);
+  const prefixBytes = Buffer.byteLength(text + '\n\n', 'utf8');
+  const linkStart   = prefixBytes;
+  const linkEnd     = Math.min(prefixBytes + Buffer.byteLength(deeplink, 'utf8'), Buffer.byteLength(truncated, 'utf8'));
   return {
     $type: 'app.bsky.feed.post',
     text: truncated,
