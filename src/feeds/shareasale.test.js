@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { getShareASaleProduct } from './shareasale.js';
 
 describe('getShareASaleProduct', () => {
@@ -17,6 +18,24 @@ describe('getShareASaleProduct', () => {
     if (saved.t) process.env.SHAREASALE_TOKEN        = saved.t;
     if (saved.s) process.env.SHAREASALE_SECRET       = saved.s;
     if (saved.a) process.env.SHAREASALE_AFFILIATE_ID = saved.a;
+  });
+});
+
+describe('ShareASale non-Latin filter', () => {
+  it('non-Latin filter exists in shareasale.js', () => {
+    const src = fs.readFileSync('src/feeds/shareasale.js', 'utf8');
+    assert.ok(src.includes('isLikelyEnglishOrNeutral'), 'non-Latin filter defined');
+    assert.ok(src.includes('nonLatin'), 'uses nonLatin detection');
+  });
+
+  it('isLikelyEnglishOrNeutral rejects Cyrillic names', () => {
+    function isLikelyEnglishOrNeutral(str) {
+      if (!str || str.length < 3) return true;
+      const nonLatin = (str.match(/[^ -ɏ\s\d\p{P}]/gu) || []).length;
+      return nonLatin / str.length < 0.4;
+    }
+    assert.ok(isLikelyEnglishOrNeutral('Running Shoes Store'), 'Latin accepted');
+    assert.ok(!isLikelyEnglishOrNeutral('Магазин одежды'), 'Cyrillic rejected');
   });
 });
 

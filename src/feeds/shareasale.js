@@ -56,6 +56,12 @@ function extractXmlValue(xml, tag) {
   return (m[1] !== undefined ? m[1] : m[2] || '').trim();
 }
 
+function isLikelyEnglishOrNeutral(str) {
+  if (!str || str.length < 3) return true;
+  const nonLatin = (str.match(/[^ -ɏ\s\d\p{P}]/gu) || []).length;
+  return nonLatin / str.length < 0.4;
+}
+
 function parseProducts(xml) {
   const products = [];
   const re = /<product>([\s\S]*?)<\/product>/g;
@@ -65,6 +71,7 @@ function parseProducts(xml) {
     const affiliateUrl = extractXmlValue(body, 'AffiliateURL') || extractXmlValue(body, 'affiliateurl');
     const name         = extractXmlValue(body, 'Name')         || extractXmlValue(body, 'name');
     if (!affiliateUrl || !name) continue;
+    if (!isLikelyEnglishOrNeutral(name)) continue;
     try { new URL(affiliateUrl); } catch { continue; }
 
     products.push({
