@@ -1,7 +1,7 @@
 import http from 'http';
 import { getDailySpend } from './utils/budget.js';
 import { getRecentRuns, getDedupStatus, clearPostedStore, wasRecentlyPosted } from './utils/metrics.js';
-import { logger } from './utils/logger.js';
+import { logger, getRecentLogs } from './utils/logger.js';
 import { getSettings, saveSettings, getSpaceHost } from './config/settings.js';
 import { getOAuthClient, getConnectedDid, disconnectBluesky } from './auth/bluesky-oauth.js';
 
@@ -153,6 +153,7 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
     <button class="tab active" onclick="showTab('status')">📊 Status</button>
     <button class="tab" onclick="showTab('accounts')">🔗 Accounts</button>
     <button class="tab" onclick="showTab('config')">⚙️ Space Config</button>
+    <button class="tab" onclick="showTab('logs');fetchLogs()">🪵 Logs</button>
   </div>
 
   <!-- ═══ STATUS TAB ═══ -->
@@ -369,6 +370,17 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
       </div>
     </div>
 
+  </div>
+
+  <!-- ═══ LOGS TAB ═══ -->
+  <div id="tab-logs" class="tab-panel">
+    <div class="section">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+        <div class="section-title" style="margin-bottom:0">Live Log Buffer (last 100)</div>
+        <button class="btn btn-outline" onclick="fetchLogs()" style="font-size:.8rem;padding:.3rem .75rem">↻ Refresh</button>
+      </div>
+      <div id="log-output" style="background:#050b15;border:1px solid var(--border);border-radius:var(--radius);padding:1rem;font-family:monospace;font-size:.78rem;line-height:1.6;max-height:600px;overflow-y:auto;color:#94a3b8">Loading…</div>
+    </div>
   </div>
 
 </main>
@@ -650,6 +662,22 @@ async function saveConfig() {
 }
 
 loadConfig();
+
+// ── Logs ──
+const LEVEL_COLOR = { error:'#ef4444', warn:'#f59e0b', info:'#94a3b8', debug:'#4b5563' };
+async function fetchLogs() {
+  try {
+    const logs = await fetch('/api/logs').then(r=>r.json());
+    const el = document.getElementById('log-output');
+    if (!el) return;
+    if (!logs?.length) { el.textContent = 'No logs yet.'; return; }
+    el.innerHTML = logs.slice().reverse().map(l => {
+      const color = LEVEL_COLOR[l.level] || '#94a3b8';
+      return '<div><span style="color:#4b5563">'+esc(l.ts.replace('T',' ').slice(0,19))+'</span> <span style="color:'+color+';font-weight:600">['+l.level.toUpperCase()+']</span> '+esc(l.msg)+'</div>';
+    }).join('');
+    el.scrollTop = 0;
+  } catch(e) { const el=document.getElementById('log-output'); if(el)el.textContent='Failed to load logs.'; }
+}
 </script>
 </body>
 </html>`;
@@ -767,6 +795,7 @@ async function routeRequest(req, res, url, getIsRunning, triggerRunFn, getMissin
     return json(res, 200, networks);
   }
   if (path === '/api/history' && req.method === 'GET') return json(res, 200, getRecentRuns(50));
+  if (path === '/api/logs' && req.method === 'GET') return json(res, 200, getRecentLogs(100));
   if (path === '/api/dedup' && req.method === 'GET') return json(res, 200, getDedupStatus());
   if (path === '/api/dedup' && req.method === 'DELETE') { clearPostedStore(); return json(res, 200, { ok: true }); }
   if (path === '/health') return json(res, 200, { ok: true, ts: new Date().toISOString() });
