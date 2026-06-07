@@ -1,6 +1,6 @@
 import http from 'http';
 import { getDailySpend } from './utils/budget.js';
-import { getRecentRuns, getDedupStatus, clearPostedStore, wasRecentlyPosted, getDailyNetworkStats, purgePostedBySource } from './utils/metrics.js';
+import { getRecentRuns, getDedupStatus, clearPostedStore, wasRecentlyPosted, getDailyNetworkStats, purgePostedBySource, getDedupBySource } from './utils/metrics.js';
 import { logger, getRecentLogs } from './utils/logger.js';
 import { getSettings, saveSettings, getSpaceHost } from './config/settings.js';
 import { getOAuthClient, getConnectedDid, disconnectBluesky } from './auth/bluesky-oauth.js';
@@ -236,6 +236,7 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
         <button id="dedup-clear-btn" onclick="clearDedup()" style="padding:.25rem .75rem;font-size:.8rem;background:#ef4444;color:#fff;border:none;border-radius:6px;cursor:pointer">Clear store</button>
         <span id="dedup-clear-msg" style="font-size:.8rem;color:var(--muted)"></span>
       </div>
+      <div id="dedup-by-source" style="display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:.5rem"></div>
       <div id="dedup-recent" style="display:flex;flex-wrap:wrap;gap:.4rem"></div>
     </div>
   </div>
@@ -582,6 +583,11 @@ async function fetchDedup() {
     const d = await fetch('/api/dedup').then(r=>r.json());
     const el = document.getElementById('dedup-count');
     if (el) el.textContent = d.total + ' active entries (60-day window)';
+    const bsEl = document.getElementById('dedup-by-source');
+    if (bsEl && d.bySource && Object.keys(d.bySource).length) {
+      bsEl.innerHTML = Object.entries(d.bySource).sort((a,b)=>b[1]-a[1])
+        .map(([src, cnt]) => `<span style="background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:.2rem .6rem;font-size:.78rem;color:var(--muted)"><b style="color:var(--text)">${cnt}</b> ${esc(src)}</span>`).join('');
+    } else if (bsEl) { bsEl.innerHTML = ''; }
     const rEl = document.getElementById('dedup-recent');
     if (rEl && d.recent?.length) {
       rEl.innerHTML = d.recent.map(e =>
@@ -964,7 +970,10 @@ async function routeRequest(req, res, url, getIsRunning, triggerRunFn, getMissin
   }
   if (path === '/api/logs' && req.method === 'GET') return json(res, 200, getRecentLogs(100));
   if (path === '/api/stats' && req.method === 'GET') return json(res, 200, getDailyNetworkStats(7));
-  if (path === '/api/dedup' && req.method === 'GET') return json(res, 200, getDedupStatus());
+  if (path === '/api/dedup' && req.method === 'GET') {
+    const status = getDedupStatus();
+    return json(res, 200, { ...status, bySource: getDedupBySource() });
+  }
   if (path === '/api/dedup' && req.method === 'DELETE') { clearPostedStore(); return json(res, 200, { ok: true }); }
   if (path === '/api/dedup/purge-source' && req.method === 'POST') {
     try {

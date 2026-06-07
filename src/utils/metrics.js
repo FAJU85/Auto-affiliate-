@@ -115,6 +115,19 @@ export function clearPostedStore() {
   savePosted([]);
 }
 
+/** Returns active dedup entry counts grouped by source network. */
+export function getDedupBySource() {
+  const entries = loadPosted();
+  const cutoff  = Date.now() - DEDUP_MS;
+  const active  = entries.filter(e => new Date(e.postedAt).getTime() > cutoff);
+  const bySource = {};
+  for (const e of active) {
+    const src = e.source || 'unknown';
+    bySource[src] = (bySource[src] || 0) + 1;
+  }
+  return bySource;
+}
+
 /** Removes all dedup entries for a specific source network. */
 export function purgePostedBySource(source) {
   const entries = loadPosted();
