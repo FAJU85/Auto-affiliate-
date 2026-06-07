@@ -91,12 +91,19 @@ async function executePost(runMeta) {
   logger.info(`=== Pipeline v2 complete. Post: ${uri} ===`);
 }
 
+const PIPELINE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes max per run
+
 export async function runPipeline() {
   const startTime = Date.now();
   const runMeta   = initRunMeta();
   logger.info('=== Pipeline v2 run starting ===');
   try {
-    await executePost(runMeta);
+    await Promise.race([
+      executePost(runMeta),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Pipeline timeout after 5 minutes')), PIPELINE_TIMEOUT_MS)
+      ),
+    ]);
   } catch (err) {
     runMeta.error      = err.message;
     runMeta.errorStack = err.stack?.split('\n').slice(0, 5).join(' | ') || null;
