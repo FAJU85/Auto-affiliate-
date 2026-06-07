@@ -62,6 +62,10 @@ const SOURCE_PROMPTS = {
   cj:            'Write short promotional posts for social media. Max 200 chars. Highlight the offer or discount. No hashtags. Persuasive tone.',
   shareasale:    'Write short deal posts for social media. Max 200 chars. Highlight product benefits and any discount. No hashtags. Friendly tone.',
   impact:        'Write short promotional posts for social media. Max 200 chars. Highlight the brand or offer. No hashtags. Confident tone.',
+  takeads:       'Write short promotional posts for social media. Max 200 chars. Highlight the brand and commission value. No hashtags. Persuasive tone.',
+  admitad:          'Write short deal posts for social media. Max 200 chars. Highlight the discount or product benefit. No hashtags. Friendly tone.',
+  'admitad-catalog': 'Write short deal posts for social media. Max 200 chars. Highlight the discount or product benefit. No hashtags. Friendly tone.',
+  'admitad-api':     'Write short deal posts for social media. Max 200 chars. Highlight the discount or product benefit. No hashtags. Friendly tone.',
 };
 
 function getSystemPrompt(product) {
