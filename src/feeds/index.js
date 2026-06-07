@@ -8,6 +8,7 @@ import { getImpactProduct } from './impact.js';
 import { getCJProduct } from './cj.js';
 import { getShareASaleProduct } from './shareasale.js';
 import { logger } from '../utils/logger.js';
+import { getLastPostedSource } from '../utils/metrics.js';
 
 /**
  * Collects products from all configured affiliate networks in parallel,
@@ -54,10 +55,15 @@ export async function getProduct(wasPosted) {
     throw new Error('No affiliate network returned a product. Configure at least one: ADMITAD_FEED_URL, ADMITAD_CLIENT_ID+SECRET, or ADMITAD_CATALOG_URL_1.');
   }
 
-  // Shuffle candidates then pick the first one not recently posted
-  const shuffled = candidates.sort(() => Math.random() - 0.5);
+  // Rotate sources: de-prioritize the last-used network
+  const lastSource = getLastPostedSource();
+  const shuffled   = candidates.sort(() => Math.random() - 0.5);
+  const rotated    = lastSource
+    ? [...shuffled.filter(p => p.source !== lastSource), ...shuffled.filter(p => p.source === lastSource)]
+    : shuffled;
+
   if (wasPosted) {
-    const fresh = shuffled.find(p => !wasPosted(p.siteUrl, p.name));
+    const fresh = rotated.find(p => !wasPosted(p.siteUrl, p.name));
     if (fresh) {
       logger.info(`Selected fresh product from "${fresh.source}": ${fresh.name}`);
       return fresh;
@@ -65,7 +71,7 @@ export async function getProduct(wasPosted) {
     logger.warn('All candidate products were recently posted — picking least-recently-used anyway');
   }
 
-  const picked = shuffled[0];
+  const picked = rotated[0];
   logger.info(`Selected product from "${picked.source}": ${picked.name}`);
   return picked;
 }
