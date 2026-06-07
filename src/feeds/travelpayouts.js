@@ -45,18 +45,17 @@ export async function getTravelpayoutsProduct() {
     const airline     = picked.airline || '';
     const departs     = picked.depart_date || '';
 
-    // Both destination and a full YYYY-MM-DD date are required for a valid Aviasales URL
-    if (!destination || !departs || !/^\d{4}-\d{2}-\d{2}$/.test(departs)) {
-      logger.warn(`Travelpayouts: skipping deal with missing/invalid date "${departs}"`);
-      return null;
-    }
+    if (!destination) return null;
 
-    const affiliateUrl = `https://search.aviasales.com/flights/?origin_iata=${origin}&destination_iata=${destination}&depart_date=${departs}&adults=1&one_way=true&marker=${marker}`;
+    // General route search — always shows results.
+    // Date-specific URLs (old compact or new query-param formats) redirect to
+    // the Aviasales homepage when the exact flight isn't in their real-time cache.
+    const affiliateUrl = `https://www.aviasales.com/${origin}-${destination}/?marker=${marker}`;
 
     logger.info(`Travelpayouts deal: ${origin}→${destination} $${price} (${airline})`);
 
     return {
-      id:             `tp-${origin}-${destination}-${departs}`,
+      id:             `tp-${origin}-${destination}`,
       name:           `Flight ${origin} → ${destination}${airline ? ` (${airline})` : ''}`,
       description:    `From $${price}. Fly ${origin} to ${destination}${departs ? ` departing ${departs}` : ''}.`,
       siteUrl:        affiliateUrl,
