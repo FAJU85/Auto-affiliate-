@@ -14,8 +14,11 @@ function basicAuth(accountSid, authToken) {
 }
 
 async function fetchAds(accountSid, authToken) {
+  // Try up to 3 random pages to get variety
+  const page = Math.ceil(Math.random() * 3);
+  const params = new URLSearchParams({ PageSize: '100', Page: String(page) });
   const res = await fetch(
-    `${API_BASE}/Mediapartners/${accountSid}/Ads?PageSize=100`,
+    `${API_BASE}/Mediapartners/${accountSid}/Ads?${params}`,
     {
       headers: {
         Authorization: basicAuth(accountSid, authToken),
@@ -31,7 +34,16 @@ async function fetchAds(accountSid, authToken) {
   }
 
   const data = await res.json();
-  return data.Ads || [];
+  const ads = data.Ads || [];
+  // If this page is empty and it wasn't page 1, fall back to page 1
+  if (ads.length === 0 && page > 1) {
+    const res1 = await fetch(
+      `${API_BASE}/Mediapartners/${accountSid}/Ads?PageSize=100&Page=1`,
+      { headers: { Authorization: basicAuth(accountSid, authToken), Accept: 'application/json' }, signal: AbortSignal.timeout(30_000) }
+    );
+    if (res1.ok) return (await res1.json()).Ads || [];
+  }
+  return ads;
 }
 
 function pickAd(ads) {
