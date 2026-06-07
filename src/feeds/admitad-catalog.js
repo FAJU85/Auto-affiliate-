@@ -72,7 +72,9 @@ function parseJsonCatalog(data, url) {
   const valid = items.filter(o => {
     const link = o.goto_link || o.gotolink || o.affiliate_url || o.url;
     if (!link) return false;
-    try { new URL(link); return true; } catch { return false; }
+    try { new URL(link); } catch { return false; }
+    const name = String(o.name || o.title || '').trim();
+    return isLikelyEnglishOrNeutral(name);
   });
 
   if (valid.length === 0) {
@@ -178,6 +180,12 @@ function parseYmlCatalog(xml) {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+function isLikelyEnglishOrNeutral(str) {
+  if (!str || str.length < 3) return true;
+  const nonLatin = (str.match(/[^ -ɏ\s\d\p{P}]/gu) || []).length;
+  return nonLatin / str.length < 0.4;
+}
 
 function extractXmlTag(xml, tag) {
   const m = xml.match(new RegExp(
