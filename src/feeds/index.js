@@ -46,6 +46,12 @@ async function collectCandidates() {
     const key = enabled[i].key;
     if (r.status === 'fulfilled' && r.value?.value) {
       const product = r.value.value;
+      // Skip products with very short or missing names
+      if (!product.name || product.name.trim().length < 5) {
+        networkErrors[key] = { error: 'product name too short', at: new Date().toISOString() };
+        logger.warn(`Network ${key}: product name too short ("${product.name}") — skipping`);
+        continue;
+      }
       if (!product.category) product.category = key;
       candidates.push(product);
       delete networkErrors[key];
