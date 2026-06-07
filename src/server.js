@@ -408,11 +408,18 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
   <!-- ═══ ANALYTICS TAB ═══ -->
   <div id="tab-analytics" class="tab-panel" style="display:none">
     <div class="section">
-      <div class="section-title">Daily Posts by Network (last 7 days)</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem">
+        <div class="section-title" style="margin:0">Daily Posts by Network</div>
+        <div style="display:flex;gap:.5rem">
+          <button onclick="fetchStats(7)" class="btn btn-outline" style="font-size:.75rem;padding:.25rem .6rem">7d</button>
+          <button onclick="fetchStats(14)" class="btn btn-outline" style="font-size:.75rem;padding:.25rem .6rem">14d</button>
+          <button onclick="fetchStats(30)" class="btn btn-outline" style="font-size:.75rem;padding:.25rem .6rem">30d</button>
+        </div>
+      </div>
       <div id="stats-chart" style="overflow-x:auto;min-height:220px">Loading…</div>
     </div>
     <div class="section">
-      <div class="section-title">Post Totals (7 days)</div>
+      <div class="section-title" id="stats-totals-title">Post Totals (7 days)</div>
       <div id="stats-totals" style="display:flex;gap:1rem;flex-wrap:wrap"></div>
     </div>
     <div class="section">
@@ -838,9 +845,11 @@ const NET_COLORS = {
   temu:'#f59e0b', cj:'#10b981', shareasale:'#ec4899', impact:'#3b82f6',
   takeads:'#f97316', travelpayouts:'#06b6d4', unknown:'#64748b'
 };
-async function fetchStats() {
+async function fetchStats(days = 7) {
   try {
-    const data = await fetch('/api/stats').then(r=>r.json());
+    const data = await fetch('/api/stats?days='+days).then(r=>r.json());
+    const titleEl = document.getElementById('stats-totals-title');
+    if (titleEl) titleEl.textContent = 'Post Totals ('+days+' days)';
     const chartEl = document.getElementById('stats-chart');
     const totalsEl = document.getElementById('stats-totals');
     if (!chartEl || !totalsEl) return;
@@ -1072,7 +1081,10 @@ async function routeRequest(req, res, url, getIsRunning, triggerRunFn, getMissin
     }));
     return json(res, 200, networks);
   }
-  if (path === '/api/history' && req.method === 'GET') return json(res, 200, getRecentRuns(50));
+  if (path === '/api/history' && req.method === 'GET') {
+    const n = Math.min(parseInt(url.searchParams.get('n') || '50', 10), 500);
+    return json(res, 200, getRecentRuns(n));
+  }
   if (path === '/api/history/csv' && req.method === 'GET') {
     const runs = getRecentRuns(500);
     const header = 'timestamp,success,product,source,imageSource,qualityScore,captionChars,likes,reposts,durationMs,postUri,error\n';
@@ -1087,7 +1099,10 @@ async function routeRequest(req, res, url, getIsRunning, triggerRunFn, getMissin
     return res.end(header + rows);
   }
   if (path === '/api/logs' && req.method === 'GET') return json(res, 200, getRecentLogs(100));
-  if (path === '/api/stats' && req.method === 'GET') return json(res, 200, getDailyNetworkStats(7));
+  if (path === '/api/stats' && req.method === 'GET') {
+    const days = Math.min(parseInt(url.searchParams.get('days') || '7', 10), 90);
+    return json(res, 200, getDailyNetworkStats(days));
+  }
   if (path === '/api/engagement/top' && req.method === 'GET') return json(res, 200, getTopPosts(30, 10));
   if (path === '/api/dedup' && req.method === 'GET') {
     const status = getDedupStatus();
