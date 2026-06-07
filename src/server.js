@@ -174,6 +174,7 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
         <div class="card-label">Success rate</div>
         <div class="card-value" id="kpi-success">—</div>
         <div class="card-sub" id="kpi-success-sub">last runs</div>
+        <svg id="sparkline" viewBox="0 0 100 30" preserveAspectRatio="none" style="width:100%;height:30px;margin-top:.5rem;display:block"></svg>
       </div>
       <div class="card">
         <div class="card-label">Daily spend</div>
@@ -465,6 +466,7 @@ function renderStatus(d) {
   renderLastRun(d.lastRun);
   document.getElementById('run-btn').disabled = d.pipeline.running;
   adjustPollRate(d.pipeline.running);
+  renderSparkline(d.runs);
   renderRunHistory(d.runs);
   document.getElementById('last-updated').textContent='Updated '+new Date().toLocaleTimeString();
 }
@@ -481,6 +483,17 @@ function renderNetworks(networks) {
 }
 
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+function renderSparkline(runs) {
+  const svg = document.getElementById('sparkline');
+  if (!svg || !runs?.length) return;
+  const pts = runs.slice(-20).map(r => r.success ? 1 : 0);
+  if (pts.length < 2) return;
+  const w = 100, h = 30, step = w / (pts.length - 1);
+  const points = pts.map((v,i) => `${(i*step).toFixed(1)},${v ? 4 : h-4}`).join(' ');
+  svg.innerHTML = '<polyline points="'+points+'" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'
+    + pts.map((v,i)=>'<circle cx="'+(i*step).toFixed(1)+'" cy="'+(v?4:h-4)+'" r="2.5" fill="'+(v?'#22c55e':'#ef4444')+'"/>').join('');
+}
 
 async function triggerRun() {
   const btn=document.getElementById('run-btn'),msg=document.getElementById('run-msg');
