@@ -781,7 +781,16 @@ async function handleOAuthCallback(url, res) {
 
 async function routeRequest(req, res, url, getIsRunning, triggerRunFn, getMissingVars) {
   const path = url.pathname;
-  if (path === '/health') { res.writeHead(200, { 'Content-Type': 'text/plain' }); return res.end('ok'); }
+  if (path === '/health') {
+    const runs = getRecentRuns(5);
+    const last = runs.at(-1);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({
+      status: 'ok',
+      ts: new Date().toISOString(),
+      lastRun: last ? { success: last.success, ts: last.timestamp, source: last.productSource } : null,
+    }));
+  }
   if (path === '/client-metadata.json') return handleClientMetadata(res);
   if (path === '/api/status') {
     const payload = getStatusPayload(getIsRunning());
@@ -814,7 +823,6 @@ async function routeRequest(req, res, url, getIsRunning, triggerRunFn, getMissin
   if (path === '/api/logs' && req.method === 'GET') return json(res, 200, getRecentLogs(100));
   if (path === '/api/dedup' && req.method === 'GET') return json(res, 200, getDedupStatus());
   if (path === '/api/dedup' && req.method === 'DELETE') { clearPostedStore(); return json(res, 200, { ok: true }); }
-  if (path === '/health') return json(res, 200, { ok: true, ts: new Date().toISOString() });
   if (path === '/oauth/bsky/start')  return handleOAuthStart(url, res);
   if (path === '/oauth/callback')    return handleOAuthCallback(url, res);
   if (path === '/api/run' && req.method === 'POST') {
