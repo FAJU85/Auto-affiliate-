@@ -53,6 +53,14 @@ describe('getNetworkErrors', () => {
   });
 });
 
+describe('getNetworkSelectCounts', () => {
+  it('exports getNetworkSelectCounts returning an object', async () => {
+    const { getNetworkSelectCounts } = await import('./index.js');
+    const counts = getNetworkSelectCounts();
+    assert.ok(counts !== null && typeof counts === 'object');
+  });
+});
+
 describe('TASKS consistency', () => {
   it('TASKS covers all 9 networks', async () => {
     const { TASKS } = await import('./index.js');
