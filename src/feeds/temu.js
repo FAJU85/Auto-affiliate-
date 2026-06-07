@@ -23,13 +23,17 @@ export async function getTemuProduct() {
 
   if (urls.length === 0) return null;
 
-  const affiliateUrl = urls[Math.floor(Math.random() * urls.length)];
-  const theme = THEMES[Math.floor(Math.random() * THEMES.length)];
+  const baseUrl  = urls[Math.floor(Math.random() * urls.length)];
+  const theme    = THEMES[Math.floor(Math.random() * THEMES.length)];
+  const tag      = `${theme.category.toLowerCase()}-${Date.now()}`;
+  // Append a unique sub-ID so each post gets its own dedup key
+  const sep      = baseUrl.includes('?') ? '&' : '?';
+  const affiliateUrl = `${baseUrl}${sep}sub=${tag}`;
 
   logger.info(`Temu theme selected: "${theme.name}"`);
 
   return {
-    id:             `temu-${theme.category.toLowerCase()}-${Date.now()}`,
+    id:             `temu-${tag}`,
     name:           `Temu ${theme.name} Deals`,
     description:    theme.description,
     siteUrl:        affiliateUrl,

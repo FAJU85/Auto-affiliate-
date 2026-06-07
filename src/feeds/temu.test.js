@@ -31,7 +31,8 @@ describe('getTemuProduct', () => {
     assert.ok(product !== null, 'product returned');
     assert.ok(typeof product.name === 'string' && product.name.length > 0, 'has name');
     assert.ok(typeof product.description === 'string', 'has description');
-    assert.ok(['https://temu.to/k/testlink1', 'https://temu.to/m/testlink2', 'https://temu.to/k/testlink3'].includes(product.siteUrl), 'siteUrl is one of the configured URLs');
+    const configuredUrls = ['https://temu.to/k/testlink1', 'https://temu.to/m/testlink2', 'https://temu.to/k/testlink3'];
+    assert.ok(configuredUrls.some(u => product.siteUrl.startsWith(u)), 'siteUrl starts with one of the configured URLs');
     assert.equal(product.source, 'temu');
     assert.equal(product.currency, 'USD');
     assert.ok(typeof product.id === 'string', 'has id');
