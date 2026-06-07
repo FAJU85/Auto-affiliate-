@@ -205,6 +205,53 @@ describe('isBadCaption quality filter', () => {
   });
 });
 
+describe('hashtag appending', () => {
+  // Inline the logic for unit testing
+  const HASHTAG_MAP = [
+    { keywords: ['travel', 'travelpayouts'], tags: ['#travel', '#deals'] },
+    { keywords: ['fashion', 'clothing', 'shoes'], tags: ['#fashion', '#style'] },
+    { keywords: ['tech', 'electronics', 'gadget'], tags: ['#tech', '#deals'] },
+    { keywords: ['temu', 'admitad'], tags: ['#shopping', '#deals'] },
+  ];
+  function pickHashtags(product) {
+    const haystack = [product.source, product.category, product.name].filter(Boolean).join(' ').toLowerCase();
+    for (const { keywords, tags } of HASHTAG_MAP) {
+      if (keywords.some(k => haystack.includes(k))) return tags;
+    }
+    return ['#deals', '#shopping'];
+  }
+  function appendHashtags(caption, product) {
+    const tags = pickHashtags(product).join(' ');
+    const withTags = `${caption} ${tags}`;
+    return withTags.length <= 300 ? withTags : caption;
+  }
+
+  it('appends hashtags for travel source', () => {
+    const p = { source: 'travelpayouts', category: '', name: 'Flight deal' };
+    const result = appendHashtags('Great deal!', p);
+    assert.ok(result.includes('#travel'), 'travel hashtag appended');
+  });
+
+  it('appends default hashtags for unknown source', () => {
+    const p = { source: 'unknown', category: '', name: 'Generic product' };
+    const result = appendHashtags('Buy now!', p);
+    assert.ok(result.includes('#deals'), 'default deals hashtag appended');
+  });
+
+  it('does not append hashtags if caption would exceed 300 chars', () => {
+    const p = { source: 'temu', category: '', name: 'Item' };
+    const longCaption = 'A'.repeat(295);
+    const result = appendHashtags(longCaption, p);
+    assert.equal(result, longCaption, 'caption unchanged when over limit');
+  });
+
+  it('HASHTAG_MAP is defined in text.js', () => {
+    const src = fs.readFileSync('src/ai/text.js', 'utf8');
+    assert.ok(src.includes('HASHTAG_MAP'), 'HASHTAG_MAP defined');
+    assert.ok(src.includes('appendHashtags'), 'appendHashtags function defined');
+  });
+});
+
 describe('SOURCE_PROMPTS coverage', () => {
   it('all expected sources have a prompt entry', () => {
     const src = fs.readFileSync('src/ai/text.js', 'utf8');

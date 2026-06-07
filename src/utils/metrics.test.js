@@ -8,7 +8,11 @@ import path from 'path';
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'metrics-test-'));
 process.env.DATA_DIR = tmpDir;
 
-const { wasRecentlyPosted, getLastPostedSource, getRecentPostedSources, getDailyNetworkStats, purgePostedBySource, recordRun } = await import('./metrics.js');
+const {
+  wasRecentlyPosted, getLastPostedSource, getRecentPostedSources,
+  getDailyNetworkStats, purgePostedBySource, recordRun,
+  recordEngagement, getTopPosts, getDedupBySource, getRecentRuns,
+} = await import('./metrics.js');
 
 describe('wasRecentlyPosted', () => {
   it('returns false when nothing posted yet', () => {
@@ -89,6 +93,64 @@ describe('getDailyNetworkStats', () => {
     recordRun({ success: false, deeplink: null, product: null, productSource: null, error: 'timeout' });
     const stats = getDailyNetworkStats(1);
     assert.ok(stats[0].failed >= 1);
+  });
+});
+
+describe('getDedupBySource', () => {
+  it('returns an object', () => {
+    const result = getDedupBySource();
+    assert.ok(result !== null && typeof result === 'object');
+  });
+
+  it('counts active entries grouped by source', () => {
+    recordRun({ success: true, deeplink: 'https://example.com/dedup1', product: 'DedupItem1', productSource: 'takeads' });
+    recordRun({ success: true, deeplink: 'https://example.com/dedup2', product: 'DedupItem2', productSource: 'takeads' });
+    const result = getDedupBySource();
+    assert.ok(result.takeads >= 2, `takeads count should be >= 2, got ${result.takeads}`);
+  });
+
+  it('different sources are counted separately', () => {
+    recordRun({ success: true, deeplink: 'https://example.com/sep1', product: 'SepItem', productSource: 'cj' });
+    const result = getDedupBySource();
+    assert.ok(typeof result.cj === 'number' && result.cj >= 1);
+    assert.ok(typeof result.takeads === 'number' && result.takeads >= 2);
+  });
+});
+
+describe('recordEngagement + getTopPosts', () => {
+  it('recordEngagement updates likes and reposts on a run', () => {
+    const uri = 'at://did:example/post/999';
+    recordRun({ success: true, deeplink: 'https://example.com/eng1', product: 'EngItem', productSource: 'impact', postUri: uri });
+    recordEngagement(uri, 42, 7);
+    const runs = getRecentRuns(20);
+    const run = runs.find(r => r.postUri === uri);
+    assert.ok(run, 'run with postUri found');
+    assert.equal(run.likes, 42);
+    assert.equal(run.reposts, 7);
+  });
+
+  it('recordEngagement does nothing for unknown uri', () => {
+    assert.doesNotThrow(() => recordEngagement('at://unknown/post/0', 1, 0));
+  });
+
+  it('getTopPosts returns array sorted by likes desc', () => {
+    const uri2 = 'at://did:example/post/888';
+    recordRun({ success: true, deeplink: 'https://example.com/eng2', product: 'PopItem', productSource: 'temu', postUri: uri2 });
+    recordEngagement(uri2, 100, 10);
+    const top = getTopPosts(30, 5);
+    assert.ok(Array.isArray(top));
+    assert.ok(top.length >= 1);
+    if (top.length >= 2) {
+      assert.ok((top[0].likes || 0) >= (top[1].likes || 0), 'sorted by likes descending');
+    }
+  });
+
+  it('getTopPosts excludes posts with 0 likes', () => {
+    const uri3 = 'at://did:example/post/777';
+    recordRun({ success: true, deeplink: 'https://example.com/eng3', product: 'ZeroItem', productSource: 'cj', postUri: uri3 });
+    // do NOT call recordEngagement — likes stays 0
+    const top = getTopPosts(30, 10);
+    assert.ok(!top.find(r => r.postUri === uri3), 'zero-likes post excluded');
   });
 });
 

@@ -43,7 +43,12 @@ export async function getAdmitadApiProduct() {
   }
 
   const data = await res.json();
-  const campaigns = (data.results || []).filter(c => c.site_url && parseFloat(c.avg_ecpc || 0) > 0);
+  const campaigns = (data.results || []).filter(c => {
+    if (!c.site_url || parseFloat(c.avg_ecpc || 0) <= 0) return false;
+    const name = String(c.name || '');
+    const nonLatin = (name.match(/[^ -ɏ\s\d\p{P}]/gu) || []).length;
+    return nonLatin / (name.length || 1) < 0.4;
+  });
 
   if (campaigns.length === 0) throw new Error('No valid campaigns from Admitad API');
 
