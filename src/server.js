@@ -290,6 +290,13 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
       <p id="bsky-connect-msg" style="margin-top:.75rem;font-size:.8rem;color:var(--muted)"></p>
     </div>
 
+    <!-- App-password alternative -->
+    <div id="bsky-apppass-box" class="connect-box" style="display:none;margin-top:1rem">
+      <h3>Or connect with App Password</h3>
+      <p>Set <code>BSKY_HANDLE</code> and <code>BSKY_APP_PASSWORD</code> in your Space secrets — the pipeline will use them automatically on next run.</p>
+      <p style="margin-top:.5rem;font-size:.8rem">Create an app password at <strong>bsky.app → Settings → App Passwords</strong>.</p>
+    </div>
+
   </div>
 
   <!-- ═══ SPACE CONFIG TAB ═══ -->
@@ -543,6 +550,7 @@ function renderBskyStatus(bsky) {
 function showConnectBox() {
   const box = document.getElementById('bsky-connect-box');
   box.style.display = 'block';
+  document.getElementById('bsky-apppass-box').style.display = 'block';
   fetch('/api/accounts').then(r=>r.json()).then(d=>{
     const noHost = document.getElementById('bsky-no-host');
     const row = document.getElementById('bsky-connect-row');
