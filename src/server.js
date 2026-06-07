@@ -1,6 +1,6 @@
 import http from 'http';
 import { getDailySpend } from './utils/budget.js';
-import { getRecentRuns, getDedupStatus, clearPostedStore } from './utils/metrics.js';
+import { getRecentRuns, getDedupStatus, clearPostedStore, wasRecentlyPosted } from './utils/metrics.js';
 import { logger } from './utils/logger.js';
 import { getSettings, saveSettings, getSpaceHost } from './config/settings.js';
 import { getOAuthClient, getConnectedDid, disconnectBluesky } from './auth/bluesky-oauth.js';
@@ -202,10 +202,12 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
       </div>
     </div>
 
-    <div class="section" style="display:flex;align-items:center;gap:1rem">
+    <div class="section" style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
       <button class="btn btn-primary" id="run-btn" onclick="triggerRun()">▶ Run now</button>
+      <button class="btn btn-outline" id="dry-btn" onclick="dryRun()">🔍 Dry run</button>
       <span id="run-msg" style="font-size:.85rem;color:var(--muted)"></span>
     </div>
+    <div id="dry-result" style="display:none;margin-top:1rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem;font-size:.875rem"></div>
 
     <div class="section">
       <div class="section-title">Run history</div>
@@ -467,6 +469,25 @@ async function triggerRun() {
   } catch{msg.textContent='Request failed';btn.disabled=false;}
 }
 
+async function dryRun() {
+  const btn=document.getElementById('dry-btn'), msg=document.getElementById('run-msg');
+  const box=document.getElementById('dry-result');
+  btn.disabled=true; msg.textContent='Running dry test…'; box.style.display='none';
+  try {
+    const d=await fetch('/api/dry-run',{method:'POST'}).then(r=>r.json());
+    if (d.ok) {
+      box.style.display='block';
+      box.innerHTML='<strong>Product:</strong> '+esc(d.product.name)+' <span class="badge img">'+esc(d.product.source)+'</span>'
+        +'<br><strong>URL:</strong> <a href="'+esc(d.product.siteUrl)+'" target="_blank" rel="noopener" style="color:var(--accent);font-size:.8rem">'+esc(d.product.siteUrl.slice(0,60))+'…</a>'
+        +'<br><br><strong>Caption preview:</strong><br><em style="color:var(--muted)">'+esc(d.caption)+'</em>';
+      msg.textContent='Dry run complete ✓';
+    } else {
+      msg.textContent='Dry run error: '+(d.error||'unknown');
+    }
+  } catch(e) { msg.textContent='Request failed'; }
+  btn.disabled=false;
+}
+
 async function fetchDedup() {
   try {
     const d = await fetch('/api/dedup').then(r=>r.json());
@@ -718,6 +739,19 @@ async function routeRequest(req, res, url, getIsRunning, triggerRunFn, getMissin
     if (getIsRunning()) return json(res, 409, { ok: false, error: 'Pipeline already running' });
     triggerRunFn('manual');
     return json(res, 202, { ok: true, message: 'Run triggered' });
+  }
+
+  if (path === '/api/dry-run' && req.method === 'POST') {
+    try {
+      const { getProduct } = await import('./feeds/index.js');
+      const { generatePostText } = await import('./ai/text.js');
+      const { getTopTrends } = await import('./admitad/trends.js');
+      const [product, trends] = await Promise.all([getProduct(wasRecentlyPosted), getTopTrends(3)]);
+      const caption = await generatePostText(product, trends);
+      return json(res, 200, { ok: true, product: { name: product.name, source: product.source, siteUrl: product.siteUrl }, caption });
+    } catch (err) {
+      return json(res, 500, { ok: false, error: err.message });
+    }
   }
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
   res.end(DASHBOARD_HTML);
