@@ -13,20 +13,33 @@ import { normaliseAliExpressUrl } from '../utils/aliexpress-url.js';
  *
  * Returns a unified product object or null.
  */
-export async function getAdmitadCatalogProduct() {
-  const urls = [
-    process.env.ADMITAD_CATALOG_URL_1,
-    process.env.ADMITAD_CATALOG_URL_2,
-    process.env.ADMITAD_CATALOG_URL_3,
-    process.env.ADMITAD_CATALOG_URL_4,
-    process.env.ADMITAD_CATALOG_URL_5,
-  ].filter(Boolean);
+function pickCatalogUrl() {
+  return [1, 2, 3, 4, 5]
+    .map(n => process.env[`ADMITAD_CATALOG_URL_${n}`])
+    .filter(Boolean);
+}
 
+async function parseCatalogResponse(res, url) {
+  const contentType = res.headers.get('content-type') || '';
+  if (contentType.includes('json')) return parseJsonCatalog(await res.json(), url);
+
+  const text = await res.text();
+  if (text.trimStart().startsWith('<?xml') || text.includes('<advcampaigns>')) return parseCampaignXml(text);
+  if (text.includes('<yml_catalog') || text.includes('<offers>')) return parseYmlCatalog(text);
+
+  try {
+    return parseJsonCatalog(JSON.parse(text), url);
+  } catch {
+    logger.warn(`Admitad catalog: unrecognised format from ${url.slice(0, 60)}`);
+    return null;
+  }
+}
+
+export async function getAdmitadCatalogProduct() {
+  const urls = pickCatalogUrl();
   if (urls.length === 0) return null;
 
-  // Shuffle so all URLs get used over time
   const url = urls[Math.floor(Math.random() * urls.length)];
-
   logger.info(`Fetching Admitad catalog: ${url.slice(0, 80)}`);
 
   try {
@@ -38,33 +51,7 @@ export async function getAdmitadCatalogProduct() {
       logger.warn(`Admitad catalog HTTP ${res.status} for ${url.slice(0, 60)}`);
       return null;
     }
-
-    const contentType = res.headers.get('content-type') || '';
-
-    // JSON API response (e.g. catalog.store.admitad.com/api/v1/offers/)
-    if (contentType.includes('json')) {
-      return parseJsonCatalog(await res.json(), url);
-    }
-
-    const text = await res.text();
-
-    // XML advcampaigns feed (served as text/html by Admitad but is XML)
-    if (text.trimStart().startsWith('<?xml') || text.includes('<advcampaigns>')) {
-      return parseCampaignXml(text);
-    }
-
-    // YML product catalog
-    if (text.includes('<yml_catalog') || text.includes('<offers>')) {
-      return parseYmlCatalog(text);
-    }
-
-    // Last attempt: try parsing body as JSON regardless of content-type
-    try {
-      return parseJsonCatalog(JSON.parse(text), url);
-    } catch {
-      logger.warn(`Admitad catalog: unrecognised format from ${url.slice(0, 60)}`);
-      return null;
-    }
+    return parseCatalogResponse(res, url);
   } catch (err) {
     logger.warn(`Admitad catalog fetch failed: ${err.message}`);
     return null;

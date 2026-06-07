@@ -2,70 +2,58 @@ import fetch from 'node-fetch';
 import { logger } from '../utils/logger.js';
 
 const API_BASE = 'https://api.travelpayouts.com';
+const ORIGINS  = ['NYC', 'LON', 'PAR', 'DXB', 'SIN', 'LAX', 'BKK', 'IST'];
 
-// Popular origin cities to rotate through for variety
-const ORIGINS = ['NYC', 'LON', 'PAR', 'DXB', 'SIN', 'LAX', 'BKK', 'IST'];
+async function fetchDeals(token, origin) {
+  const res = await fetch(
+    `${API_BASE}/v2/prices/latest?currency=usd&origin=${origin}&limit=10&show_to_affiliates=true&sorting=price&period_type=year`,
+    { headers: { 'X-Access-Token': token, Accept: 'application/json' }, signal: AbortSignal.timeout(20_000) }
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    logger.warn(`Travelpayouts API error ${res.status}: ${text.slice(0, 200)}`);
+    return [];
+  }
+  const data = await res.json();
+  return data.data || [];
+}
+
+function buildProduct(deal, origin, marker) {
+  const { destination, value: price, airline = '', depart_date: departs = '' } = deal;
+  if (!destination) return null;
+  // General route search — always shows results; date-specific URLs redirect to homepage
+  const siteUrl = `https://www.aviasales.com/${origin}-${destination}/?marker=${marker}`;
+  logger.info(`Travelpayouts deal: ${origin}→${destination} $${price} (${airline})`);
+  return {
+    id:             `tp-${origin}-${destination}`,
+    name:           `Flight ${origin} → ${destination}${airline ? ` (${airline})` : ''}`,
+    description:    `From $${price}. Fly ${origin} to ${destination}${departs ? ` departing ${departs}` : ''}.`,
+    siteUrl,
+    imageUrl:       null,
+    price:          parseFloat(price) || null,
+    currency:       'USD',
+    commissionRate: 0,
+    category:       'Travel',
+    source:         'travelpayouts',
+  };
+}
 
 export async function getTravelpayoutsProduct() {
   const token  = process.env.TRAVELPAYOUTS_TOKEN;
-  // TRAVELPAYOUTS_MARKER is your partner marker from the Travelpayouts dashboard
-  // (a number like "123456"). It is DIFFERENT from the API token.
-  // If not set, falls back to the token — but the link will likely not track.
+  // TRAVELPAYOUTS_MARKER is the partner marker number from the dashboard.
+  // Different from the API token — falls back to token if not set (links may not track).
   const marker = process.env.TRAVELPAYOUTS_MARKER || token;
   if (!token) return null;
 
   logger.info('Fetching Travelpayouts flight deals…');
   try {
     const origin = ORIGINS[Math.floor(Math.random() * ORIGINS.length)];
-
-    const res = await fetch(
-      `${API_BASE}/v2/prices/latest?currency=usd&origin=${origin}&limit=10&show_to_affiliates=true&sorting=price&period_type=year`,
-      {
-        headers: { 'X-Access-Token': token, Accept: 'application/json' },
-        signal: AbortSignal.timeout(20_000),
-      }
-    );
-
-    if (!res.ok) {
-      const text = await res.text();
-      logger.warn(`Travelpayouts API error ${res.status}: ${text.slice(0, 200)}`);
-      return null;
-    }
-
-    const data = await res.json();
-    const deals = data.data || [];
+    const deals  = await fetchDeals(token, origin);
     logger.info(`Travelpayouts: ${deals.length} deals from ${origin}`);
     if (deals.length === 0) return null;
 
-    // Pick the deal with best value (lowest price, highest popularity)
     const picked = deals[Math.floor(Math.random() * Math.min(5, deals.length))];
-
-    const destination = picked.destination;
-    const price       = picked.value;
-    const airline     = picked.airline || '';
-    const departs     = picked.depart_date || '';
-
-    if (!destination) return null;
-
-    // General route search — always shows results.
-    // Date-specific URLs (old compact or new query-param formats) redirect to
-    // the Aviasales homepage when the exact flight isn't in their real-time cache.
-    const affiliateUrl = `https://www.aviasales.com/${origin}-${destination}/?marker=${marker}`;
-
-    logger.info(`Travelpayouts deal: ${origin}→${destination} $${price} (${airline})`);
-
-    return {
-      id:             `tp-${origin}-${destination}`,
-      name:           `Flight ${origin} → ${destination}${airline ? ` (${airline})` : ''}`,
-      description:    `From $${price}. Fly ${origin} to ${destination}${departs ? ` departing ${departs}` : ''}.`,
-      siteUrl:        affiliateUrl,
-      imageUrl:       null,
-      price:          parseFloat(price) || null,
-      currency:       'USD',
-      commissionRate: 0,
-      category:       'Travel',
-      source:         'travelpayouts',
-    };
+    return buildProduct(picked, origin, marker);
   } catch (err) {
     logger.warn(`Travelpayouts fetch failed: ${err.message}`);
     return null;
