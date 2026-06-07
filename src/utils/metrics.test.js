@@ -8,7 +8,7 @@ import path from 'path';
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'metrics-test-'));
 process.env.DATA_DIR = tmpDir;
 
-const { wasRecentlyPosted, getLastPostedSource, getRecentPostedSources, getDailyNetworkStats, recordRun } = await import('./metrics.js');
+const { wasRecentlyPosted, getLastPostedSource, getRecentPostedSources, getDailyNetworkStats, purgePostedBySource, recordRun } = await import('./metrics.js');
 
 describe('wasRecentlyPosted', () => {
   it('returns false when nothing posted yet', () => {
@@ -48,6 +48,26 @@ describe('getRecentPostedSources', () => {
   it('returns at most n sources', () => {
     const sources = getRecentPostedSources(1);
     assert.ok(sources.length <= 1);
+  });
+});
+
+describe('purgePostedBySource', () => {
+  it('removes entries for the specified source', () => {
+    recordRun({ success: true, deeplink: 'https://example.com/purge1', product: 'PurgeItem', productSource: 'shareasale' });
+    const removed = purgePostedBySource('shareasale');
+    assert.ok(removed >= 1, 'at least one entry removed');
+  });
+
+  it('does not remove entries for other sources', () => {
+    recordRun({ success: true, deeplink: 'https://example.com/keep1', product: 'KeepItem', productSource: 'temu' });
+    purgePostedBySource('shareasale');
+    // temu entry should still exist
+    assert.ok(wasRecentlyPosted('https://example.com/keep1', 'KeepItem'), 'other source entry preserved');
+  });
+
+  it('returns 0 when source has no entries', () => {
+    const removed = purgePostedBySource('nonexistent-network');
+    assert.equal(removed, 0);
   });
 });
 

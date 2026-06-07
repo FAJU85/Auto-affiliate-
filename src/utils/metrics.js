@@ -115,6 +115,14 @@ export function clearPostedStore() {
   savePosted([]);
 }
 
+/** Removes all dedup entries for a specific source network. */
+export function purgePostedBySource(source) {
+  const entries = loadPosted();
+  const remaining = entries.filter(e => e.source !== source);
+  savePosted(remaining);
+  return entries.length - remaining.length;
+}
+
 /**
  * Returns daily post counts broken down by network for the last N days.
  * Result: { date: 'YYYY-MM-DD', totals: N, byNetwork: { source: N, ... } }[]

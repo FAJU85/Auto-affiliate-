@@ -1,6 +1,6 @@
 import http from 'http';
 import { getDailySpend } from './utils/budget.js';
-import { getRecentRuns, getDedupStatus, clearPostedStore, wasRecentlyPosted, getDailyNetworkStats } from './utils/metrics.js';
+import { getRecentRuns, getDedupStatus, clearPostedStore, wasRecentlyPosted, getDailyNetworkStats, purgePostedBySource } from './utils/metrics.js';
 import { logger, getRecentLogs } from './utils/logger.js';
 import { getSettings, saveSettings, getSpaceHost } from './config/settings.js';
 import { getOAuthClient, getConnectedDid, disconnectBluesky } from './auth/bluesky-oauth.js';
@@ -421,7 +421,12 @@ async function fetchStatus() {
     statusData = status;
     renderStatus(statusData);
     renderNetworks(networks);
-  } catch(e) {}
+  } catch(e) {
+    const pill = document.getElementById('status-pill');
+    if (pill && !pill.classList.contains('running')) {
+      pill.className = 'pill'; pill.innerHTML = '<span class="dot" style="background:#ef4444"></span> Offline';
+    }
+  }
 }
 
 function renderLastRun(lr) {
@@ -584,7 +589,10 @@ async function fetchDedup() {
         +(e.source?'<span class="badge img" style="padding:.1rem .4rem;font-size:.7rem">'+esc(e.source)+'</span>':'')+esc((e.name||'').slice(0,30))+'</span>'
       ).join('');
     } else if (rEl) { rEl.innerHTML = ''; }
-  } catch(e) {}
+  } catch(e) {
+    const el = document.getElementById('dedup-count');
+    if (el) el.textContent = 'Dedup data unavailable';
+  }
 }
 
 async function clearDedup() {
@@ -958,6 +966,15 @@ async function routeRequest(req, res, url, getIsRunning, triggerRunFn, getMissin
   if (path === '/api/stats' && req.method === 'GET') return json(res, 200, getDailyNetworkStats(7));
   if (path === '/api/dedup' && req.method === 'GET') return json(res, 200, getDedupStatus());
   if (path === '/api/dedup' && req.method === 'DELETE') { clearPostedStore(); return json(res, 200, { ok: true }); }
+  if (path === '/api/dedup/purge-source' && req.method === 'POST') {
+    try {
+      const body = JSON.parse(await readBody(req));
+      if (!body.source) return json(res, 400, { ok: false, error: 'source required' });
+      const removed = purgePostedBySource(body.source);
+      logger.info(`Dedup: purged ${removed} entries for source "${body.source}"`);
+      return json(res, 200, { ok: true, removed });
+    } catch (err) { return json(res, 500, { ok: false, error: err.message }); }
+  }
   if (path === '/api/dedup/check' && req.method === 'POST') {
     try {
       const body = await readBody(req);
