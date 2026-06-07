@@ -54,15 +54,25 @@ describe('getNetworkErrors', () => {
 });
 
 describe('TASKS consistency', () => {
-  it('TASKS covers the same 9 networks as getNetworkStatus', async () => {
-    const { readFileSync } = await import('fs');
+  it('TASKS covers all 9 networks', async () => {
+    const { TASKS } = await import('./index.js');
     const expectedKeys = [
       'admitad-feed', 'admitad-api', 'admitad-catalog',
       'temu', 'takeads', 'travelpayouts', 'impact', 'cj', 'shareasale',
     ];
-    const src = readFileSync('src/feeds/index.js', 'utf8');
+    assert.ok(Array.isArray(TASKS), 'TASKS is an array');
+    assert.equal(TASKS.length, 9, 'TASKS has 9 networks');
     for (const key of expectedKeys) {
-      assert.ok(src.includes(`'${key}'`), `TASKS missing network key: ${key}`);
+      assert.ok(TASKS.some(t => t.key === key), `TASKS missing: ${key}`);
+    }
+  });
+
+  it('each TASK has key, fn, and env properties', async () => {
+    const { TASKS } = await import('./index.js');
+    for (const task of TASKS) {
+      assert.ok(typeof task.key === 'string', `key is string: ${task.key}`);
+      assert.ok(typeof task.fn === 'function', `fn is function: ${task.key}`);
+      assert.ok(typeof task.env === 'function', `env is function: ${task.key}`);
     }
   });
 });
