@@ -33,8 +33,10 @@ export async function getProduct() {
     if (r.status === 'fulfilled' && r.value?.value) {
       candidates.push(r.value.value);
       logger.info(`Network available: ${r.value.key} → "${r.value.value.name}"`);
+    } else if (r.status === 'fulfilled') {
+      logger.warn(`Network unavailable: ${r.value?.key || 'unknown'} returned null`);
     } else {
-      logger.warn(`Network unavailable: ${r.reason?.message || 'returned null'}`);
+      logger.warn(`Network unavailable: ${r.reason?.message || 'unknown error'}`);
     }
   }
 

@@ -1,7 +1,7 @@
 import fetch from 'node-fetch';
 import { logger } from '../utils/logger.js';
 
-const API_BASE = 'https://api.takeads.com';
+const API_BASE = 'https://api.takeads.com/monetize-api/v2';
 
 export async function getTakeadsProduct() {
   const apiKey = process.env.TAKEADS_API_KEY;
@@ -11,7 +11,7 @@ export async function getTakeadsProduct() {
   try {
     // 1. Get list of active programs sorted by avgCommission
     const res = await fetch(
-      `${API_BASE}/v1/product/monetize-api/v2/program?limit=50&programStatus=active`,
+      `${API_BASE}/program?limit=50&programStatus=active`,
       {
         headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' },
         signal: AbortSignal.timeout(30_000),
@@ -57,7 +57,7 @@ export async function getTakeadsProduct() {
 
 async function resolveLink(apiKey, url) {
   try {
-    const res = await fetch(`${API_BASE}/v1/product/monetize-api/v2/resolve`, {
+    const res = await fetch(`${API_BASE}/resolve`, {
       method: 'PUT',
       headers: {
         Authorization: `Bearer ${apiKey}`,
