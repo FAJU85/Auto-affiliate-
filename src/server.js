@@ -211,7 +211,7 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
       <div class="section-title">Run history</div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Status</th><th>Time (UTC)</th><th>Product</th><th>Network</th><th>Caption</th><th>Image</th><th>Duration</th><th>Error</th></tr></thead>
+          <thead><tr><th>Status</th><th>Time (UTC)</th><th>Product</th><th>Network</th><th>Post</th><th>Image</th><th>Duration</th><th>Error</th></tr></thead>
           <tbody id="runs-body"><tr><td colspan="8" style="text-align:center;color:var(--muted);padding:2rem">Loading…</td></tr></tbody>
         </table>
       </div>
@@ -435,7 +435,8 @@ function renderStatus(d) {
     const src=r.productSource?'<span class="badge img">'+esc(r.productSource)+'</span>':'<span style="color:var(--muted)">—</span>';
     const img=r.imageGenerated?'<span class="badge img">🖼 '+(r.imageSource||'')+'</span>':'<span style="color:var(--muted)">—</span>';
     const err=r.error?'<span class="err-cell" title="'+esc(r.error)+'">'+esc(r.error.slice(0,50))+'</span>':'<span style="color:var(--muted)">—</span>';
-    return '<tr><td>'+ok+'</td><td>'+ts+'</td><td>'+(r.product||'—')+'</td><td>'+src+'</td><td>'+(r.captionChars?r.captionChars+'c':'—')+'</td><td>'+img+'</td><td>'+(r.durationMs?(r.durationMs/1000).toFixed(1)+'s':'—')+'</td><td>'+err+'</td></tr>';
+    const postLink=r.postUri?'<a href="'+esc(r.postUri)+'" target="_blank" rel="noopener" style="font-size:.75rem;color:var(--accent)">view</a>':'<span style="color:var(--muted)">—</span>';
+    return '<tr><td>'+ok+'</td><td>'+ts+'</td><td>'+(r.product||'—')+'</td><td>'+src+'</td><td>'+postLink+'</td><td>'+img+'</td><td>'+(r.durationMs?(r.durationMs/1000).toFixed(1)+'s':'—')+'</td><td>'+err+'</td></tr>';
   }).join('');
 
   document.getElementById('last-updated').textContent='Updated '+new Date().toLocaleTimeString();
