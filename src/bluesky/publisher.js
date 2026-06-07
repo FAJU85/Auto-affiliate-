@@ -56,6 +56,22 @@ function safeByteSlice(str, maxBytes) {
   return buf.slice(0, end).toString('utf8');
 }
 
+const SOURCE_EMOJI = {
+  travelpayouts:    '✈️',
+  temu:             '🛍️',
+  cj:               '🏷️',
+  shareasale:       '🎁',
+  impact:           '⭐',
+  takeads:          '💼',
+  admitad:          '🛒',
+  'admitad-catalog':'🛒',
+  'admitad-api':    '🛒',
+};
+
+export function sourceEmoji(source) {
+  return SOURCE_EMOJI[source] || '🔗';
+}
+
 function buildPostRecord(text, deeplink, maxLen) {
   const combined    = `${text}\n\n${deeplink}`;
   const truncated   = safeByteSlice(combined, maxLen);
@@ -104,13 +120,16 @@ function buildExternalEmbed(product, deeplink) {
 export async function publishPost(text, deeplink, imageBuffer, product) {
   const productName = typeof product === 'string' ? product : product?.name;
   const altText = typeof product === 'object' ? buildAltText(product) : `${productName || 'Product image'}`;
+  const source  = typeof product === 'object' ? product?.source : null;
+  const emoji   = sourceEmoji(source);
+  const prefixed = text.startsWith(emoji) ? text : `${emoji} ${text}`;
 
   if (!isValidHttpUrl(deeplink)) {
     throw new Error(`publishPost: deeplink is not a valid URL: ${deeplink}`);
   }
 
   const maxLen = parseInt(process.env.MAX_POST_LENGTH || '300', 10);
-  const record = buildPostRecord(text, deeplink, maxLen);
+  const record = buildPostRecord(prefixed, deeplink, maxLen);
 
   if (imageBuffer) {
     const agent = await getBskyAgent();
