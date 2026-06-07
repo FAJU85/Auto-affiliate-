@@ -1,5 +1,6 @@
 import fetch from 'node-fetch';
 import { logger } from '../utils/logger.js';
+import { normaliseAliExpressUrl } from '../utils/aliexpress-url.js';
 
 /**
  * Fetches one of the two Admitad Catalog export formats:
@@ -96,7 +97,7 @@ function parseJsonCatalog(data, url) {
   valid.sort(() => Math.random() - 0.5);
   const item = valid[0];
 
-  const siteUrl  = item.goto_link || item.gotolink || item.affiliate_url || item.url;
+  const siteUrl  = normaliseAliExpressUrl(item.goto_link || item.gotolink || item.affiliate_url || item.url);
   const imageUrl = item.picture || item.image || item.image_url || null;
 
   logger.info(`Admitad catalog JSON selected: "${item.name || item.title}"`);
@@ -134,7 +135,7 @@ function parseCampaignXml(xml) {
 
     // logo is a brand icon, not a product image — leave imageUrl null so the
     // pipeline falls back to og:image scraped from the product page
-    campaigns.push({ id, name, siteUrl: gotolink, imageUrl: null, description: description?.slice(0, 300) || name });
+    campaigns.push({ id, name, siteUrl: normaliseAliExpressUrl(gotolink), imageUrl: null, description: description?.slice(0, 300) || name });
   }
 
   logger.info(`Admitad catalog XML: ${campaigns.length} campaigns`);
@@ -172,7 +173,7 @@ function parseYmlCatalog(xml) {
     const currency = extractXmlTag(body, 'currencyId') || 'USD';
     if (!url || !name) continue;
     try { new URL(url); } catch { continue; }
-    offers.push({ id: m[1], name, siteUrl: url, imageUrl: picture || null, description: desc, price, currency });
+    offers.push({ id: m[1], name, siteUrl: normaliseAliExpressUrl(url), imageUrl: picture || null, description: desc, price, currency });
   }
 
   logger.info(`Admitad catalog YML: ${offers.length} offers`);

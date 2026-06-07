@@ -1,5 +1,6 @@
 import fetch from 'node-fetch';
 import { logger } from '../utils/logger.js';
+import { normaliseAliExpressUrl } from '../utils/aliexpress-url.js';
 
 /**
  * Fetches the Admitad XML product feed and returns a random top product
@@ -101,7 +102,7 @@ function parseOfferBlock(id, body) {
     id,
     name: name.trim(),
     description: description.trim(),
-    siteUrl: url.trim(),
+    siteUrl: normaliseAliExpressUrl(url.trim()),
     imageUrl,
     price,
     currency,

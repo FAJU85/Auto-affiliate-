@@ -1,6 +1,7 @@
 import fetch from 'node-fetch';
 import { getAdmitadToken } from './auth.js';
 import { logger } from '../utils/logger.js';
+import { normaliseAliExpressUrl, isAliExpressUrl } from '../utils/aliexpress-url.js';
 
 const API_BASE = 'https://api.admitad.com';
 
@@ -59,8 +60,12 @@ export async function getAdmitadApiProduct() {
 }
 
 async function generateDeeplink(token, websiteId, campaignId, targetUrl) {
+  // Normalise AliExpress URLs so the app opens to the correct product page
+  const ulp = isAliExpressUrl(targetUrl) ? normaliseAliExpressUrl(targetUrl) : targetUrl;
+  if (ulp !== targetUrl) logger.info(`AliExpress URL normalised for app compatibility`);
+
   const params = new URLSearchParams({
-    ulp: targetUrl,
+    ulp,
     subid: `auto-${Date.now()}`,
   });
 
