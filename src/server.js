@@ -386,7 +386,7 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
 
 </main>
 
-<footer>Auto-Affiliate Pipeline · <a href="/health" style="color:var(--muted)">/health</a></footer>
+<footer>Auto-Affiliate Pipeline · <a href="/health" style="color:var(--muted)">/health</a> · <a href="/api/history/csv" style="color:var(--muted)">Export CSV</a></footer>
 
 <script>
 // ── Tab switching ──
@@ -836,6 +836,17 @@ async function routeRequest(req, res, url, getIsRunning, triggerRunFn, getMissin
     return json(res, 200, networks);
   }
   if (path === '/api/history' && req.method === 'GET') return json(res, 200, getRecentRuns(50));
+  if (path === '/api/history/csv' && req.method === 'GET') {
+    const runs = getRecentRuns(500);
+    const header = 'timestamp,success,product,source,imageSource,durationMs,error\n';
+    const rows = runs.map(r => [
+      r.timestamp||'', r.success?'1':'0',
+      (r.product||'').replace(/,/g,' '), r.productSource||'',
+      r.imageSource||'', r.durationMs||0, (r.error||'').replace(/,/g,' ').replace(/\n/g,' '),
+    ].join(',')).join('\n');
+    res.writeHead(200, { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename="pipeline-history.csv"' });
+    return res.end(header + rows);
+  }
   if (path === '/api/logs' && req.method === 'GET') return json(res, 200, getRecentLogs(100));
   if (path === '/api/dedup' && req.method === 'GET') return json(res, 200, getDedupStatus());
   if (path === '/api/dedup' && req.method === 'DELETE') { clearPostedStore(); return json(res, 200, { ok: true }); }
