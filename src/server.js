@@ -198,6 +198,7 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
         <div class="last-run-field"><div class="lrf-label">Product</div><div class="lrf-value" id="lr-product">—</div></div>
         <div class="last-run-field"><div class="lrf-label">Network</div><div class="lrf-value" id="lr-source">—</div></div>
         <div class="last-run-field"><div class="lrf-label">Trend</div><div class="lrf-value" id="lr-trend">—</div></div>
+        <div class="last-run-field" style="grid-column:1/-1"><div class="lrf-label">Caption</div><div class="lrf-value" id="lr-caption" style="font-size:.82rem;color:var(--muted);white-space:pre-wrap">—</div></div>
         <div class="last-run-field"><div class="lrf-label">Image</div><div class="lrf-value" id="lr-img">—</div></div>
         <div class="last-run-field"><div class="lrf-label">Duration</div><div class="lrf-value" id="lr-dur">—</div></div>
         <div class="last-run-field"><div class="lrf-label">Post</div>
@@ -436,6 +437,8 @@ function renderLastRun(lr) {
   document.getElementById('lr-product').textContent = lr.product||'—';
   document.getElementById('lr-source').textContent  = lr.productSource||'—';
   document.getElementById('lr-trend').textContent   = lr.trend||'—';
+  const captionEl = document.getElementById('lr-caption');
+  if (captionEl) captionEl.textContent = lr.caption ? lr.caption.slice(0, 200) + (lr.caption.length > 200 ? '…' : '') : '—';
   document.getElementById('lr-img').textContent     = lr.imageSource||'—';
   document.getElementById('lr-dur').textContent     = lr.durationMs?(lr.durationMs/1000).toFixed(1)+'s':'—';
   const ua=document.getElementById('lr-uri');
