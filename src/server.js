@@ -411,6 +411,10 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
       <div id="stats-totals" style="display:flex;gap:1rem;flex-wrap:wrap"></div>
     </div>
     <div class="section">
+      <div class="section-title">Network Health (last 100 runs)</div>
+      <div id="network-health" style="display:flex;gap:.75rem;flex-wrap:wrap">Loading…</div>
+    </div>
+    <div class="section">
       <div class="section-title">Top Posts by Engagement (last 30 days)</div>
       <div id="top-posts" style="font-size:.85rem;color:var(--muted)">Loading…</div>
     </div>
@@ -864,6 +868,26 @@ async function fetchStats() {
     data.forEach(d => { Object.entries(d.byNetwork).forEach(([k,v]) => { grandTotals[k] = (grandTotals[k]||0)+v; }); });
     totalsEl.innerHTML = Object.entries(grandTotals).sort((a,b)=>b[1]-a[1])
       .map(([k,v]) => `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:.5rem 1rem;text-align:center"><div style="font-size:.75rem;color:var(--muted)">${k}</div><div style="font-size:1.5rem;font-weight:700;color:${NET_COLORS[k]||'#94a3b8'}">${v}</div></div>`).join('');
+
+    // Network health
+    const healthEl = document.getElementById('network-health');
+    if (healthEl && statusData.networkHealth) {
+      const health = statusData.networkHealth;
+      const entries = Object.entries(health).sort((a,b) => b[1].attempts - a[1].attempts);
+      if (entries.length === 0) {
+        healthEl.textContent = 'No data yet.';
+      } else {
+        healthEl.innerHTML = entries.map(([net, h]) => {
+          const pct = Math.round(h.rate * 100);
+          const color = pct >= 80 ? 'var(--green)' : pct >= 50 ? 'var(--yellow)' : 'var(--red)';
+          return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:.6rem 1rem;min-width:130px">` +
+            `<div style="font-size:.75rem;color:var(--muted);margin-bottom:.25rem">${esc(net)}</div>` +
+            `<div style="font-size:1.4rem;font-weight:700;color:${color}">${pct}%</div>` +
+            `<div style="font-size:.72rem;color:var(--muted)">${h.successes}/${h.attempts} runs</div>` +
+            `</div>`;
+        }).join('');
+      }
+    }
 
     // Top posts
     const topEl = document.getElementById('top-posts');
