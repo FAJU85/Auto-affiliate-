@@ -25,6 +25,7 @@ function getStatusPayload(isRunning) {
     budget:      { spent: spend, cap, alert, pct: spend / cap },
     stats:       {
       postsToday:   runs.filter(r => r.success && r.timestamp?.startsWith(today)).length,
+      maxPostsPerDay: parseInt(process.env.MAX_POSTS_PER_DAY || '24', 10),
       totalRuns:    runs.length,
       successRate:  runs.length ? Math.round(runs.filter(r=>r.success).length/runs.length*100) : null,
     },
@@ -171,7 +172,7 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
       <div class="card">
         <div class="card-label">Posts today</div>
         <div class="card-value" id="kpi-posts">—</div>
-        <div class="card-sub">Target: 24/day</div>
+        <div class="card-sub" id="kpi-posts-sub">Limit: 24/day</div>
       </div>
       <div class="card">
         <div class="card-label">Success rate</div>
@@ -530,6 +531,9 @@ function renderStatus(d) {
   }
 
   document.getElementById('kpi-posts').textContent   = d.stats.postsToday;
+  const maxPosts = d.stats.maxPostsPerDay || 24;
+  const postsSub = document.getElementById('kpi-posts-sub');
+  if (postsSub) postsSub.textContent = 'Limit: ' + maxPosts + '/day';
   document.getElementById('kpi-success').textContent = d.stats.successRate!=null ? d.stats.successRate+'%' : '—';
   document.getElementById('kpi-success-sub').textContent = 'last '+d.stats.totalRuns+' runs';
   document.getElementById('kpi-schedule').textContent = d.pipeline.schedule;
