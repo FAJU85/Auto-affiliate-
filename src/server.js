@@ -1,6 +1,6 @@
 import http from 'http';
 import { getDailySpend } from './utils/budget.js';
-import { getRecentRuns, getDedupStatus, clearPostedStore, wasRecentlyPosted, getDailyNetworkStats, purgePostedBySource, getDedupBySource } from './utils/metrics.js';
+import { getRecentRuns, getDedupStatus, clearPostedStore, wasRecentlyPosted, getDailyNetworkStats, purgePostedBySource, getDedupBySource, getTopPosts } from './utils/metrics.js';
 import { logger, getRecentLogs } from './utils/logger.js';
 import { getSettings, saveSettings, getSpaceHost } from './config/settings.js';
 import { getOAuthClient, getConnectedDid, disconnectBluesky } from './auth/bluesky-oauth.js';
@@ -982,6 +982,7 @@ async function routeRequest(req, res, url, getIsRunning, triggerRunFn, getMissin
   }
   if (path === '/api/logs' && req.method === 'GET') return json(res, 200, getRecentLogs(100));
   if (path === '/api/stats' && req.method === 'GET') return json(res, 200, getDailyNetworkStats(7));
+  if (path === '/api/engagement/top' && req.method === 'GET') return json(res, 200, getTopPosts(30, 10));
   if (path === '/api/dedup' && req.method === 'GET') {
     const status = getDedupStatus();
     return json(res, 200, { ...status, bySource: getDedupBySource() });

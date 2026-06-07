@@ -136,6 +136,27 @@ export function purgePostedBySource(source) {
   return entries.length - remaining.length;
 }
 
+/** Records engagement (likes, reposts) for a post URI. */
+export function recordEngagement(uri, likes, reposts) {
+  const data = load();
+  const run = data.runs.find(r => r.postUri === uri);
+  if (run) {
+    run.likes    = likes;
+    run.reposts  = reposts;
+    run.engagedAt = new Date().toISOString();
+    save(data);
+  }
+}
+
+/** Returns top posts by likes, last N days. */
+export function getTopPosts(days = 30, limit = 5) {
+  const cutoff = new Date(Date.now() - days * 86400000).toISOString();
+  return load().runs
+    .filter(r => r.success && r.postUri && r.timestamp >= cutoff && (r.likes || 0) > 0)
+    .sort((a, b) => (b.likes || 0) - (a.likes || 0))
+    .slice(0, limit);
+}
+
 /**
  * Returns daily post counts broken down by network for the last N days.
  * Result: { date: 'YYYY-MM-DD', totals: N, byNetwork: { source: N, ... } }[]

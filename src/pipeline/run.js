@@ -7,7 +7,7 @@ import { upscaleImage } from '../ai/upscale.js';
 import { optimiseImage } from '../ai/imageoptim.js';
 import { publishPost } from '../bluesky/publisher.js';
 import { getBskyAgent } from '../bluesky/client.js';
-import { recordRun, wasRecentlyPosted } from '../utils/metrics.js';
+import { recordRun, wasRecentlyPosted, recordEngagement } from '../utils/metrics.js';
 import { getDailySpend } from '../utils/budget.js';
 import { logger } from '../utils/logger.js';
 import { getProductHighlights } from '../ai/exa.js';
@@ -114,7 +114,31 @@ export async function runPipeline() {
   runMeta.dailySpendUsd = getDailySpend();
   recordRun(runMeta);
   notifyWebhook(runMeta);
+  if (runMeta.success && runMeta.postUri) {
+    // Fire-and-forget engagement poll after 30 min
+    pollEngagement(runMeta.postUri).catch(() => {});
+  }
   return runMeta;
+}
+
+async function pollEngagement(uri) {
+  if (!uri) return;
+  // Wait 30 minutes then check likes/reposts once
+  await new Promise(r => setTimeout(r, 30 * 60 * 1000));
+  try {
+    const agent = await getBskyAgent();
+    // getPostThread returns the post with like/repost counts
+    const thread = await agent.getPostThread({ uri, depth: 0 });
+    const post = thread?.data?.thread?.post;
+    if (post) {
+      const likes   = post.likeCount   || 0;
+      const reposts = post.repostCount || 0;
+      recordEngagement(uri, likes, reposts);
+      logger.info(`Engagement for ${uri.slice(-20)}: ${likes} likes, ${reposts} reposts`);
+    }
+  } catch (err) {
+    logger.warn(`Engagement poll failed for ${uri.slice(-20)}: ${err.message}`);
+  }
 }
 
 function notifyWebhook(runMeta) {
