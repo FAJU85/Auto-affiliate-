@@ -479,7 +479,8 @@ function renderNetworks(networks) {
     const icon  = n.enabled ? (n.lastError ? '&#9888;' : '&#10003;') : '&#10007;';
     const tip   = n.lastError ? ' title="Last error: '+esc(n.lastError)+'"' : '';
     const cnt   = n.selectCount > 0 ? ' <span style="opacity:.6;font-size:.7rem">×'+n.selectCount+'</span>' : '';
-    return '<span'+tip+' style="display:inline-flex;align-items:center;gap:.3rem;background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:.25rem .75rem;font-size:.8rem;color:'+color+';cursor:'+(n.lastError?'help':'default')+'">'+icon+' '+esc(n.label)+cnt+'</span>';
+    const testBtn = n.enabled ? ' <button onclick="testNetwork(\''+esc(n.key)+'\')" style="padding:0 .4rem;font-size:.7rem;background:#1e293b;border:1px solid #334155;border-radius:4px;color:#94a3b8;cursor:pointer;line-height:1.5">test</button>' : '';
+    return '<span'+tip+' style="display:inline-flex;align-items:center;gap:.3rem;background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:.25rem .75rem;font-size:.8rem;color:'+color+';cursor:'+(n.lastError?'help':'default')+'">'+icon+' '+esc(n.label)+cnt+testBtn+'</span>';
   }).join('');
 }
 
@@ -677,6 +678,21 @@ async function saveConfig() {
 
 loadConfig();
 
+// ── Network test ──
+async function testNetwork(key) {
+  const msg = document.getElementById('run-msg');
+  msg.textContent = 'Testing '+key+'…';
+  try {
+    const d = await fetch('/api/network/test', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({network:key})}).then(r=>r.json());
+    if (d.ok) {
+      msg.textContent = '✓ '+key+': "'+d.product.name+'"'+(d.product.price?' $'+d.product.price:'');
+    } else {
+      msg.textContent = '✗ '+key+': '+(d.error||'failed');
+    }
+  } catch(e) { msg.textContent = '✗ '+key+': request error'; }
+  setTimeout(()=>{ msg.textContent=''; }, 8000);
+}
+
 // ── Logs ──
 const LEVEL_COLOR = { error:'#ef4444', warn:'#f59e0b', info:'#94a3b8', debug:'#4b5563' };
 async function fetchLogs() {
@@ -838,6 +854,22 @@ async function routeRequest(req, res, url, getIsRunning, triggerRunFn, getMissin
     if (getIsRunning()) return json(res, 409, { ok: false, error: 'Pipeline already running' });
     triggerRunFn('manual');
     return json(res, 202, { ok: true, message: 'Run triggered' });
+  }
+
+  if (path === '/api/network/test' && req.method === 'POST') {
+    try {
+      const body = await readBody(req);
+      const { network } = JSON.parse(body);
+      const { TASKS } = await import('./feeds/index.js');
+      const task = TASKS.find(t => t.key === network);
+      if (!task) return json(res, 404, { ok: false, error: `Unknown network: ${network}` });
+      if (!task.env()) return json(res, 200, { ok: false, error: `${network} not configured (missing env vars)` });
+      const product = await task.fn();
+      if (!product) return json(res, 200, { ok: false, error: `${network} returned null (no product available)` });
+      return json(res, 200, { ok: true, product: { name: product.name, source: product.source, siteUrl: product.siteUrl, price: product.price || null } });
+    } catch (err) {
+      return json(res, 500, { ok: false, error: err.message });
+    }
   }
 
   if (path === '/api/dry-run' && req.method === 'POST') {

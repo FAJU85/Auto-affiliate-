@@ -10,7 +10,7 @@ import { getShareASaleProduct } from './shareasale.js';
 import { logger } from '../utils/logger.js';
 import { getLastPostedSource, getRecentPostedSources } from '../utils/metrics.js';
 
-const TASKS = [
+export const TASKS = [
   { key: 'admitad-feed',    fn: getAdmitadProduct,         env: () => !!process.env.ADMITAD_FEED_URL },
   { key: 'admitad-api',     fn: getAdmitadApiProduct,      env: () => !!(process.env.ADMITAD_CLIENT_ID && process.env.ADMITAD_CLIENT_SECRET && process.env.ADMITAD_WEBSITE_ID) },
   { key: 'admitad-catalog', fn: getAdmitadCatalogProduct,  env: () => [1,2,3,4,5].some(n => process.env[`ADMITAD_CATALOG_URL_${n}`]) },
