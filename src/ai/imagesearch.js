@@ -7,6 +7,8 @@ const BAD_URL_PATTERNS = [
   /\blogo\b/i, /sprite/i, /icon\.(png|svg|gif|webp)$/i,
   /placeholder/i, /default[-_]image/i, /no[-_]image/i, /blank/i,
   /selene-static/i, /data:image/i,
+  /\bfavicon\b/i, /\.ico$/i, /banner/i, /thumb.*background/i,
+  /social[-_]share/i, /og[-_]default/i,
 ];
 
 // Flight booking sites whose og:image is always a generic site logo, not a product image
@@ -67,7 +69,8 @@ export async function findProductImage(productName, siteUrl, source) {
     try {
       const res = await fetch(siteUrl, {
         signal: controller.signal,
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; bot/1.0)' },
+        redirect: 'follow',
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; bot/1.0)', 'Accept': 'text/html' },
       });
       html = res.ok ? await res.text() : null;
     } finally {

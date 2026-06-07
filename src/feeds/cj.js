@@ -77,7 +77,8 @@ function buildProduct(link) {
   const commStr  = link['click-commission'] || link['sale-commission'] || '0';
   const commission = parseFloat(commStr.replace('%', '')) || 0;
 
-  logger.info(`CJ link selected: "${name}" (${link['@advertiser-name']}) → ${siteUrl.slice(0, 60)}`);
+  const advertiserName = String(link['@advertiser-name'] || '').trim();
+  logger.info(`CJ link selected: "${name}" (${advertiserName}) → ${siteUrl.slice(0, 60)}`);
 
   return {
     id:             String(link['@id'] || link['link-id'] || ''),
@@ -88,6 +89,7 @@ function buildProduct(link) {
     price:          null,
     currency:       'USD',
     commissionRate: commission,
+    category:       String(link['link-type'] || link['category'] || advertiserName || '').trim() || null,
     source:         'cj',
   };
 }

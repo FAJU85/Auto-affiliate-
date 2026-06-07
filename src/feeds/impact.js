@@ -67,6 +67,7 @@ function buildProduct(ad) {
     price:          null,
     currency:       'USD',
     commissionRate: 0,
+    category:       String(ad.Type || ad.AdType || ad.CampaignName || '').trim() || null,
     source:         'impact',
   };
 }
