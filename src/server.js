@@ -396,8 +396,12 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
       <div id="stats-chart" style="overflow-x:auto;min-height:220px">Loading…</div>
     </div>
     <div class="section">
-      <div class="section-title">Post Totals</div>
+      <div class="section-title">Post Totals (7 days)</div>
       <div id="stats-totals" style="display:flex;gap:1rem;flex-wrap:wrap"></div>
+    </div>
+    <div class="section">
+      <div class="section-title">Top Posts by Engagement (last 30 days)</div>
+      <div id="top-posts" style="font-size:.85rem;color:var(--muted)">Loading…</div>
     </div>
   </div>
 
@@ -826,6 +830,29 @@ async function fetchStats() {
     data.forEach(d => { Object.entries(d.byNetwork).forEach(([k,v]) => { grandTotals[k] = (grandTotals[k]||0)+v; }); });
     totalsEl.innerHTML = Object.entries(grandTotals).sort((a,b)=>b[1]-a[1])
       .map(([k,v]) => `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:.5rem 1rem;text-align:center"><div style="font-size:.75rem;color:var(--muted)">${k}</div><div style="font-size:1.5rem;font-weight:700;color:${NET_COLORS[k]||'#94a3b8'}">${v}</div></div>`).join('');
+
+    // Top posts
+    const topEl = document.getElementById('top-posts');
+    if (topEl) {
+      try {
+        const top = await fetch('/api/engagement/top').then(r => r.json());
+        if (top.length === 0) {
+          topEl.textContent = 'No engagement data yet — likes/reposts tracked 30min after each post.';
+        } else {
+          topEl.innerHTML = '<table style="width:100%;border-collapse:collapse">' +
+            '<thead><tr><th style="text-align:left;padding:.3rem .5rem;color:var(--muted);font-weight:400">Product</th><th style="text-align:left;padding:.3rem .5rem;color:var(--muted);font-weight:400">Network</th><th style="padding:.3rem .5rem;color:var(--muted);font-weight:400">❤️</th><th style="padding:.3rem .5rem;color:var(--muted);font-weight:400">🔁</th><th style="padding:.3rem .5rem;color:var(--muted);font-weight:400">Link</th></tr></thead>' +
+            '<tbody>' + top.map(r =>
+              `<tr style="border-top:1px solid var(--border)">` +
+              `<td style="padding:.3rem .5rem">${esc(r.product||'—')}</td>` +
+              `<td style="padding:.3rem .5rem"><span class="badge img">${esc(r.productSource||'—')}</span></td>` +
+              `<td style="padding:.3rem .5rem;text-align:center;font-weight:700">${r.likes||0}</td>` +
+              `<td style="padding:.3rem .5rem;text-align:center">${r.reposts||0}</td>` +
+              `<td style="padding:.3rem .5rem">${r.postUri?'<a href="https://bsky.app/profile/post/'+esc(r.postUri.split('/').at(-1))+'" target="_blank" style="color:var(--accent)">view</a>':'—'}</td>` +
+              `</tr>`
+            ).join('') + '</tbody></table>';
+        }
+      } catch { topEl.textContent = 'Engagement data unavailable.'; }
+    }
   } catch(e) {
     const el = document.getElementById('stats-chart');
     if (el) el.textContent = 'Failed to load stats.';
