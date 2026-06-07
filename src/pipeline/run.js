@@ -113,5 +113,31 @@ export async function runPipeline() {
   runMeta.durationMs    = Date.now() - startTime;
   runMeta.dailySpendUsd = getDailySpend();
   recordRun(runMeta);
+  notifyWebhook(runMeta);
   return runMeta;
+}
+
+function notifyWebhook(runMeta) {
+  const url = process.env.WEBHOOK_URL;
+  if (!url) return;
+  const payload = {
+    success: runMeta.success,
+    product: runMeta.product,
+    source:  runMeta.productSource,
+    postUri: runMeta.postUri,
+    error:   runMeta.error || null,
+    durationMs: runMeta.durationMs,
+    ts: new Date().toISOString(),
+  };
+  fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(10_000),
+  }).then(r => {
+    if (!r.ok) logger.warn(`Webhook delivery failed: HTTP ${r.status}`);
+    else logger.info(`Webhook delivered: ${url.slice(0, 60)}`);
+  }).catch(err => {
+    logger.warn(`Webhook error: ${err.message}`);
+  });
 }
