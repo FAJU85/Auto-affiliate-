@@ -1,6 +1,6 @@
 import fetch from 'node-fetch';
 import { logger } from '../utils/logger.js';
-import { sleep } from '../utils/sleep.js';
+import { sleepRetryAfter } from '../utils/rate-limit.js';
 
 const API_BASE = 'https://link-search.api.cj.com/v2/link-search';
 
@@ -29,8 +29,7 @@ async function fetchLinks(apiKey, websiteId) {
   });
 
   if (res.status === 429) {
-    logger.warn('CJ Affiliate rate limited, backing off 10s');
-    await sleep(10_000);
+    await sleepRetryAfter(res.headers.get('Retry-After'), { name: 'CJ Affiliate', fallbackMs: 10_000 });
     const res2 = await fetch(`${API_BASE}?${params}`, {
       headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' },
       signal: AbortSignal.timeout(30_000),

@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { logger } from '../utils/logger.js';
 import { sleep } from '../utils/sleep.js';
+import { sleepRetryAfter } from '../utils/rate-limit.js';
 import { getSettings } from '../config/settings.js';
 import { dataPath } from '../utils/datadir.js';
 
@@ -119,8 +120,7 @@ async function callChatAPI({ url, model, apiKey, system, user, name }) {
       });
 
       if (res.status === 429) {
-        logger.warn(`${name} rate limited (attempt ${attempt}), backing off`);
-        await sleep(attempt * 5000);
+        await sleepRetryAfter(res.headers.get('Retry-After'), { name, fallbackMs: attempt * 5000 });
         continue;
       }
 
