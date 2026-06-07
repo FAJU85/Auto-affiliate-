@@ -1,30 +1,10 @@
 import 'dotenv/config';
-import fs from 'fs';
-import path from 'path';
 import cron from 'node-cron';
 import { runPipeline } from './pipeline/run.js';
 import { logger } from './utils/logger.js';
 import { validateEnv } from './utils/env.js';
 import { startServer } from './server.js';
 import { restoreSessionFromSecrets } from './auth/bluesky-oauth.js';
-import { dataPath } from './utils/datadir.js';
-
-// Minimum gap between pipeline runs (30 min). Persisted to disk so container
-// restarts cannot bypass it and trigger a flood of startup runs.
-const MIN_RUN_GAP_MS = 30 * 60 * 1000;
-const LAST_RUN_FILE  = dataPath('last-run.json');
-
-function getLastRunTime() {
-  try { return JSON.parse(fs.readFileSync(LAST_RUN_FILE, 'utf8')).ts || 0; }
-  catch { return 0; }
-}
-
-function saveLastRunTime() {
-  try {
-    fs.mkdirSync(path.dirname(LAST_RUN_FILE), { recursive: true });
-    fs.writeFileSync(LAST_RUN_FILE, JSON.stringify({ ts: Date.now() }));
-  } catch {}
-}
 
 // Dashboard always starts first (HF Spaces requires port 7860 to be up fast)
 let missingVars = [];
@@ -40,14 +20,7 @@ async function safePipelineRun(trigger) {
     logger.warn(`[${trigger}] Previous run still active — skipping this cycle`);
     return;
   }
-  const msSinceLast = Date.now() - getLastRunTime();
-  if (msSinceLast < MIN_RUN_GAP_MS) {
-    const waitMin = Math.ceil((MIN_RUN_GAP_MS - msSinceLast) / 60000);
-    logger.warn(`[${trigger}] Cooldown active — last run was ${Math.floor(msSinceLast / 60000)}m ago, next in ~${waitMin}m`);
-    return;
-  }
   pipelineRunning = true;
-  saveLastRunTime();
   try {
     logger.info(`[${trigger}] Pipeline starting`);
     await runPipeline();
