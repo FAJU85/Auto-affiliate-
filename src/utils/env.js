@@ -10,6 +10,8 @@ const OPTIONAL_LABELS = {
   ADMITAD_CATALOG_URL_3:   'Admitad catalog export URL 3 (JSON/XML feed)',
   ADMITAD_CATALOG_URL_4:   'Admitad catalog export URL 4 (JSON/XML feed)',
   ADMITAD_CATALOG_URL_5:   'Admitad catalog export URL 5 (JSON/XML feed)',
+  TEMU_AFFILIATE_URL_1:    'Temu affiliate landing page link 1 (temu.to/k/...)',
+  TEMU_AFFILIATE_URL_2:    'Temu affiliate landing page link 2 (temu.to/m/...)',
   TAKEADS_API_KEY:         'Takeads CPC network API key',
   TRAVELPAYOUTS_TOKEN:     'Travelpayouts API token (flight deals data)',
   TRAVELPAYOUTS_MARKER:    'Travelpayouts partner marker ID (for affiliate link tracking)',
