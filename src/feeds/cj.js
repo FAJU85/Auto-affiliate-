@@ -10,14 +10,22 @@ function getCredentials() {
   return { apiKey, websiteId, ready: !!(apiKey && websiteId) };
 }
 
+const SEARCH_KEYWORDS = [
+  'sale', 'discount', 'deal', 'offer', 'promo', 'clearance',
+  'new arrival', 'best seller', 'limited', 'exclusive',
+  'free shipping', 'bundle', 'gift', 'seasonal',
+];
+
 async function fetchLinks(apiKey, websiteId) {
   // Randomise page to spread across the catalogue over successive runs
   const page = Math.ceil(Math.random() * 5);
+  const keyword = SEARCH_KEYWORDS[Math.floor(Math.random() * SEARCH_KEYWORDS.length)];
   const params = new URLSearchParams({
     'website-id':        websiteId,
     'advertiser-ids':    'joined',   // only advertisers you are already joined with
     'records-per-page':  '100',
     'page-number':       String(page),
+    'keywords':          keyword,
   });
 
   const res = await fetch(`${API_BASE}?${params}`, {
