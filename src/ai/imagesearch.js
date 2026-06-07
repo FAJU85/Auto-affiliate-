@@ -18,6 +18,20 @@ function isBadImageUrl(url) {
   return BAD_URL_PATTERNS.some(p => p.test(url));
 }
 
+function extractMetaImage(html, siteUrl) {
+  const ogMatch = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)
+    || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i);
+  const ogUrl = ogMatch?.[1];
+  if (ogUrl && !isBadImageUrl(ogUrl)) return ogUrl.startsWith('http') ? ogUrl : new URL(ogUrl, siteUrl).href;
+
+  const twMatch = html.match(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i)
+    || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image["']/i);
+  const twUrl = twMatch?.[1];
+  if (twUrl && !isBadImageUrl(twUrl)) return twUrl.startsWith('http') ? twUrl : new URL(twUrl, siteUrl).href;
+
+  return null;
+}
+
 /**
  * Returns an image URL scraped directly from the product's own siteUrl.
  * We only use the page's own og:image/twitter:image so the image always
@@ -50,26 +64,11 @@ export async function findProductImage(productName, siteUrl, source) {
 
     if (!html) return null;
 
-    // og:image is set explicitly by the site for its own content
-    const ogMatch = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)
-      || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i);
-    const ogUrl = ogMatch?.[1];
-    if (ogUrl && !isBadImageUrl(ogUrl)) {
-      const resolved = ogUrl.startsWith('http') ? ogUrl : new URL(ogUrl, siteUrl).href;
-      logger.info(`og:image for "${productName}": ${resolved.slice(0, 80)}`);
-      return resolved;
+    const imageUrl = extractMetaImage(html, siteUrl);
+    if (imageUrl) {
+      logger.info(`Meta image for "${productName}": ${imageUrl.slice(0, 80)}`);
+      return imageUrl;
     }
-
-    // twitter:image as secondary fallback
-    const twMatch = html.match(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i)
-      || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image["']/i);
-    const twUrl = twMatch?.[1];
-    if (twUrl && !isBadImageUrl(twUrl)) {
-      const resolved = twUrl.startsWith('http') ? twUrl : new URL(twUrl, siteUrl).href;
-      logger.info(`twitter:image for "${productName}": ${resolved.slice(0, 80)}`);
-      return resolved;
-    }
-
     logger.info(`No usable image found for "${productName}" at ${siteUrl.slice(0, 60)}`);
     return null;
   } catch (err) {

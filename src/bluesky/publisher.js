@@ -2,11 +2,6 @@ import { getBskyAgent, invalidateAgent } from './client.js';
 import { logger } from '../utils/logger.js';
 import { sleep } from '../utils/sleep.js';
 
-/**
- * Publishes an affiliate post to Bluesky.
- * Uploads image blob if provided, then creates the post record.
- * Returns the published post URI.
- */
 function isValidHttpUrl(str) {
   try {
     const u = new URL(str);
@@ -28,30 +23,46 @@ function buildAltText(product) {
   return parts.join(' · ').slice(0, 999) || 'Product image';
 }
 
-export async function publishPost(text, deeplink, imageBuffer, product) {
-  // Accept either a product object or a plain name string (backwards compat)
-  const productName = typeof product === 'string' ? product : product?.name;
-  const altText = typeof product === 'object' ? buildAltText(product) : `${productName || 'Product image'}`;
-
-  if (!isValidHttpUrl(deeplink)) {
-    throw new Error(`publishPost: deeplink is not a valid URL: ${deeplink}`);
+async function uploadImageBlob(agentRef, imageBuffer, altText) {
+  try {
+    const upload = await agentRef.uploadBlob(imageBuffer, { encoding: 'image/jpeg' });
+    logger.info(`Image blob uploaded: ${upload.data.blob.ref}`);
+    return { $type: 'app.bsky.embed.images', images: [{ image: upload.data.blob, alt: altText }] };
+  } catch (err) {
+    if (!/deleted|revoked|expired/i.test(err.message)) {
+      logger.warn(`Image upload failed: ${err.message}. Posting without image.`);
+      return null;
+    }
+    logger.warn(`Image upload session error: ${err.message} — re-authenticating`);
+    invalidateAgent();
+    try {
+      const fresh = await getBskyAgent();
+      const upload = await fresh.uploadBlob(imageBuffer, { encoding: 'image/jpeg' });
+      logger.info(`Image blob uploaded after re-auth: ${upload.data.blob.ref}`);
+      return { $type: 'app.bsky.embed.images', images: [{ image: upload.data.blob, alt: altText }] };
+    } catch (err2) {
+      logger.warn(`Image upload failed after re-auth: ${err2.message}. Posting without image.`);
+      return null;
+    }
   }
+}
 
-  const agent = await getBskyAgent();
-  const maxLen = parseInt(process.env.MAX_POST_LENGTH || '300', 10);
+function safeByteSlice(str, maxBytes) {
+  const buf = Buffer.from(str, 'utf8');
+  if (buf.length <= maxBytes) return str;
+  // Walk back from maxBytes until we land on a valid UTF-8 sequence boundary
+  let end = maxBytes;
+  while (end > 0 && (buf[end] & 0xc0) === 0x80) end--;
+  return buf.slice(0, end).toString('utf8');
+}
 
-  // Build combined text, then truncate by byte length to respect Bluesky's limit
-  const combined = `${text}\n\n${deeplink}`;
-  const combinedBytes = Buffer.from(combined, 'utf8');
-  const truncatedBytes = combinedBytes.slice(0, maxLen);
-  const truncated = truncatedBytes.toString('utf8');
-
-  // Facet indices are byte offsets into the final truncated text
+function buildPostRecord(text, deeplink, maxLen) {
+  const combined    = `${text}\n\n${deeplink}`;
+  const truncated   = safeByteSlice(combined, maxLen);
   const prefixBytes = Buffer.byteLength(text + '\n\n', 'utf8');
-  const linkStart = prefixBytes;
-  const linkEnd = Math.min(prefixBytes + Buffer.byteLength(deeplink, 'utf8'), truncatedBytes.length);
-
-  const postRecord = {
+  const linkStart   = prefixBytes;
+  const linkEnd     = Math.min(prefixBytes + Buffer.byteLength(deeplink, 'utf8'), Buffer.byteLength(truncated, 'utf8'));
+  return {
     $type: 'app.bsky.feed.post',
     text: truncated,
     createdAt: new Date().toISOString(),
@@ -59,47 +70,18 @@ export async function publishPost(text, deeplink, imageBuffer, product) {
       ? [{ index: { byteStart: linkStart, byteEnd: linkEnd }, features: [{ $type: 'app.bsky.richtext.facet#link', uri: deeplink }] }]
       : [],
   };
+}
 
-  // Upload image if we have one
-  if (imageBuffer) {
-    try {
-      const upload = await agent.uploadBlob(imageBuffer, { encoding: 'image/png' });
-      postRecord.embed = {
-        $type: 'app.bsky.embed.images',
-        images: [{ image: upload.data.blob, alt: altText }],
-      };
-      logger.info(`Image blob uploaded: ${upload.data.blob.ref}`);
-    } catch (err) {
-      if (/deleted|revoked|expired/i.test(err.message)) {
-        logger.warn(`Image upload session error: ${err.message} — re-authenticating`);
-        invalidateAgent();
-        try {
-          const freshAgent = await getBskyAgent();
-          const upload = await freshAgent.uploadBlob(imageBuffer, { encoding: 'image/png' });
-          postRecord.embed = {
-            $type: 'app.bsky.embed.images',
-            images: [{ image: upload.data.blob, alt: altText }],
-          };
-          logger.info(`Image blob uploaded after re-auth: ${upload.data.blob.ref}`);
-        } catch (err2) {
-          logger.warn(`Image upload failed after re-auth: ${err2.message}. Posting without image.`);
-        }
-      } else {
-        logger.warn(`Image upload failed: ${err.message}. Posting without image.`);
-      }
-    }
-  }
-
-  let currentAgent = agent;
+async function postWithRetry(record) {
+  let currentAgent = await getBskyAgent();
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      const result = await currentAgent.post(postRecord);
+      const result = await currentAgent.post(record);
       logger.info(`Post published: ${result.uri}`);
       return result.uri;
     } catch (err) {
       logger.warn(`Bluesky post attempt ${attempt} failed: ${err.message}`);
       if (/deleted|revoked|expired/i.test(err.message)) {
-        // Session invalidated — clear cache and re-authenticate before retry
         invalidateAgent();
         try { currentAgent = await getBskyAgent(); } catch {}
       }
@@ -109,3 +91,22 @@ export async function publishPost(text, deeplink, imageBuffer, product) {
   }
 }
 
+export async function publishPost(text, deeplink, imageBuffer, product) {
+  const productName = typeof product === 'string' ? product : product?.name;
+  const altText = typeof product === 'object' ? buildAltText(product) : `${productName || 'Product image'}`;
+
+  if (!isValidHttpUrl(deeplink)) {
+    throw new Error(`publishPost: deeplink is not a valid URL: ${deeplink}`);
+  }
+
+  const maxLen = parseInt(process.env.MAX_POST_LENGTH || '300', 10);
+  const record = buildPostRecord(text, deeplink, maxLen);
+
+  if (imageBuffer) {
+    const agent = await getBskyAgent();
+    const embed = await uploadImageBlob(agent, imageBuffer, altText);
+    if (embed) record.embed = embed;
+  }
+
+  return postWithRetry(record);
+}

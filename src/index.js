@@ -3,8 +3,9 @@ import cron from 'node-cron';
 import { runPipeline } from './pipeline/run.js';
 import { logger } from './utils/logger.js';
 import { validateEnv } from './utils/env.js';
-import { startServer } from './server.js';
+import { startServer, hasAnyNetworkEnabled } from './server.js';
 import { restoreSessionFromSecrets } from './auth/bluesky-oauth.js';
+import { isWithinPostingWindow } from './utils/schedule.js';
 
 // Dashboard always starts first (HF Spaces requires port 7860 to be up fast)
 let missingVars = [];
@@ -18,6 +19,10 @@ async function safePipelineRun(trigger) {
   }
   if (pipelineRunning) {
     logger.warn(`[${trigger}] Previous run still active — skipping this cycle`);
+    return;
+  }
+  if (trigger === 'cron' && !isWithinPostingWindow()) {
+    logger.info(`[${trigger}] Outside posting window (POSTING_HOURS=${process.env.POSTING_HOURS || '8-22'} UTC) — skipping`);
     return;
   }
   pipelineRunning = true;
@@ -39,12 +44,16 @@ restoreSessionFromSecrets().catch(() => {});
 
 // Then validate env + start scheduler
 validateEnv().then(missing => {
+  if (!hasAnyNetworkEnabled()) {
+    missing.push('affiliate network (set at least one: ADMITAD_FEED_URL, TEMU_AFFILIATE_URL_1, IMPACT_ACCOUNT_SID+AUTH_TOKEN, etc.)');
+  }
+
   missingVars = missing;
   configured  = missing.length === 0;
 
   if (!configured) {
     logger.warn(`Not configured — ${missing.join(', ')}`);
-    logger.warn('Dashboard running. Connect Bluesky via the dashboard to start posting.');
+    logger.warn('Dashboard running. Connect Bluesky and add at least one affiliate network to start posting.');
   }
 
   const SCHEDULE = process.env.CRON_SCHEDULE || '0 * * * *';

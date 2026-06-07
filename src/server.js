@@ -1,6 +1,6 @@
 import http from 'http';
 import { getDailySpend } from './utils/budget.js';
-import { getRecentRuns } from './utils/metrics.js';
+import { getRecentRuns, getDedupStatus, clearPostedStore } from './utils/metrics.js';
 import { logger } from './utils/logger.js';
 import { getSettings, saveSettings, getSpaceHost } from './config/settings.js';
 import { getOAuthClient, getConnectedDid, disconnectBluesky } from './auth/bluesky-oauth.js';
@@ -192,6 +192,7 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
       <div class="last-run">
         <div class="last-run-field"><div class="lrf-label">Time</div><div class="lrf-value" id="lr-time">—</div></div>
         <div class="last-run-field"><div class="lrf-label">Product</div><div class="lrf-value" id="lr-product">—</div></div>
+        <div class="last-run-field"><div class="lrf-label">Network</div><div class="lrf-value" id="lr-source">—</div></div>
         <div class="last-run-field"><div class="lrf-label">Trend</div><div class="lrf-value" id="lr-trend">—</div></div>
         <div class="last-run-field"><div class="lrf-label">Image</div><div class="lrf-value" id="lr-img">—</div></div>
         <div class="last-run-field"><div class="lrf-label">Duration</div><div class="lrf-value" id="lr-dur">—</div></div>
@@ -210,9 +211,23 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
       <div class="section-title">Run history</div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Status</th><th>Time (UTC)</th><th>Product</th><th>Caption</th><th>Image</th><th>Duration</th><th>Error</th></tr></thead>
-          <tbody id="runs-body"><tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem">Loading…</td></tr></tbody>
+          <thead><tr><th>Status</th><th>Time (UTC)</th><th>Product</th><th>Network</th><th>Post</th><th>Image</th><th>Duration</th><th>Error</th></tr></thead>
+          <tbody id="runs-body"><tr><td colspan="8" style="text-align:center;color:var(--muted);padding:2rem">Loading…</td></tr></tbody>
         </table>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Affiliate networks</div>
+      <div id="networks-list" style="display:flex;flex-wrap:wrap;gap:.5rem;padding:.25rem 0">Loading…</div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">60-day dedup store</div>
+      <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
+        <span id="dedup-count" style="font-size:.9rem;color:var(--muted)">Loading…</span>
+        <button id="dedup-clear-btn" onclick="clearDedup()" style="padding:.25rem .75rem;font-size:.8rem;background:#ef4444;color:#fff;border:none;border-radius:6px;cursor:pointer">Clear store</button>
+        <span id="dedup-clear-msg" style="font-size:.8rem;color:var(--muted)"></span>
       </div>
     </div>
   </div>
@@ -301,6 +316,11 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
           <span class="hint">Characters per post. Bluesky max: 300.</span>
         </div>
         <div class="field">
+          <label>Posting Hours (UTC)</label>
+          <input id="cfg-postingHours" type="text" placeholder="8-22" />
+          <span class="hint">UTC hour window, e.g. "8-22". Cron skips outside this window. Use "0-23" to always post.</span>
+        </div>
+        <div class="field">
           <label>Daily Cost Cap (USD)</label>
           <input id="cfg-dailyCostCap" type="number" step="0.01" min="0" />
           <span class="hint">Pipeline stops if AI spend exceeds this.</span>
@@ -356,9 +376,41 @@ function showTab(name) {
 let statusData = {};
 async function fetchStatus() {
   try {
-    statusData = await fetch('/api/status').then(r=>r.json());
+    const [status, networks] = await Promise.all([
+      fetch('/api/status').then(r=>r.json()),
+      fetch('/api/networks').then(r=>r.json()),
+    ]);
+    statusData = status;
     renderStatus(statusData);
+    renderNetworks(networks);
   } catch(e) {}
+}
+
+function renderLastRun(lr) {
+  if (!lr) return;
+  document.getElementById('lr-time').textContent    = (lr.timestamp||'').replace('T',' ').slice(0,19)||'—';
+  document.getElementById('lr-product').textContent = lr.product||'—';
+  document.getElementById('lr-source').textContent  = lr.productSource||'—';
+  document.getElementById('lr-trend').textContent   = lr.trend||'—';
+  document.getElementById('lr-img').textContent     = lr.imageSource||'—';
+  document.getElementById('lr-dur').textContent     = lr.durationMs?(lr.durationMs/1000).toFixed(1)+'s':'—';
+  const ua=document.getElementById('lr-uri');
+  if (lr.postUri){ua.href=lr.postUri;ua.textContent=lr.postUri.slice(0,40)+'…';}
+  else{ua.href='#';ua.textContent='—';}
+}
+
+function renderRunHistory(runs) {
+  const tbody=document.getElementById('runs-body');
+  if (!runs?.length){tbody.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:2rem">No runs yet</td></tr>';return;}
+  tbody.innerHTML=runs.map(r=>{
+    const ok=r.success?'<span class="badge ok">✓ OK</span>':'<span class="badge err">✗ Fail</span>';
+    const ts=(r.timestamp||'').replace('T',' ').slice(0,19);
+    const src=r.productSource?'<span class="badge img">'+esc(r.productSource)+'</span>':'<span style="color:var(--muted)">—</span>';
+    const img=r.imageGenerated?'<span class="badge img">🖼 '+(r.imageSource||'')+'</span>':'<span style="color:var(--muted)">—</span>';
+    const err=r.error?'<span class="err-cell" title="'+esc(r.error)+'">'+esc(r.error.slice(0,50))+'</span>':'<span style="color:var(--muted)">—</span>';
+    const postLink=r.postUri?'<a href="'+esc(r.postUri)+'" target="_blank" rel="noopener" style="font-size:.75rem;color:var(--accent)">view</a>':'<span style="color:var(--muted)">—</span>';
+    return '<tr><td>'+ok+'</td><td>'+ts+'</td><td>'+(r.product||'—')+'</td><td>'+src+'</td><td>'+postLink+'</td><td>'+img+'</td><td>'+(r.durationMs?(r.durationMs/1000).toFixed(1)+'s':'—')+'</td><td>'+err+'</td></tr>';
+  }).join('');
 }
 
 function renderStatus(d) {
@@ -387,31 +439,20 @@ function renderStatus(d) {
   fill.style.width = Math.min(pct*100,100)+'%';
   fill.style.background = pct>=1?'#ef4444':pct>=alert/cap?'#f59e0b':'#22c55e';
 
-  const lr=d.lastRun;
-  if (lr) {
-    document.getElementById('lr-time').textContent    = (lr.timestamp||'').replace('T',' ').slice(0,19)||'—';
-    document.getElementById('lr-product').textContent = lr.product||'—';
-    document.getElementById('lr-trend').textContent   = lr.trend||'—';
-    document.getElementById('lr-img').textContent     = lr.imageSource||'—';
-    document.getElementById('lr-dur').textContent     = lr.durationMs?(lr.durationMs/1000).toFixed(1)+'s':'—';
-    const ua=document.getElementById('lr-uri');
-    if (lr.postUri){ua.href=lr.postUri;ua.textContent=lr.postUri.slice(0,40)+'…';}
-    else{ua.href='#';ua.textContent='—';}
-  }
-
+  renderLastRun(d.lastRun);
   document.getElementById('run-btn').disabled = d.pipeline.running;
-
-  const tbody=document.getElementById('runs-body');
-  if (!d.runs?.length){tbody.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem">No runs yet</td></tr>';return;}
-  tbody.innerHTML=d.runs.map(r=>{
-    const ok=r.success?'<span class="badge ok">✓ OK</span>':'<span class="badge err">✗ Fail</span>';
-    const ts=(r.timestamp||'').replace('T',' ').slice(0,19);
-    const img=r.imageGenerated?'<span class="badge img">🖼 '+(r.imageSource||'')+'</span>':'<span style="color:var(--muted)">—</span>';
-    const err=r.error?'<span class="err-cell" title="'+esc(r.error)+'">'+esc(r.error.slice(0,50))+'</span>':'<span style="color:var(--muted)">—</span>';
-    return '<tr><td>'+ok+'</td><td>'+ts+'</td><td>'+(r.product||'—')+'</td><td>'+(r.captionChars?r.captionChars+'c':'—')+'</td><td>'+img+'</td><td>'+(r.durationMs?(r.durationMs/1000).toFixed(1)+'s':'—')+'</td><td>'+err+'</td></tr>';
-  }).join('');
-
+  renderRunHistory(d.runs);
   document.getElementById('last-updated').textContent='Updated '+new Date().toLocaleTimeString();
+}
+
+function renderNetworks(networks) {
+  const el = document.getElementById('networks-list');
+  if (!el || !Array.isArray(networks)) return;
+  el.innerHTML = networks.map(function(n) {
+    const color = n.enabled ? '#22c55e' : '#6b7280';
+    const icon  = n.enabled ? '&#10003;' : '&#10007;';
+    return '<span style="display:inline-flex;align-items:center;gap:.3rem;background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:.25rem .75rem;font-size:.8rem;color:'+color+'">'+icon+' '+esc(n.label)+'</span>';
+  }).join('');
 }
 
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
@@ -426,8 +467,29 @@ async function triggerRun() {
   } catch{msg.textContent='Request failed';btn.disabled=false;}
 }
 
+async function fetchDedup() {
+  try {
+    const d = await fetch('/api/dedup').then(r=>r.json());
+    const el = document.getElementById('dedup-count');
+    if (el) el.textContent = d.total + ' active entries (60-day window)';
+  } catch(e) {}
+}
+
+async function clearDedup() {
+  const btn=document.getElementById('dedup-clear-btn'), msg=document.getElementById('dedup-clear-msg');
+  if (!confirm('Clear the entire 60-day dedup store? All products will be eligible to post again.')) return;
+  btn.disabled=true; msg.textContent='Clearing…';
+  try {
+    await fetch('/api/dedup',{method:'DELETE'});
+    msg.textContent='Cleared!'; fetchDedup();
+  } catch(e){msg.textContent='Error';}
+  setTimeout(()=>{ btn.disabled=false; msg.textContent=''; }, 3000);
+}
+
 fetchStatus();
+fetchDedup();
 setInterval(fetchStatus, 20000);
+setInterval(fetchDedup, 60000);
 
 // ── Accounts ──
 async function loadAccounts() {
@@ -509,6 +571,7 @@ async function loadConfig() {
     document.getElementById('cfg-spaceHost').value          = d.spaceHost          || '';
     document.getElementById('cfg-cronSchedule').value       = d.cronSchedule       || '0 * * * *';
     document.getElementById('cfg-maxPostLength').value      = d.maxPostLength       || 300;
+    document.getElementById('cfg-postingHours').value       = d.postingHours        || '8-22';
     document.getElementById('cfg-dailyCostCap').value       = d.dailyCostCap       || 2.00;
     document.getElementById('cfg-alertThreshold').value     = d.alertThreshold     || 1.50;
     document.getElementById('cfg-postSystemPrompt').value   = d.postSystemPrompt   || '';
@@ -522,6 +585,7 @@ async function saveConfig() {
     spaceHost:        document.getElementById('cfg-spaceHost').value.trim(),
     cronSchedule:     document.getElementById('cfg-cronSchedule').value.trim(),
     maxPostLength:    parseInt(document.getElementById('cfg-maxPostLength').value,10),
+    postingHours:     document.getElementById('cfg-postingHours').value.trim() || '8-22',
     dailyCostCap:     parseFloat(document.getElementById('cfg-dailyCostCap').value),
     alertThreshold:   parseFloat(document.getElementById('cfg-alertThreshold').value),
     postSystemPrompt: document.getElementById('cfg-postSystemPrompt').value.trim(),
@@ -541,130 +605,130 @@ loadConfig();
 
 // ─── Server ──────────────────────────────────────────────────────────────────
 
-export function startServer(getIsRunning, triggerRun, getMissingVars = () => []) {
+function getNetworkStatus() {
+  const e = process.env;
+  const networks = [
+    { key: 'admitad-feed',    label: 'Admitad XML Feed',     enabled: !!e.ADMITAD_FEED_URL },
+    { key: 'admitad-api',     label: 'Admitad API',          enabled: !!(e.ADMITAD_CLIENT_ID && e.ADMITAD_CLIENT_SECRET && e.ADMITAD_WEBSITE_ID) },
+    { key: 'admitad-catalog', label: 'Admitad Catalog',      enabled: [1,2,3,4,5].some(n => e[`ADMITAD_CATALOG_URL_${n}`]) },
+    { key: 'temu',            label: 'Temu',                 enabled: !!(e.TEMU_AFFILIATE_URL_1 || e.TEMU_AFFILIATE_URL_2) },
+    { key: 'takeads',         label: 'TakeAds',              enabled: !!e.TAKEADS_API_KEY },
+    { key: 'travelpayouts',   label: 'Travelpayouts',        enabled: !!e.TRAVELPAYOUTS_TOKEN },
+    { key: 'impact',          label: 'Impact.com',           enabled: !!(e.IMPACT_ACCOUNT_SID && e.IMPACT_AUTH_TOKEN) },
+    { key: 'cj',              label: 'CJ Affiliate',         enabled: !!(e.CJ_API_KEY && e.CJ_WEBSITE_ID) },
+    { key: 'shareasale',      label: 'ShareASale',           enabled: !!(e.SHAREASALE_TOKEN && e.SHAREASALE_SECRET && e.SHAREASALE_AFFILIATE_ID) },
+  ];
+  return networks;
+}
 
+export function hasAnyNetworkEnabled() {
+  return getNetworkStatus().some(n => n.enabled);
+}
+
+function handleClientMetadata(res) {
+  const host = getSpaceHost();
+  if (!host) return json(res, 503, { error: 'Space URL not configured' });
+  return json(res, 200, {
+    client_id:                  `${host}/client-metadata.json`,
+    client_name:                'Auto Affiliate Pipeline',
+    client_uri:                 host,
+    redirect_uris:              [`${host}/oauth/callback`],
+    scope:                      'atproto transition:generic',
+    grant_types:                ['authorization_code', 'refresh_token'],
+    response_types:             ['code'],
+    token_endpoint_auth_method: 'none',
+    application_type:           'web',
+    dpop_bound_access_tokens:   true,
+  });
+}
+
+async function handleSettingsPost(req, res) {
+  try {
+    const body    = await readBody(req);
+    const updates = JSON.parse(body);
+    if (updates.alertThreshold >= updates.dailyCostCap) {
+      return json(res, 400, { ok: false, error: 'Alert threshold must be less than daily cost cap' });
+    }
+    const saved = saveSettings(updates);
+    logger.info('Settings updated via dashboard');
+    return json(res, 200, { ok: true, ...saved });
+  } catch (err) {
+    return json(res, 400, { ok: false, error: err.message });
+  }
+}
+
+async function handleOAuthStart(url, res) {
+  const handle = url.searchParams.get('handle');
+  if (!handle) return json(res, 400, { error: 'handle param required' });
+  const client = getOAuthClient();
+  if (!client) return json(res, 503, { error: 'Space URL not configured — set it in Space Config tab' });
+  try {
+    const authUrl = await client.authorize(handle, { scope: 'atproto transition:generic' });
+    return json(res, 200, { url: authUrl.toString() });
+  } catch (err) {
+    logger.warn(`Bluesky OAuth start failed: ${err.message}`);
+    return json(res, 500, { error: err.message });
+  }
+}
+
+async function handleOAuthCallback(url, res) {
+  const client = getOAuthClient();
+  if (!client) { res.writeHead(302, { Location: '/?error=no_client' }); return res.end(); }
+  try {
+    const { session } = await client.callback(new URLSearchParams(Object.fromEntries(url.searchParams)));
+    logger.info(`Bluesky OAuth connected: ${session.did}`);
+    res.writeHead(302, { Location: '/?tab=accounts&connected=1' });
+    return res.end();
+  } catch (err) {
+    logger.warn(`Bluesky OAuth callback failed: ${err.message}`);
+    res.writeHead(302, { Location: '/?tab=accounts&error=' + encodeURIComponent(err.message) });
+    return res.end();
+  }
+}
+
+async function routeRequest(req, res, url, getIsRunning, triggerRunFn, getMissingVars) {
+  const path = url.pathname;
+  if (path === '/health') { res.writeHead(200, { 'Content-Type': 'text/plain' }); return res.end('ok'); }
+  if (path === '/client-metadata.json') return handleClientMetadata(res);
+  if (path === '/api/status') {
+    const payload = getStatusPayload(getIsRunning());
+    payload.missingVars = getMissingVars();
+    return json(res, 200, payload);
+  }
+  if (path === '/api/settings' && req.method === 'GET')  return json(res, 200, getSettings());
+  if (path === '/api/settings' && req.method === 'POST') return handleSettingsPost(req, res);
+  if (path === '/api/accounts' && req.method === 'GET') {
+    const did = await getConnectedDid().catch(() => null);
+    return json(res, 200, { spaceConfigured: !!getSpaceHost(), bluesky: { connected: !!did, did } });
+  }
+  if (path === '/api/accounts/bluesky/disconnect' && req.method === 'POST') {
+    await disconnectBluesky();
+    return json(res, 200, { ok: true });
+  }
+  if (path === '/api/networks' && req.method === 'GET') return json(res, 200, getNetworkStatus());
+  if (path === '/api/history' && req.method === 'GET') return json(res, 200, getRecentRuns(50));
+  if (path === '/api/dedup' && req.method === 'GET') return json(res, 200, getDedupStatus());
+  if (path === '/api/dedup' && req.method === 'DELETE') { clearPostedStore(); return json(res, 200, { ok: true }); }
+  if (path === '/health') return json(res, 200, { ok: true, ts: new Date().toISOString() });
+  if (path === '/oauth/bsky/start')  return handleOAuthStart(url, res);
+  if (path === '/oauth/callback')    return handleOAuthCallback(url, res);
+  if (path === '/api/run' && req.method === 'POST') {
+    const missing = getMissingVars();
+    if (missing.length) return json(res, 503, { ok: false, error: `Not ready: ${missing.join(', ')}` });
+    if (getIsRunning()) return json(res, 409, { ok: false, error: 'Pipeline already running' });
+    triggerRunFn('manual');
+    return json(res, 202, { ok: true, message: 'Run triggered' });
+  }
+  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+  res.end(DASHBOARD_HTML);
+}
+
+export function startServer(getIsRunning, triggerRun, getMissingVars = () => []) {
   const server = http.createServer(async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
-
-    const url = new URL(req.url, `http://localhost`);
-    const path = url.pathname;
-
-    // ── Health ──
-    if (path === '/health') {
-      res.writeHead(200, { 'Content-Type': 'text/plain' });
-      return res.end('ok');
-    }
-
-    // ── Client metadata (required by AT Protocol OAuth) ──
-    if (path === '/client-metadata.json') {
-      const host = getSpaceHost();
-      if (!host) return json(res, 503, { error: 'Space URL not configured' });
-      return json(res, 200, {
-        client_id:                  `${host}/client-metadata.json`,
-        client_name:                'Auto Affiliate Pipeline',
-        client_uri:                 host,
-        redirect_uris:              [`${host}/oauth/callback`],
-        scope:                      'atproto transition:generic',
-        grant_types:                ['authorization_code', 'refresh_token'],
-        response_types:             ['code'],
-        token_endpoint_auth_method: 'none',
-        application_type:           'web',
-        dpop_bound_access_tokens:   true,
-      });
-    }
-
-    // ── Status API ──
-    if (path === '/api/status') {
-      const payload = getStatusPayload(getIsRunning());
-      payload.missingVars = getMissingVars();
-      return json(res, 200, payload);
-    }
-
-    // ── Settings GET ──
-    if (path === '/api/settings' && req.method === 'GET') {
-      return json(res, 200, getSettings());
-    }
-
-    // ── Settings POST ──
-    if (path === '/api/settings' && req.method === 'POST') {
-      try {
-        const body = await readBody(req);
-        const updates = JSON.parse(body);
-        if (updates.alertThreshold >= updates.dailyCostCap) {
-          return json(res, 400, { ok: false, error: 'Alert threshold must be less than daily cost cap' });
-        }
-        const saved = saveSettings(updates);
-        logger.info('Settings updated via dashboard');
-        return json(res, 200, { ok: true, ...saved });
-      } catch (err) {
-        return json(res, 400, { ok: false, error: err.message });
-      }
-    }
-
-    // ── Accounts status ──
-    if (path === '/api/accounts' && req.method === 'GET') {
-      const did = await getConnectedDid().catch(() => null);
-      return json(res, 200, {
-        spaceConfigured: !!getSpaceHost(),
-        bluesky: { connected: !!did, did },
-      });
-    }
-
-    // ── Disconnect Bluesky ──
-    if (path === '/api/accounts/bluesky/disconnect' && req.method === 'POST') {
-      await disconnectBluesky();
-      return json(res, 200, { ok: true });
-    }
-
-    // ── OAuth: start Bluesky flow ──
-    if (path === '/oauth/bsky/start') {
-      const handle = url.searchParams.get('handle');
-      if (!handle) return json(res, 400, { error: 'handle param required' });
-      const client = getOAuthClient();
-      if (!client) return json(res, 503, { error: 'Space URL not configured — set it in Space Config tab' });
-      try {
-        const authUrl = await client.authorize(handle, { scope: 'atproto transition:generic' });
-        return json(res, 200, { url: authUrl.toString() });
-      } catch (err) {
-        logger.warn(`Bluesky OAuth start failed: ${err.message}`);
-        return json(res, 500, { error: err.message });
-      }
-    }
-
-    // ── OAuth: callback ──
-    if (path === '/oauth/callback') {
-      const client = getOAuthClient();
-      if (!client) {
-        res.writeHead(302, { Location: '/?error=no_client' });
-        return res.end();
-      }
-      try {
-        const params = Object.fromEntries(url.searchParams);
-        const { session } = await client.callback(new URLSearchParams(params));
-        logger.info(`Bluesky OAuth connected: ${session.did}`);
-        res.writeHead(302, { Location: '/?tab=accounts&connected=1' });
-        return res.end();
-      } catch (err) {
-        logger.warn(`Bluesky OAuth callback failed: ${err.message}`);
-        res.writeHead(302, { Location: '/?tab=accounts&error=' + encodeURIComponent(err.message) });
-        return res.end();
-      }
-    }
-
-    // ── Run trigger ──
-    if (path === '/api/run' && req.method === 'POST') {
-      const missing = getMissingVars();
-      if (missing.length) return json(res, 503, { ok: false, error: `Not ready: ${missing.join(', ')}` });
-      if (getIsRunning()) return json(res, 409, { ok: false, error: 'Pipeline already running' });
-      triggerRun('manual');
-      return json(res, 202, { ok: true, message: 'Run triggered' });
-    }
-
-    // ── Dashboard ──
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    res.end(DASHBOARD_HTML);
+    const url = new URL(req.url, 'http://localhost');
+    await routeRequest(req, res, url, getIsRunning, triggerRun, getMissingVars);
   });
-
   server.listen(PORT, () => {
     logger.info(`Dashboard listening on http://localhost:${PORT}`);
     startKeepAlive(PORT);

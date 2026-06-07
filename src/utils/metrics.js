@@ -29,7 +29,7 @@ export function recordRun(metrics) {
 
   // On success, write to the long-term deduplication store
   if (metrics.success && metrics.deeplink) {
-    recordPosted(metrics.deeplink, metrics.product);
+    recordPosted(metrics.deeplink, metrics.product, metrics.productSource);
   }
 }
 
@@ -51,17 +51,27 @@ function savePosted(entries) {
   fs.renameSync(tmp, POSTED_FILE);
 }
 
-function recordPosted(deeplink, name) {
+function recordPosted(deeplink, name, source) {
   const entries = loadPosted();
   const cutoff  = Date.now() - DEDUP_MS;
   const fresh   = entries.filter(e => new Date(e.postedAt).getTime() > cutoff);
-  fresh.push({ deeplink, name: normalizeName(name), postedAt: new Date().toISOString() });
+  fresh.push({ deeplink, name: normalizeName(name), source: source || null, postedAt: new Date().toISOString() });
   savePosted(fresh);
 }
 
 function normalizeName(name) {
   if (!name) return '';
   return name.toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
+}
+
+/** Returns the source (network key) of the most recently posted product, or null. */
+export function getLastPostedSource() {
+  const entries = loadPosted();
+  if (!entries.length) return null;
+  const last = entries.reduce((a, b) =>
+    new Date(a.postedAt) > new Date(b.postedAt) ? a : b
+  );
+  return last.source || null;
 }
 
 /**
@@ -79,4 +89,17 @@ export function wasRecentlyPosted(deeplink, name) {
     if (normName && e.name && e.name === normName) return true;
     return false;
   });
+}
+
+/** Returns the count of active (non-expired) dedup entries and the last 5. */
+export function getDedupStatus() {
+  const entries = loadPosted();
+  const cutoff  = Date.now() - DEDUP_MS;
+  const active  = entries.filter(e => new Date(e.postedAt).getTime() > cutoff);
+  return { total: active.length, recent: active.slice(-5).reverse() };
+}
+
+/** Clears the entire dedup store — use for testing or manual reset. */
+export function clearPostedStore() {
+  savePosted([]);
 }
