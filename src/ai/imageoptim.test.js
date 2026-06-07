@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { optimiseImage } from './imageoptim.js';
 
 describe('optimiseImage', () => {
@@ -43,5 +44,12 @@ describe('optimiseImage', () => {
     const result = await optimiseImage(garbage);
     assert.ok(Buffer.isBuffer(result), 'returns a Buffer even on error');
     assert.deepEqual(result, garbage, 'returns original on failure');
+  });
+
+  it('three-pass compression defined in source', () => {
+    const src = fs.readFileSync('src/ai/imageoptim.js', 'utf8');
+    assert.ok(src.includes('400'), 'third-pass 400px limit present');
+    assert.ok(src.includes('50'), 'third-pass q50 quality present');
+    assert.ok(src.includes('lastResort'), 'lastResort variable present');
   });
 });

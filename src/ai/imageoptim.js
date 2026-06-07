@@ -28,13 +28,20 @@ export async function optimiseImage(buf) {
     const optimised = await pipeline.jpeg({ quality: 82, progressive: true }).toBuffer();
 
     if (optimised.length > MAX_BYTES) {
-      // Second pass with lower quality if still too large
+      // Second pass — smaller dimensions and lower quality
       const compressed = await sharp(buf)
-        .resize(MAX_DIMENSION, MAX_DIMENSION, { fit: 'inside', withoutEnlargement: true })
+        .resize(800, 800, { fit: 'inside', withoutEnlargement: true })
         .jpeg({ quality: 60 })
         .toBuffer();
       logger.info(`Image optimised (q60): ${buf.length} → ${compressed.length} bytes`);
-      return compressed;
+      if (compressed.length <= MAX_BYTES) return compressed;
+      // Third pass — last resort at 400px
+      const lastResort = await sharp(buf)
+        .resize(400, 400, { fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality: 50 })
+        .toBuffer();
+      logger.info(`Image optimised (q50/400px): ${buf.length} → ${lastResort.length} bytes`);
+      return lastResort;
     }
 
     logger.info(`Image optimised: ${buf.length} → ${optimised.length} bytes (${meta.width}x${meta.height} → ≤${MAX_DIMENSION}px)`);
