@@ -2,20 +2,22 @@
  * Normalises AliExpress URLs buried inside Admitad redirect chains so they
  * open correctly in the AliExpress mobile app.
  *
- * Real URL structure seen in the wild:
+ * Real URL structure from the Admitad catalog:
  *   rzekl.com/g/...?ulp=
- *     s.click.aliexpress.com/deep_link.htm?aff_short_key=...&dl_target_url=
- *       www.aliexpress.com/item/ITEM_ID.html?pdp_npi=6...
+ *     s.click.aliexpress.com/deep_link.htm?aff_short_key=XXX&dl_target_url=
+ *       www.aliexpress.com/item/ITEM_ID.html?pdp_npi=6%40dis...
  *
- * The AliExpress app intercepts s.click.aliexpress.com as a universal link
- * but chokes on deep_link.htm + pdp_npi tracking params → blank screen.
+ * Why the app shows blank:
+ *   s.click.aliexpress.com is registered as an AliExpress universal link so
+ *   the app intercepts it correctly. BUT deep_link.htm passes dl_target_url
+ *   full of pdp_npi / tracking junk that the app can't resolve → blank screen.
  *
- * Fix: unwrap all layers, extract the item ID, rebuild a clean
- * www.aliexpress.com/item/ITEM_ID.html?sourceType=620 URL, then re-wrap
- * it inside the rzekl.com deeplink so Admitad attribution is preserved.
+ * Fix: keep the s.click.aliexpress.com/deep_link.htm layer (the app needs it
+ * to open) and keep aff_short_key (AliExpress affiliate attribution), but
+ * replace dl_target_url with a clean /item/ITEM_ID.html URL — no extra params.
  */
 
-const AE_HOSTS    = /(?:^|\.)aliexpress\.com$/i;
+const AE_HOSTS      = /(?:^|\.)aliexpress\.com$/i;
 const ADMITAD_HOSTS = /(?:^|\.)(?:rzekl\.com|admitad\.com)$/i;
 
 export function isAliExpressUrl(url) {
@@ -29,65 +31,89 @@ function isAdmitadUrl(url) {
 }
 
 /**
- * Extracts a clean www.aliexpress.com/item/ITEM_ID.html?sourceType=620 URL
- * from any of the known AliExpress URL formats:
- *   - www.aliexpress.com/item/ITEM_ID.html  (direct product page)
- *   - s.click.aliexpress.com/deep_link.htm?dl_target_url=...  (AE affiliate)
- *
- * Returns null if no item ID can be found.
+ * Extracts the numeric AliExpress item ID from any known URL format.
  */
-function extractCleanAeUrl(url) {
+function extractItemId(url) {
   try {
     const u = new URL(url);
-    if (!AE_HOSTS.test(u.hostname)) return null;
 
-    // s.click.aliexpress.com/deep_link.htm → unwrap dl_target_url
+    // Recurse into dl_target_url (s.click.aliexpress.com/deep_link.htm)
     if (u.searchParams.has('dl_target_url')) {
-      const inner = u.searchParams.get('dl_target_url'); // auto-decoded
-      return extractCleanAeUrl(inner);
+      return extractItemId(u.searchParams.get('dl_target_url'));
     }
 
-    // Extract item ID from path  /item/1234567890.html
+    // /item/1234567890.html
     const pathMatch = u.pathname.match(/\/item\/(\d+)/i);
-    const itemId = pathMatch?.[1]
-      || u.searchParams.get('productId')
-      || u.searchParams.get('item_id')
-      || u.searchParams.get('id');
+    if (pathMatch) return pathMatch[1];
 
-    if (!itemId) return null;
-
-    return `https://www.aliexpress.com/item/${itemId}.html?sourceType=620`;
+    return u.searchParams.get('productId')
+        || u.searchParams.get('item_id')
+        || u.searchParams.get('id')
+        || null;
   } catch {
     return null;
   }
 }
 
 /**
- * Normalises any URL that leads to an AliExpress product:
+ * Normalises the ulp inside an Admitad (rzekl.com) redirect:
  *
- * - If it's an Admitad redirect (rzekl.com / admitad.com), the ulp param
- *   is unwrapped, cleaned, and re-wrapped so Admitad attribution is kept.
- * - If it's a direct AliExpress or s.click URL, it's cleaned in place.
- * - Non-AliExpress, non-Admitad URLs are returned unchanged.
+ * Case A — ulp is s.click.aliexpress.com/deep_link.htm:
+ *   Keep the deep_link.htm handler (needed for app to open) and aff_short_key
+ *   (AliExpress affiliate attribution), but replace dl_target_url with a clean
+ *   /item/ID.html — strips pdp_npi and other junk that causes blank screen.
+ *
+ * Case B — ulp is a direct aliexpress.com product URL:
+ *   Rebuild as clean /item/ID.html (no tracking params).
+ *
+ * Non-AliExpress ulp values are left unchanged.
+ */
+function normaliseUlp(ulp) {
+  try {
+    const u = new URL(ulp);
+    if (!AE_HOSTS.test(u.hostname)) return ulp;
+
+    const itemId = extractItemId(ulp);
+    if (!itemId) return ulp;
+
+    const cleanTarget = `https://www.aliexpress.com/item/${itemId}.html`;
+
+    // Case A: s.click deep_link.htm — rebuild keeping aff_short_key
+    if (u.searchParams.has('dl_target_url')) {
+      const rebuilt = new URL('https://s.click.aliexpress.com/deep_link.htm');
+      const affKey = u.searchParams.get('aff_short_key');
+      if (affKey) rebuilt.searchParams.set('aff_short_key', affKey);
+      rebuilt.searchParams.set('dl_target_url', cleanTarget);
+      return rebuilt.toString();
+    }
+
+    // Case B: direct aliexpress.com URL
+    return cleanTarget;
+  } catch {
+    return ulp;
+  }
+}
+
+/**
+ * Main entry point. Pass any URL — Admitad wrapper, s.click, or direct.
+ * Returns the normalised URL safe for both browser and AliExpress app.
  */
 export function normaliseAliExpressUrl(rawUrl) {
   try {
-    // ── Admitad wrapper (rzekl.com / ad.admitad.com) ─────────────────────────
     if (isAdmitadUrl(rawUrl)) {
       const u = new URL(rawUrl);
       const ulp = u.searchParams.get('ulp');
       if (!ulp) return rawUrl;
 
-      const clean = extractCleanAeUrl(ulp);
-      if (!clean || clean === ulp) return rawUrl;
+      const fixed = normaliseUlp(ulp);
+      if (fixed === ulp) return rawUrl;
 
-      u.searchParams.set('ulp', clean);
+      u.searchParams.set('ulp', fixed);
       return u.toString();
     }
 
-    // ── Direct AliExpress / s.click URL ──────────────────────────────────────
     if (isAliExpressUrl(rawUrl)) {
-      return extractCleanAeUrl(rawUrl) || rawUrl;
+      return normaliseUlp(rawUrl);
     }
 
     return rawUrl;
