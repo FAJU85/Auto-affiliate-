@@ -471,13 +471,26 @@ function showConnectBox() {
 async function connectBlueSky() {
   const handle = document.getElementById('bsky-handle-input').value.trim();
   if (!handle) { document.getElementById('bsky-connect-msg').textContent='Enter your handle first.'; return; }
-  document.getElementById('bsky-connect-msg').textContent = 'Redirecting to Bluesky…';
+  const msg = document.getElementById('bsky-connect-msg');
+  msg.textContent = 'Opening Bluesky authorisation…';
   try {
     const d = await fetch('/oauth/bsky/start?handle='+encodeURIComponent(handle)).then(r=>r.json());
-    if (d.url) window.location.href = d.url;
-    else document.getElementById('bsky-connect-msg').textContent = d.error || 'Failed to start OAuth';
+    if (d.url) {
+      window.open(d.url, '_blank', 'noopener');
+      msg.textContent = 'A new tab opened — authorise there, then come back and the page will refresh automatically.';
+      // Poll for connection every 3 s for up to 2 min
+      const poll = setInterval(async () => {
+        try {
+          const s = await fetch('/api/accounts').then(r=>r.json());
+          if (s?.bluesky?.connected) { clearInterval(poll); loadAccounts(); }
+        } catch {}
+      }, 3000);
+      setTimeout(() => clearInterval(poll), 120_000);
+    } else {
+      msg.textContent = d.error || 'Failed to start OAuth';
+    }
   } catch(e) {
-    document.getElementById('bsky-connect-msg').textContent = 'Error: '+e.message;
+    msg.textContent = 'Error: '+e.message;
   }
 }
 
