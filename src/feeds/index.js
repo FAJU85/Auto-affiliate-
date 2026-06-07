@@ -4,6 +4,7 @@ import { getAdmitadCatalogProduct } from './admitad-catalog.js';
 import { getTemuProduct } from './temu.js';
 import { getTakeadsProduct } from './takeads.js';
 import { getTravelpayoutsProduct } from './travelpayouts.js';
+import { getImpactProduct } from './impact.js';
 import { logger } from '../utils/logger.js';
 
 /**
@@ -26,6 +27,7 @@ export async function getProduct(wasPosted) {
     { key: 'temu',            fn: getTemuProduct,            enabled: !!(process.env.TEMU_AFFILIATE_URL_1 || process.env.TEMU_AFFILIATE_URL_2) },
     { key: 'takeads',         fn: getTakeadsProduct,         enabled: !!process.env.TAKEADS_API_KEY },
     { key: 'travelpayouts',   fn: getTravelpayoutsProduct,   enabled: !!process.env.TRAVELPAYOUTS_TOKEN },
+    { key: 'impact',          fn: getImpactProduct,          enabled: !!(process.env.IMPACT_ACCOUNT_SID && process.env.IMPACT_AUTH_TOKEN) },
   ];
 
   const results = await Promise.allSettled(
