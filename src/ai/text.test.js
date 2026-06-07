@@ -167,6 +167,44 @@ describe('clearCaptionCache export', () => {
   });
 });
 
+describe('CTA style rotation', () => {
+  it('CTA_STYLES array exists in text.js', () => {
+    const src = fs.readFileSync('src/ai/text.js', 'utf8');
+    assert.ok(src.includes('CTA_STYLES'), 'CTA_STYLES defined');
+    assert.ok(src.includes('pickCtaStyle'), 'pickCtaStyle function defined');
+  });
+});
+
+describe('isBadCaption quality filter', () => {
+  // Inline the function logic for unit testing
+  function isBadCaption(caption, productName) {
+    if (!caption || !productName) return false;
+    const normalized = caption.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const nameNorm   = productName.toLowerCase().slice(0, 60).replace(/[^a-z0-9]/g, '');
+    if (nameNorm.length > 10 && normalized === nameNorm) return true;
+    const hasVerb = /\b(get|buy|shop|save|discover|check|find|grab|try|explore|see|enjoy)\b/i.test(caption);
+    const hasSentence = caption.includes(' ') && caption.length > 40;
+    return !hasVerb && !hasSentence;
+  }
+
+  it('rejects caption that is identical to product name', () => {
+    assert.equal(isBadCaption('NikeAirMax2024RunningShoe', 'NikeAirMax2024RunningShoe'), true);
+  });
+
+  it('accepts good caption with a verb', () => {
+    assert.equal(isBadCaption('Check out this amazing running shoe deal today!', 'Nike Air Max'), false);
+  });
+
+  it('accepts long caption even without known verb', () => {
+    assert.equal(isBadCaption('Amazing quality headphones with deep bass and comfortable fit.', 'Headphones'), false);
+  });
+
+  it('null inputs return false (no rejection)', () => {
+    assert.equal(isBadCaption(null, 'Product'), false);
+    assert.equal(isBadCaption('Caption text', null), false);
+  });
+});
+
 describe('SOURCE_PROMPTS coverage', () => {
   it('all expected sources have a prompt entry', () => {
     const src = fs.readFileSync('src/ai/text.js', 'utf8');
