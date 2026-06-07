@@ -18,6 +18,7 @@ export async function getTemuProduct() {
   const urls = [
     process.env.TEMU_AFFILIATE_URL_1,
     process.env.TEMU_AFFILIATE_URL_2,
+    process.env.TEMU_AFFILIATE_URL_3,
   ].filter(Boolean);
 
   if (urls.length === 0) return null;
