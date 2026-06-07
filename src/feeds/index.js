@@ -19,7 +19,7 @@ export async function getProduct() {
   const tasks = [
     { key: 'admitad-feed',    fn: getAdmitadProduct,         enabled: !!process.env.ADMITAD_FEED_URL },
     { key: 'admitad-api',     fn: getAdmitadApiProduct,      enabled: !!(process.env.ADMITAD_CLIENT_ID && process.env.ADMITAD_CLIENT_SECRET && process.env.ADMITAD_WEBSITE_ID) },
-    { key: 'admitad-catalog', fn: getAdmitadCatalogProduct,  enabled: !!(process.env.ADMITAD_CATALOG_URL_1 || process.env.ADMITAD_CATALOG_URL_2) },
+    { key: 'admitad-catalog', fn: getAdmitadCatalogProduct,  enabled: [1,2,3,4,5].some(n => process.env[`ADMITAD_CATALOG_URL_${n}`]) },
     { key: 'takeads',         fn: getTakeadsProduct,         enabled: !!process.env.TAKEADS_API_KEY },
     { key: 'travelpayouts',   fn: getTravelpayoutsProduct,   enabled: !!process.env.TRAVELPAYOUTS_TOKEN },
   ];

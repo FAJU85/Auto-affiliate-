@@ -16,17 +16,23 @@ export async function getAdmitadCatalogProduct() {
   const urls = [
     process.env.ADMITAD_CATALOG_URL_1,
     process.env.ADMITAD_CATALOG_URL_2,
+    process.env.ADMITAD_CATALOG_URL_3,
+    process.env.ADMITAD_CATALOG_URL_4,
+    process.env.ADMITAD_CATALOG_URL_5,
   ].filter(Boolean);
 
   if (urls.length === 0) return null;
 
-  // Shuffle so both URLs get used over time
+  // Shuffle so all URLs get used over time
   const url = urls[Math.floor(Math.random() * urls.length)];
 
   logger.info(`Fetching Admitad catalog: ${url.slice(0, 80)}`);
 
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+    const res = await fetch(url, {
+      headers: { Accept: 'application/json, text/xml, */*' },
+      signal: AbortSignal.timeout(30_000),
+    });
     if (!res.ok) {
       logger.warn(`Admitad catalog HTTP ${res.status} for ${url.slice(0, 60)}`);
       return null;
