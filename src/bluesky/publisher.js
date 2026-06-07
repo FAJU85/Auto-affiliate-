@@ -138,7 +138,7 @@ function buildExternalEmbed(product, deeplink) {
   const desc  = (product.description || product.name || '').slice(0, 300);
   return {
     $type: 'app.bsky.embed.external',
-    external: { uri: deeplink, title, description: desc, thumb: undefined },
+    external: { uri: deeplink, title, description: desc },
   };
 }
 

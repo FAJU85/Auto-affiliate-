@@ -141,12 +141,13 @@ describe('external embed builder', () => {
     // Inline the logic from buildExternalEmbed
     const embed = {
       $type: 'app.bsky.embed.external',
-      external: { uri: deeplink, title: product.name, description: product.description, thumb: undefined },
+      external: { uri: deeplink, title: product.name, description: product.description },
     };
     assert.equal(embed.$type, 'app.bsky.embed.external');
     assert.equal(embed.external.uri, deeplink);
     assert.equal(embed.external.title, product.name);
     assert.equal(embed.external.description, product.description);
+    assert.ok(!('thumb' in embed.external), 'thumb key absent when no image');
   });
 
   it('truncates long title and description to 300 chars', () => {
