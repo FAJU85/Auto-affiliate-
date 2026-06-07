@@ -386,6 +386,33 @@ async function fetchStatus() {
   } catch(e) {}
 }
 
+function renderLastRun(lr) {
+  if (!lr) return;
+  document.getElementById('lr-time').textContent    = (lr.timestamp||'').replace('T',' ').slice(0,19)||'—';
+  document.getElementById('lr-product').textContent = lr.product||'—';
+  document.getElementById('lr-source').textContent  = lr.productSource||'—';
+  document.getElementById('lr-trend').textContent   = lr.trend||'—';
+  document.getElementById('lr-img').textContent     = lr.imageSource||'—';
+  document.getElementById('lr-dur').textContent     = lr.durationMs?(lr.durationMs/1000).toFixed(1)+'s':'—';
+  const ua=document.getElementById('lr-uri');
+  if (lr.postUri){ua.href=lr.postUri;ua.textContent=lr.postUri.slice(0,40)+'…';}
+  else{ua.href='#';ua.textContent='—';}
+}
+
+function renderRunHistory(runs) {
+  const tbody=document.getElementById('runs-body');
+  if (!runs?.length){tbody.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:2rem">No runs yet</td></tr>';return;}
+  tbody.innerHTML=runs.map(r=>{
+    const ok=r.success?'<span class="badge ok">✓ OK</span>':'<span class="badge err">✗ Fail</span>';
+    const ts=(r.timestamp||'').replace('T',' ').slice(0,19);
+    const src=r.productSource?'<span class="badge img">'+esc(r.productSource)+'</span>':'<span style="color:var(--muted)">—</span>';
+    const img=r.imageGenerated?'<span class="badge img">🖼 '+(r.imageSource||'')+'</span>':'<span style="color:var(--muted)">—</span>';
+    const err=r.error?'<span class="err-cell" title="'+esc(r.error)+'">'+esc(r.error.slice(0,50))+'</span>':'<span style="color:var(--muted)">—</span>';
+    const postLink=r.postUri?'<a href="'+esc(r.postUri)+'" target="_blank" rel="noopener" style="font-size:.75rem;color:var(--accent)">view</a>':'<span style="color:var(--muted)">—</span>';
+    return '<tr><td>'+ok+'</td><td>'+ts+'</td><td>'+(r.product||'—')+'</td><td>'+src+'</td><td>'+postLink+'</td><td>'+img+'</td><td>'+(r.durationMs?(r.durationMs/1000).toFixed(1)+'s':'—')+'</td><td>'+err+'</td></tr>';
+  }).join('');
+}
+
 function renderStatus(d) {
   const banner = document.getElementById('setup-banner');
   if (d.missingVars?.length) {
@@ -412,33 +439,9 @@ function renderStatus(d) {
   fill.style.width = Math.min(pct*100,100)+'%';
   fill.style.background = pct>=1?'#ef4444':pct>=alert/cap?'#f59e0b':'#22c55e';
 
-  const lr=d.lastRun;
-  if (lr) {
-    document.getElementById('lr-time').textContent    = (lr.timestamp||'').replace('T',' ').slice(0,19)||'—';
-    document.getElementById('lr-product').textContent = lr.product||'—';
-    document.getElementById('lr-source').textContent  = lr.productSource||'—';
-    document.getElementById('lr-trend').textContent   = lr.trend||'—';
-    document.getElementById('lr-img').textContent     = lr.imageSource||'—';
-    document.getElementById('lr-dur').textContent     = lr.durationMs?(lr.durationMs/1000).toFixed(1)+'s':'—';
-    const ua=document.getElementById('lr-uri');
-    if (lr.postUri){ua.href=lr.postUri;ua.textContent=lr.postUri.slice(0,40)+'…';}
-    else{ua.href='#';ua.textContent='—';}
-  }
-
+  renderLastRun(d.lastRun);
   document.getElementById('run-btn').disabled = d.pipeline.running;
-
-  const tbody=document.getElementById('runs-body');
-  if (!d.runs?.length){tbody.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:2rem">No runs yet</td></tr>';return;}
-  tbody.innerHTML=d.runs.map(r=>{
-    const ok=r.success?'<span class="badge ok">✓ OK</span>':'<span class="badge err">✗ Fail</span>';
-    const ts=(r.timestamp||'').replace('T',' ').slice(0,19);
-    const src=r.productSource?'<span class="badge img">'+esc(r.productSource)+'</span>':'<span style="color:var(--muted)">—</span>';
-    const img=r.imageGenerated?'<span class="badge img">🖼 '+(r.imageSource||'')+'</span>':'<span style="color:var(--muted)">—</span>';
-    const err=r.error?'<span class="err-cell" title="'+esc(r.error)+'">'+esc(r.error.slice(0,50))+'</span>':'<span style="color:var(--muted)">—</span>';
-    const postLink=r.postUri?'<a href="'+esc(r.postUri)+'" target="_blank" rel="noopener" style="font-size:.75rem;color:var(--accent)">view</a>':'<span style="color:var(--muted)">—</span>';
-    return '<tr><td>'+ok+'</td><td>'+ts+'</td><td>'+(r.product||'—')+'</td><td>'+src+'</td><td>'+postLink+'</td><td>'+img+'</td><td>'+(r.durationMs?(r.durationMs/1000).toFixed(1)+'s':'—')+'</td><td>'+err+'</td></tr>';
-  }).join('');
-
+  renderRunHistory(d.runs);
   document.getElementById('last-updated').textContent='Updated '+new Date().toLocaleTimeString();
 }
 
