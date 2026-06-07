@@ -133,7 +133,12 @@ async function callChatAPI({ url, model, apiKey, system, user, name }) {
       const text = data?.choices?.[0]?.message?.content;
       if (!text) throw new Error(`Empty response from ${name}`);
 
-      return text.trim().replace(/^["']|["']$/g, '').slice(0, 250);
+      return text.trim()
+        .replace(/^["']|["']$/g, '')
+        .replace(/https?:\/\/\S+/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 250);
     } catch (err) {
       logger.warn(`${name} attempt ${attempt} failed: ${err.message}`);
       if (attempt === 3) return null;

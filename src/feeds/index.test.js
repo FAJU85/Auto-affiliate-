@@ -45,6 +45,14 @@ describe('getProduct — dedup and fallback logic', () => {
   });
 });
 
+describe('getNetworkErrors', () => {
+  it('exports getNetworkErrors returning an object', async () => {
+    const { getNetworkErrors } = await import('./index.js');
+    const errs = getNetworkErrors();
+    assert.ok(errs !== null && typeof errs === 'object');
+  });
+});
+
 describe('TASKS consistency', () => {
   it('TASKS covers the same 9 networks as getNetworkStatus', async () => {
     const { readFileSync } = await import('fs');

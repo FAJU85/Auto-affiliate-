@@ -116,6 +116,19 @@ describe('provider config', () => {
 });
 
 
+describe('price formatting', () => {
+  it('includes USD price in template fallback', () => {
+    const src = fs.readFileSync('src/ai/text.js', 'utf8');
+    assert.ok(src.includes('formatPrice'), 'formatPrice function present');
+    assert.ok(src.includes("currency === 'USD'"), 'USD symbol logic present');
+  });
+
+  it('{price} placeholder exists in default user template', () => {
+    const src = fs.readFileSync('src/config/settings.js', 'utf8');
+    assert.ok(src.includes('{price}'), 'price placeholder in default template');
+  });
+});
+
 describe('SOURCE_PROMPTS coverage', () => {
   it('all expected sources have a prompt entry', () => {
     const src = fs.readFileSync('src/ai/text.js', 'utf8');
