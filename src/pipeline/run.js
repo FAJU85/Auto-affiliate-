@@ -56,7 +56,18 @@ function initRunMeta() {
     product: null, productSource: null, trend: null, caption: null, captionChars: 0,
     postUri: null, deeplink: null, imageSource: 'none', imageGenerated: false,
     durationMs: 0, dailySpendUsd: 0, productsFetched: 0, productsFiltered: 0,
+    qualityScore: 0,
   };
+}
+
+function computeQualityScore(runMeta) {
+  if (!runMeta.success) return 0;
+  let score = 40; // base score for a successful post
+  if (runMeta.imageGenerated) score += 30;         // +30 for having an image
+  if (runMeta.captionChars > 100) score += 15;     // +15 for substantial caption
+  if (runMeta.imageSource === 'feed') score += 10; // +10 for direct feed image (higher quality)
+  if (runMeta.trend) score += 5;                   // +5 for trend context
+  return Math.min(score, 100);
 }
 
 async function executePost(runMeta) {
@@ -112,6 +123,7 @@ export async function runPipeline() {
   }
   runMeta.durationMs    = Date.now() - startTime;
   runMeta.dailySpendUsd = getDailySpend();
+  runMeta.qualityScore  = computeQualityScore(runMeta);
   recordRun(runMeta);
   notifyWebhook(runMeta);
   if (runMeta.success && runMeta.postUri) {
