@@ -74,6 +74,17 @@ export function getLastPostedSource() {
   return last.source || null;
 }
 
+/** Returns the sources of the last N posted products (most recent first). */
+export function getRecentPostedSources(n = 3) {
+  const entries = loadPosted();
+  if (!entries.length) return [];
+  return entries
+    .filter(e => e.source)
+    .sort((a, b) => new Date(b.postedAt) - new Date(a.postedAt))
+    .slice(0, n)
+    .map(e => e.source);
+}
+
 /**
  * Returns true if this deeplink OR product name was posted in the last 60 days.
  * Catches duplicates even when the URL differs slightly between runs.

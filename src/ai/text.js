@@ -173,12 +173,13 @@ export async function generatePostText(product, trends) {
   for (const p of providers) {
     if (!p.key) continue;
     const result = await callChatAPI({ url: p.url, model: p.model, apiKey: p.key, system, user, name: p.name });
-    if (result) {
+    if (result && result.length >= 20) {
       logger.info(`${p.name} text generated (${result.length} chars): ${result.slice(0, 60)}...`);
       setCached(product.id, result);
       return result;
     }
-    logger.warn(`${p.name} failed, trying next provider`);
+    if (result) logger.warn(`${p.name} response too short (${result.length} chars) — trying next`);
+    else logger.warn(`${p.name} failed, trying next provider`);
   }
 
   logger.warn('All AI providers failed or unconfigured, using template fallback');

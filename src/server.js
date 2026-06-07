@@ -823,6 +823,13 @@ async function routeRequest(req, res, url, getIsRunning, triggerRunFn, getMissin
   if (path === '/api/logs' && req.method === 'GET') return json(res, 200, getRecentLogs(100));
   if (path === '/api/dedup' && req.method === 'GET') return json(res, 200, getDedupStatus());
   if (path === '/api/dedup' && req.method === 'DELETE') { clearPostedStore(); return json(res, 200, { ok: true }); }
+  if (path === '/api/dedup/check' && req.method === 'POST') {
+    try {
+      const body = await readBody(req);
+      const { url, name } = JSON.parse(body);
+      return json(res, 200, { posted: wasRecentlyPosted(url, name) });
+    } catch (err) { return json(res, 400, { ok: false, error: err.message }); }
+  }
   if (path === '/oauth/bsky/start')  return handleOAuthStart(url, res);
   if (path === '/oauth/callback')    return handleOAuthCallback(url, res);
   if (path === '/api/run' && req.method === 'POST') {

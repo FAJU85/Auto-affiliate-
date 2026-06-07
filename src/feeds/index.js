@@ -8,7 +8,7 @@ import { getImpactProduct } from './impact.js';
 import { getCJProduct } from './cj.js';
 import { getShareASaleProduct } from './shareasale.js';
 import { logger } from '../utils/logger.js';
-import { getLastPostedSource } from '../utils/metrics.js';
+import { getLastPostedSource, getRecentPostedSources } from '../utils/metrics.js';
 
 const TASKS = [
   { key: 'admitad-feed',    fn: getAdmitadProduct,         env: () => !!process.env.ADMITAD_FEED_URL },
@@ -62,10 +62,11 @@ async function collectCandidates() {
 }
 
 function pickWithRotation(candidates, wasPosted) {
-  const lastSource = getLastPostedSource();
-  const shuffled   = candidates.sort(() => Math.random() - 0.5);
-  const rotated    = lastSource
-    ? [...shuffled.filter(p => p.source !== lastSource), ...shuffled.filter(p => p.source === lastSource)]
+  const recentSources = getRecentPostedSources(3);
+  const shuffled = candidates.sort(() => Math.random() - 0.5);
+  // Move recently-used sources to the end (last used = least priority)
+  const rotated = recentSources.length
+    ? [...shuffled.filter(p => !recentSources.includes(p.source)), ...shuffled.filter(p => recentSources.includes(p.source))]
     : shuffled;
 
   if (wasPosted) {
