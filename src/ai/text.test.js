@@ -94,11 +94,11 @@ describe('provider config', () => {
     assert.ok(src.includes('.slice(0, 80)'), 'description truncated at 80');
   });
 
-  it('Groq is the primary provider (listed before DeepSeek)', () => {
+  it('Groq is the primary provider (listed before Mistral)', () => {
     const src = fs.readFileSync('src/ai/text.js', 'utf8');
-    const groqIdx     = src.indexOf('GROQ_API');
-    const deepseekIdx = src.indexOf('DEEPSEEK_API');
-    assert.ok(groqIdx < deepseekIdx, 'Groq endpoint defined before DeepSeek');
+    const groqIdx    = src.indexOf('GROQ_API');
+    const mistralIdx = src.indexOf('MISTRAL_API');
+    assert.ok(groqIdx < mistralIdx, 'Groq endpoint defined before Mistral');
   });
 
   it('Groq uses llama-3.3-70b-versatile model', () => {
@@ -106,12 +106,12 @@ describe('provider config', () => {
     assert.ok(src.includes('llama-3.3-70b-versatile'), 'correct Groq model specified');
   });
 
-  it('fallback chain: Groq → DeepSeek → template', () => {
+  it('fallback chain: Groq → Mistral → template', () => {
     const src = fs.readFileSync('src/ai/text.js', 'utf8');
     const groqPos     = src.indexOf('GROQ_API_KEY');
-    const deepseekPos = src.indexOf('DEEPSEEK_API_KEY');
+    const mistralPos  = src.indexOf('MISTRAL_API_KEY');
     const templatePos = src.indexOf('templateFallback');
-    assert.ok(groqPos < deepseekPos && deepseekPos < templatePos, 'correct fallback order');
+    assert.ok(groqPos < mistralPos && mistralPos < templatePos, 'correct fallback order');
   });
 });
 
