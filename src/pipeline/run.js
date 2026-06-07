@@ -76,6 +76,7 @@ async function executePost(runMeta) {
   payload = { ...payload, caption };
   runMeta.caption      = caption;
   runMeta.captionChars = caption.length;
+  logger.info(`Caption (${caption.length} chars): ${caption.slice(0, 100)}${caption.length > 100 ? '…' : ''}`);
 
   const { imageBuffer: rawImage, imageSource } = await acquireImage(payload);
   const upscaled    = rawImage ? await upscaleImage(rawImage) : null;
