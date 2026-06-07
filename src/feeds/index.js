@@ -6,6 +6,7 @@ import { getTakeadsProduct } from './takeads.js';
 import { getTravelpayoutsProduct } from './travelpayouts.js';
 import { getImpactProduct } from './impact.js';
 import { getCJProduct } from './cj.js';
+import { getShareASaleProduct } from './shareasale.js';
 import { logger } from '../utils/logger.js';
 
 /**
@@ -30,6 +31,7 @@ export async function getProduct(wasPosted) {
     { key: 'travelpayouts',   fn: getTravelpayoutsProduct,   enabled: !!process.env.TRAVELPAYOUTS_TOKEN },
     { key: 'impact',          fn: getImpactProduct,          enabled: !!(process.env.IMPACT_ACCOUNT_SID && process.env.IMPACT_AUTH_TOKEN) },
     { key: 'cj',              fn: getCJProduct,              enabled: !!(process.env.CJ_API_KEY && process.env.CJ_WEBSITE_ID) },
+    { key: 'shareasale',      fn: getShareASaleProduct,      enabled: !!(process.env.SHAREASALE_TOKEN && process.env.SHAREASALE_SECRET && process.env.SHAREASALE_AFFILIATE_ID) },
   ];
 
   const results = await Promise.allSettled(

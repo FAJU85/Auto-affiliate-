@@ -60,6 +60,7 @@ const SOURCE_PROMPTS = {
   travelpayouts: 'Write short travel deal posts for social media. Max 200 chars. Mention origin, destination and price. No hashtags. Excited tone.',
   temu:          'Write short deal-focused posts for social media. Max 200 chars. Emphasise value and variety. No hashtags. Friendly tone.',
   cj:            'Write short promotional posts for social media. Max 200 chars. Highlight the offer or discount. No hashtags. Persuasive tone.',
+  shareasale:    'Write short deal posts for social media. Max 200 chars. Highlight product benefits and any discount. No hashtags. Friendly tone.',
   impact:        'Write short promotional posts for social media. Max 200 chars. Highlight the brand or offer. No hashtags. Confident tone.',
 };
 
