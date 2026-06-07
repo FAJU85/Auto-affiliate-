@@ -226,11 +226,12 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
 
     <div class="section">
       <div class="section-title">60-day dedup store</div>
-      <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:.75rem">
         <span id="dedup-count" style="font-size:.9rem;color:var(--muted)">Loading…</span>
         <button id="dedup-clear-btn" onclick="clearDedup()" style="padding:.25rem .75rem;font-size:.8rem;background:#ef4444;color:#fff;border:none;border-radius:6px;cursor:pointer">Clear store</button>
         <span id="dedup-clear-msg" style="font-size:.8rem;color:var(--muted)"></span>
       </div>
+      <div id="dedup-recent" style="display:flex;flex-wrap:wrap;gap:.4rem"></div>
     </div>
   </div>
 
@@ -451,6 +452,7 @@ function renderStatus(d) {
 
   renderLastRun(d.lastRun);
   document.getElementById('run-btn').disabled = d.pipeline.running;
+  adjustPollRate(d.pipeline.running);
   renderRunHistory(d.runs);
   document.getElementById('last-updated').textContent='Updated '+new Date().toLocaleTimeString();
 }
@@ -502,6 +504,13 @@ async function fetchDedup() {
     const d = await fetch('/api/dedup').then(r=>r.json());
     const el = document.getElementById('dedup-count');
     if (el) el.textContent = d.total + ' active entries (60-day window)';
+    const rEl = document.getElementById('dedup-recent');
+    if (rEl && d.recent?.length) {
+      rEl.innerHTML = d.recent.map(e =>
+        '<span title="'+esc(e.postedAt.replace('T',' ').slice(0,16))+' UTC" style="display:inline-flex;align-items:center;gap:.3rem;background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:.2rem .6rem;font-size:.75rem;color:var(--muted)">'
+        +(e.source?'<span class="badge img" style="padding:.1rem .4rem;font-size:.7rem">'+esc(e.source)+'</span>':'')+esc((e.name||'').slice(0,30))+'</span>'
+      ).join('');
+    } else if (rEl) { rEl.innerHTML = ''; }
   } catch(e) {}
 }
 
@@ -518,7 +527,12 @@ async function clearDedup() {
 
 fetchStatus();
 fetchDedup();
-setInterval(fetchStatus, 20000);
+// Poll faster (5s) while pipeline is running, slow (20s) when idle
+let _statusInterval = setInterval(fetchStatus, 20000);
+function adjustPollRate(running) {
+  clearInterval(_statusInterval);
+  _statusInterval = setInterval(fetchStatus, running ? 5000 : 20000);
+}
 setInterval(fetchDedup, 60000);
 
 // ── Accounts ──

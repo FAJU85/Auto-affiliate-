@@ -96,7 +96,7 @@ export function getDedupStatus() {
   const entries = loadPosted();
   const cutoff  = Date.now() - DEDUP_MS;
   const active  = entries.filter(e => new Date(e.postedAt).getTime() > cutoff);
-  return { total: active.length, recent: active.slice(-5).reverse() };
+  return { total: active.length, recent: active.slice(-10).reverse() };
 }
 
 /** Clears the entire dedup store — use for testing or manual reset. */

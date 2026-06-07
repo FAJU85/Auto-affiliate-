@@ -40,9 +40,11 @@ async function collectCandidates() {
     const r   = results[i];
     const key = enabled[i].key;
     if (r.status === 'fulfilled' && r.value?.value) {
-      candidates.push(r.value.value);
+      const product = r.value.value;
+      if (!product.category) product.category = key;
+      candidates.push(product);
       delete networkErrors[key];
-      logger.info(`Network available: ${key} → "${r.value.value.name}"`);
+      logger.info(`Network available: ${key} → "${product.name}"`);
     } else if (r.status === 'fulfilled') {
       networkErrors[key] = { error: 'returned null', at: new Date().toISOString() };
       logger.warn(`Network unavailable: ${key} returned null`);
