@@ -1,7 +1,5 @@
 import { getAdmitadProduct } from './admitad.js';
-import { getTakeadsProduct } from './takeads.js';
 import { getAdmitadApiProduct } from '../admitad/campaigns.js';
-import { getTravelpayoutsProduct } from './travelpayouts.js';
 import { getAdmitadCatalogProduct } from './admitad-catalog.js';
 import { logger } from '../utils/logger.js';
 
@@ -20,8 +18,6 @@ export async function getProduct() {
     { key: 'admitad-feed',    fn: getAdmitadProduct,         enabled: !!process.env.ADMITAD_FEED_URL },
     { key: 'admitad-api',     fn: getAdmitadApiProduct,      enabled: !!(process.env.ADMITAD_CLIENT_ID && process.env.ADMITAD_CLIENT_SECRET && process.env.ADMITAD_WEBSITE_ID) },
     { key: 'admitad-catalog', fn: getAdmitadCatalogProduct,  enabled: [1,2,3,4,5].some(n => process.env[`ADMITAD_CATALOG_URL_${n}`]) },
-    { key: 'takeads',         fn: getTakeadsProduct,         enabled: !!process.env.TAKEADS_API_KEY },
-    { key: 'travelpayouts',   fn: getTravelpayoutsProduct,   enabled: !!process.env.TRAVELPAYOUTS_TOKEN },
   ];
 
   const results = await Promise.allSettled(
@@ -41,7 +37,7 @@ export async function getProduct() {
   }
 
   if (candidates.length === 0) {
-    throw new Error('No affiliate network returned a product. Configure at least one: ADMITAD_FEED_URL, ADMITAD_CLIENT_ID+SECRET, TAKEADS_API_KEY, or TRAVELPAYOUTS_TOKEN.');
+    throw new Error('No affiliate network returned a product. Configure at least one: ADMITAD_FEED_URL, ADMITAD_CLIENT_ID+SECRET, or ADMITAD_CATALOG_URL_1.');
   }
 
   const picked = candidates[Math.floor(Math.random() * candidates.length)];
