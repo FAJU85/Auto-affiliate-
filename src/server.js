@@ -899,12 +899,18 @@ async function handleOAuthCallback(url, res) {
 async function routeRequest(req, res, url, getIsRunning, triggerRunFn, getMissingVars) {
   const path = url.pathname;
   if (path === '/health') {
-    const runs = getRecentRuns(5);
+    const runs = getRecentRuns(20);
     const last = runs.at(-1);
-    res.writeHead(200, { 'Content-Type': 'application/json' });
+    const successRate = runs.length ? (runs.filter(r => r.success).length / runs.length * 100).toFixed(0) : null;
+    const lastSuccess = runs.slice().reverse().find(r => r.success);
+    const hoursSinceSuccess = lastSuccess ? (Date.now() - new Date(lastSuccess.timestamp).getTime()) / 3600000 : null;
+    const healthy = runs.length === 0 || (successRate >= 50 && (hoursSinceSuccess === null || hoursSinceSuccess < 26));
+    res.writeHead(healthy ? 200 : 503, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({
-      status: 'ok',
+      status: healthy ? 'ok' : 'degraded',
       ts: new Date().toISOString(),
+      successRate: successRate !== null ? `${successRate}%` : null,
+      hoursSinceLastSuccess: hoursSinceSuccess !== null ? Math.round(hoursSinceSuccess) : null,
       lastRun: last ? { success: last.success, ts: last.timestamp, source: last.productSource } : null,
     }));
   }
