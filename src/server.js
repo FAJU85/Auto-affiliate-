@@ -307,6 +307,11 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
           <span class="hint">Characters per post. Bluesky max: 300.</span>
         </div>
         <div class="field">
+          <label>Posting Hours (UTC)</label>
+          <input id="cfg-postingHours" type="text" placeholder="8-22" />
+          <span class="hint">UTC hour window, e.g. "8-22". Cron skips outside this window. Use "0-23" to always post.</span>
+        </div>
+        <div class="field">
           <label>Daily Cost Cap (USD)</label>
           <input id="cfg-dailyCostCap" type="number" step="0.01" min="0" />
           <span class="hint">Pipeline stops if AI spend exceeds this.</span>
@@ -532,6 +537,7 @@ async function loadConfig() {
     document.getElementById('cfg-spaceHost').value          = d.spaceHost          || '';
     document.getElementById('cfg-cronSchedule').value       = d.cronSchedule       || '0 * * * *';
     document.getElementById('cfg-maxPostLength').value      = d.maxPostLength       || 300;
+    document.getElementById('cfg-postingHours').value       = d.postingHours        || '8-22';
     document.getElementById('cfg-dailyCostCap').value       = d.dailyCostCap       || 2.00;
     document.getElementById('cfg-alertThreshold').value     = d.alertThreshold     || 1.50;
     document.getElementById('cfg-postSystemPrompt').value   = d.postSystemPrompt   || '';
@@ -545,6 +551,7 @@ async function saveConfig() {
     spaceHost:        document.getElementById('cfg-spaceHost').value.trim(),
     cronSchedule:     document.getElementById('cfg-cronSchedule').value.trim(),
     maxPostLength:    parseInt(document.getElementById('cfg-maxPostLength').value,10),
+    postingHours:     document.getElementById('cfg-postingHours').value.trim() || '8-22',
     dailyCostCap:     parseFloat(document.getElementById('cfg-dailyCostCap').value),
     alertThreshold:   parseFloat(document.getElementById('cfg-alertThreshold').value),
     postSystemPrompt: document.getElementById('cfg-postSystemPrompt').value.trim(),
