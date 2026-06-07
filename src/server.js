@@ -1075,11 +1075,13 @@ async function routeRequest(req, res, url, getIsRunning, triggerRunFn, getMissin
   if (path === '/api/history' && req.method === 'GET') return json(res, 200, getRecentRuns(50));
   if (path === '/api/history/csv' && req.method === 'GET') {
     const runs = getRecentRuns(500);
-    const header = 'timestamp,success,product,source,imageSource,durationMs,error\n';
+    const header = 'timestamp,success,product,source,imageSource,qualityScore,captionChars,likes,reposts,durationMs,postUri,error\n';
     const rows = runs.map(r => [
       r.timestamp||'', r.success?'1':'0',
-      (r.product||'').replace(/,/g,' '), r.productSource||'',
-      r.imageSource||'', r.durationMs||0, (r.error||'').replace(/,/g,' ').replace(/\n/g,' '),
+      '"'+(r.product||'').replace(/"/g,'""')+'"', r.productSource||'',
+      r.imageSource||'', r.qualityScore||0, r.captionChars||0,
+      r.likes||0, r.reposts||0, r.durationMs||0,
+      r.postUri||'', '"'+(r.error||'').replace(/"/g,'""').replace(/\n/g,' ')+'"',
     ].join(',')).join('\n');
     res.writeHead(200, { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename="pipeline-history.csv"' });
     return res.end(header + rows);

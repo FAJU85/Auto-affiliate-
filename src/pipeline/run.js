@@ -72,7 +72,9 @@ function computeQualityScore(runMeta) {
 
 async function executePost(runMeta) {
   const [product, trends] = await Promise.all([getProduct(wasRecentlyPosted), getTopTrends(5)]);
-  let payload = { ...product, trend: trends[0]?.title || '', deeplink: product.siteUrl };
+  // Normalise description length — long descriptions waste AI context window
+  const safeDescription = (product.description || product.name || '').slice(0, 300);
+  let payload = { ...product, description: safeDescription, trend: trends[0]?.title || '', deeplink: product.siteUrl };
   runMeta.product       = payload.name;
   runMeta.productSource = payload.source || null;
   runMeta.trend         = payload.trend;
