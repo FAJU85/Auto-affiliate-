@@ -221,6 +221,15 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
       <div class="section-title">Affiliate networks</div>
       <div id="networks-list" style="display:flex;flex-wrap:wrap;gap:.5rem;padding:.25rem 0">Loading…</div>
     </div>
+
+    <div class="section">
+      <div class="section-title">60-day dedup store</div>
+      <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
+        <span id="dedup-count" style="font-size:.9rem;color:var(--muted)">Loading…</span>
+        <button id="dedup-clear-btn" onclick="clearDedup()" style="padding:.25rem .75rem;font-size:.8rem;background:#ef4444;color:#fff;border:none;border-radius:6px;cursor:pointer">Clear store</button>
+        <span id="dedup-clear-msg" style="font-size:.8rem;color:var(--muted)"></span>
+      </div>
+    </div>
   </div>
 
   <!-- ═══ ACCOUNTS TAB ═══ -->
@@ -454,8 +463,29 @@ async function triggerRun() {
   } catch{msg.textContent='Request failed';btn.disabled=false;}
 }
 
+async function fetchDedup() {
+  try {
+    const d = await fetch('/api/dedup').then(r=>r.json());
+    const el = document.getElementById('dedup-count');
+    if (el) el.textContent = d.total + ' active entries (60-day window)';
+  } catch(e) {}
+}
+
+async function clearDedup() {
+  const btn=document.getElementById('dedup-clear-btn'), msg=document.getElementById('dedup-clear-msg');
+  if (!confirm('Clear the entire 60-day dedup store? All products will be eligible to post again.')) return;
+  btn.disabled=true; msg.textContent='Clearing…';
+  try {
+    await fetch('/api/dedup',{method:'DELETE'});
+    msg.textContent='Cleared!'; fetchDedup();
+  } catch(e){msg.textContent='Error';}
+  setTimeout(()=>{ btn.disabled=false; msg.textContent=''; }, 3000);
+}
+
 fetchStatus();
+fetchDedup();
 setInterval(fetchStatus, 20000);
+setInterval(fetchDedup, 60000);
 
 // ── Accounts ──
 async function loadAccounts() {
