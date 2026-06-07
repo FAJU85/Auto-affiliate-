@@ -131,15 +131,18 @@ export async function publishPost(text, deeplink, imageBuffer, product) {
     throw new Error(`publishPost: deeplink is not a valid URL: ${deeplink}`);
   }
 
+  // Bluesky facet URIs have a practical length limit
+  const truncatedDeeplink = deeplink.length > 2048 ? deeplink.slice(0, 2048) : deeplink;
+
   const maxLen = parseInt(process.env.MAX_POST_LENGTH || '300', 10);
-  const record = buildPostRecord(prefixed, deeplink, maxLen);
+  const record = buildPostRecord(prefixed, truncatedDeeplink, maxLen);
 
   if (imageBuffer) {
     const agent = await getBskyAgent();
     const embed = await uploadImageBlob(agent, imageBuffer, altText);
     if (embed) record.embed = embed;
   } else {
-    const extEmbed = buildExternalEmbed(product, deeplink);
+    const extEmbed = buildExternalEmbed(product, truncatedDeeplink);
     if (extEmbed) record.embed = extEmbed;
   }
 
