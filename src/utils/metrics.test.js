@@ -8,7 +8,7 @@ import path from 'path';
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'metrics-test-'));
 process.env.DATA_DIR = tmpDir;
 
-const { wasRecentlyPosted, getLastPostedSource, recordRun } = await import('./metrics.js');
+const { wasRecentlyPosted, getLastPostedSource, getRecentPostedSources, recordRun } = await import('./metrics.js');
 
 describe('wasRecentlyPosted', () => {
   it('returns false when nothing posted yet', () => {
@@ -34,6 +34,20 @@ describe('getLastPostedSource', () => {
   it('returns a string (not null) after at least one post', () => {
     const src = getLastPostedSource();
     assert.ok(typeof src === 'string' && src.length > 0);
+  });
+});
+
+describe('getRecentPostedSources', () => {
+  it('returns an array of recent sources in reverse-chronological order', () => {
+    const sources = getRecentPostedSources(5);
+    assert.ok(Array.isArray(sources));
+    assert.ok(sources.length > 0);
+    assert.equal(sources[0], 'impact', 'most recent is impact');
+  });
+
+  it('returns at most n sources', () => {
+    const sources = getRecentPostedSources(1);
+    assert.ok(sources.length <= 1);
   });
 });
 
