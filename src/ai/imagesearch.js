@@ -18,17 +18,29 @@ function isBadImageUrl(url) {
   return BAD_URL_PATTERNS.some(p => p.test(url));
 }
 
+function resolveUrl(url, siteUrl) {
+  if (!url) return null;
+  return url.startsWith('http') ? url : new URL(url, siteUrl).href;
+}
+
 function extractMetaImage(html, siteUrl) {
-  const ogMatch = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)
-    || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i);
-  const ogUrl = ogMatch?.[1];
-  if (ogUrl && !isBadImageUrl(ogUrl)) return ogUrl.startsWith('http') ? ogUrl : new URL(ogUrl, siteUrl).href;
+  const candidates = [
+    // og:image (property before content)
+    html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)?.[1],
+    // og:image (content before property)
+    html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i)?.[1],
+    // twitter:image
+    html.match(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i)?.[1],
+    html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image["']/i)?.[1],
+    // link rel="image_src"
+    html.match(/<link[^>]+rel=["']image_src["'][^>]+href=["']([^"']+)["']/i)?.[1],
+  ];
 
-  const twMatch = html.match(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i)
-    || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image["']/i);
-  const twUrl = twMatch?.[1];
-  if (twUrl && !isBadImageUrl(twUrl)) return twUrl.startsWith('http') ? twUrl : new URL(twUrl, siteUrl).href;
-
+  for (const url of candidates) {
+    if (!url) continue;
+    const resolved = resolveUrl(url, siteUrl);
+    if (resolved && !isBadImageUrl(resolved)) return resolved;
+  }
   return null;
 }
 

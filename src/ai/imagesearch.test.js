@@ -37,6 +37,17 @@ describe('og:image extraction regex', () => {
   });
 });
 
+describe('link rel=image_src extraction', () => {
+  const LINK_REGEX = /<link[^>]+rel=["']image_src["'][^>]+href=["']([^"']+)["']/i;
+
+  it('matches link rel=image_src', () => {
+    const html = `<link rel="image_src" href="https://example.com/product.jpg">`;
+    const m = html.match(LINK_REGEX);
+    assert.ok(m);
+    assert.equal(m[1], 'https://example.com/product.jpg');
+  });
+});
+
 describe('first img src fallback regex', () => {
   it('extracts first https img src', () => {
     const html = `<img class="hero" src="https://img.example.com/product.jpg" alt="Product">`;
