@@ -80,8 +80,13 @@ async function executePost(runMeta) {
   runMeta.productsFiltered = 1;
   logger.info(`Affiliate URL (deeplink): ${payload.deeplink}`);
 
+  // Enrich short/missing descriptions with Exa highlights
+  const descTooShort = !payload.description || payload.description.trim().length < 10;
   const exaHighlights = await getProductHighlights(payload.name, payload.category);
-  if (exaHighlights) payload = { ...payload, exaHighlights };
+  if (exaHighlights) {
+    payload = { ...payload, exaHighlights };
+    if (descTooShort) payload = { ...payload, description: exaHighlights.slice(0, 200) };
+  }
 
   const caption = await generatePostText(payload, trends);
   payload = { ...payload, caption };
