@@ -165,7 +165,7 @@ export function getNetworkHealth(runs = 100) {
   const recent = load().runs.slice(-runs);
   const health = {};
   for (const r of recent) {
-    const src = r.productSource || (r.success ? null : 'unknown');
+    const src = r.productSource || null;
     if (!src) continue;
     if (!health[src]) health[src] = { attempts: 0, successes: 0 };
     health[src].attempts++;

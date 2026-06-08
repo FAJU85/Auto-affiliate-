@@ -363,7 +363,7 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
         <div class="section-title" style="margin-bottom:0">Live Log Buffer (last 100)</div>
         <button class="btn btn-outline" onclick="fetchLogs()" style="font-size:.8rem;padding:.3rem .75rem">↻ Refresh</button>
       </div>
-      <div id="log-output" style="background:#050b15;border:1px solid var(--border);border-radius:var(--radius);padding:1rem;font-family:monospace;font-size:.78rem;line-height:1.6;max-height:600px;overflow-y:auto;color:#94a3b8">Loading…</div>
+      <div id="log-output" style="background:#050b15;border:1px solid var(--border);border-radius:var(--radius);padding:1rem;font-family:monospace;font-size:.85rem;line-height:1.8;max-height:600px;overflow-y:auto;color:#94a3b8">Loading…</div>
     </div>
   </div>
 
@@ -473,7 +473,9 @@ function renderRunHistoryRows(runs) {
     const qs=typeof r.qualityScore==='number'?'<span style="font-weight:600;color:'+(r.qualityScore>=70?'var(--green)':r.qualityScore>=40?'var(--yellow)':'var(--red)')+'">'+r.qualityScore+'</span>':'<span style="color:var(--muted)">—</span>';
     const err=r.error?'<span class="err-cell" title="'+esc(r.error)+'">'+esc(r.error.slice(0,50))+'</span>':'<span style="color:var(--muted)">—</span>';
     const postLink=r.postUri?'<a href="'+esc(r.postUri)+'" target="_blank" rel="noopener" style="font-size:.75rem;color:var(--accent)" title="'+esc(r.caption||'')+'">view</a>':'<span style="color:var(--muted)">—</span>';
-    return '<tr><td>'+ok+'</td><td>'+ts+'</td><td title="'+esc(r.caption||'')+'">'+(r.product||'—')+'</td><td>'+src+'</td><td>'+postLink+'</td><td>'+img+'</td><td>'+qs+'</td><td>'+(r.durationMs?(r.durationMs/1000).toFixed(1)+'s':'—')+'</td><td>'+err+'</td></tr>';
+    const pName = r.product || '—';
+    const pDisplay = pName.length > 45 ? pName.slice(0,45)+'…' : pName;
+    return '<tr><td>'+ok+'</td><td>'+ts+'</td><td title="'+esc(pName)+'" style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(pDisplay)+'</td><td>'+src+'</td><td>'+postLink+'</td><td>'+img+'</td><td>'+qs+'</td><td>'+(r.durationMs?(r.durationMs/1000).toFixed(1)+'s':'—')+'</td><td>'+err+'</td></tr>';
   }).join('');
 }
 
@@ -798,7 +800,10 @@ async function fetchLogs() {
     if (!logs?.length) { el.textContent = 'No logs yet.'; return; }
     el.innerHTML = logs.slice().reverse().map(l => {
       const color = LEVEL_COLOR[l.level] || '#94a3b8';
-      return '<div><span style="color:#4b5563">'+esc(l.ts.replace('T',' ').slice(0,19))+'</span> <span style="color:'+color+';font-weight:600">['+l.level.toUpperCase()+']</span> '+esc(l.msg)+'</div>';
+      const isErr = l.level === 'error';
+      const isWarn = l.level === 'warn';
+      const rowStyle = isErr ? 'background:rgba(239,68,68,.08);border-left:2px solid #ef4444;padding-left:6px;margin-left:-6px' : isWarn ? 'border-left:2px solid #f59e0b;padding-left:6px;margin-left:-6px' : '';
+      return '<div style="'+rowStyle+'"><span style="color:#4b5563">'+esc(l.ts.replace('T',' ').slice(0,19))+'</span> <span style="color:'+color+';font-weight:700;min-width:52px;display:inline-block">['+l.level.toUpperCase()+']</span> '+esc(l.msg)+'</div>';
     }).join('');
     el.scrollTop = 0;
   } catch(e) { const el=document.getElementById('log-output'); if(el)el.textContent='Failed to load logs.'; }
