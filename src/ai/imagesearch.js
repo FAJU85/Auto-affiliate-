@@ -13,6 +13,19 @@ const BAD_URL_PATTERNS = [
   /avatar/i, /profile[-_]pic/i, /user[-_]image/i,
   /1x1\.(gif|png|jpg)/i, /pixel\.(gif|png)/i, /tracking/i,
   /header[-_]bg/i, /bg[-_]image/i, /hero[-_]bg/i,
+  // SaaS brand generic images — always return their marketing banner, never a product
+  /cdn\.shopify\.com\/s\/files\/1\/\d+\/\d+\/files/i, // Shopify brand CDN
+  /shopify\.com.*shopify[-_]logo/i,
+  /burst\.shopifycdn/i,
+];
+
+// Sites whose og:image is always a brand/marketing image, never a specific product
+const BRAND_SITE_PATTERNS = [
+  // Flight booking
+  /aviasales/i, /skyscanner/i, /kayak/i, /expedia/i, /booking\.com/i,
+  // SaaS platforms — they promote THEMSELVES as a product, not physical goods
+  /shopify\.com/i, /squarespace\.com/i, /wix\.com/i, /wordpress\.com/i,
+  /fiverr\.com/i, /upwork\.com/i, /canva\.com/i,
 ];
 
 // Flight booking sites whose og:image is always a generic site logo, not a product image
@@ -83,9 +96,9 @@ async function scrapeMetaImage(url) {
  */
 export async function findProductImage(productName, siteUrl, source) {
   try {
-    // Flight booking pages always return a site logo, not a useful product image
-    if (source === 'travelpayouts' || (siteUrl && FLIGHT_SITE_PATTERNS.some(p => p.test(siteUrl)))) {
-      logger.info(`Skipping image scrape for flight source: ${source}`);
+    // Sites whose og:image is always a brand/marketing banner — skip entirely
+    if (source === 'travelpayouts' || (siteUrl && BRAND_SITE_PATTERNS.some(p => p.test(siteUrl)))) {
+      logger.info(`Skipping image scrape for brand/flight source: ${source} (${siteUrl?.slice(0,40)})`);
       return null;
     }
 

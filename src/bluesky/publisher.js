@@ -89,11 +89,16 @@ function buildHashtagFacets(text) {
 }
 
 function buildPostRecord(text, deeplink, maxLen) {
-  const combined    = `${text}\n\n${deeplink}`;
-  const truncated   = safeByteSlice(combined, maxLen);
+  // Show a clean "Shop now →" CTA label instead of the raw tracking/affiliate URL.
+  // The facet makes the label a clickable hyperlink pointing to the real URL.
+  const ctaLabel  = '🔗 Shop now →';
+  const combined  = `${text}\n\n${ctaLabel}`;
+  const truncated = safeByteSlice(combined, maxLen);
+
   const prefixBytes = Buffer.byteLength(text + '\n\n', 'utf8');
+  const ctaBytes    = Buffer.byteLength(ctaLabel, 'utf8');
   const linkStart   = prefixBytes;
-  const linkEnd     = Math.min(prefixBytes + Buffer.byteLength(deeplink, 'utf8'), Buffer.byteLength(truncated, 'utf8'));
+  const linkEnd     = Math.min(prefixBytes + ctaBytes, Buffer.byteLength(truncated, 'utf8'));
 
   const facets = [];
   if (linkStart < linkEnd) {

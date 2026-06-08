@@ -8,7 +8,7 @@ import { getImpactProduct } from './impact.js';
 import { getCJProduct } from './cj.js';
 import { getShareASaleProduct } from './shareasale.js';
 import { logger } from '../utils/logger.js';
-import { getLastPostedSource, getRecentPostedSources } from '../utils/metrics.js';
+import { getLastPostedSource, getRecentPostedSources, wasAdvertiserRecentlyPosted } from '../utils/metrics.js';
 
 export const TASKS = [
   { key: 'admitad-feed',    fn: getAdmitadProduct,         env: () => !!process.env.ADMITAD_FEED_URL },
@@ -87,6 +87,15 @@ async function collectCandidates() {
   return candidates;
 }
 
+function extractAdvertiserDomain(url) {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, '');
+    // Keep only the registered domain (e.g. shopify.com from partners.shopify.com)
+    const parts = host.split('.');
+    return parts.length >= 2 ? parts.slice(-2).join('.') : host;
+  } catch { return null; }
+}
+
 function pickWithRotation(candidates, wasPosted) {
   const recentSources = getRecentPostedSources(3);
   const shuffled = candidates.sort(() => Math.random() - 0.5);
@@ -96,11 +105,27 @@ function pickWithRotation(candidates, wasPosted) {
     : shuffled;
 
   if (wasPosted) {
-    const fresh = rotated.find(p => !wasPosted(p.siteUrl, p.name));
+    // Prefer products that are both not-recently-posted AND from a new advertiser domain
+    const fresh = rotated.find(p => {
+      if (wasPosted(p.siteUrl, p.name)) return false;
+      // Skip if same advertiser domain posted in last 4 hours (prevents 4× Shopify in a row)
+      if (wasAdvertiserRecentlyPosted(p.siteUrl, 4)) {
+        logger.info(`Skipping ${p.name} — same advertiser domain posted recently`);
+        return false;
+      }
+      return true;
+    });
     if (fresh) {
       networkSelectCounts[fresh.source] = (networkSelectCounts[fresh.source] || 0) + 1;
       logger.info(`Selected fresh product from "${fresh.source}": ${fresh.name}`);
       return fresh;
+    }
+    // Fallback: at least avoid recently-posted exact match
+    const anyFresh = rotated.find(p => !wasPosted(p.siteUrl, p.name));
+    if (anyFresh) {
+      networkSelectCounts[anyFresh.source] = (networkSelectCounts[anyFresh.source] || 0) + 1;
+      logger.info(`Selected product (domain-repeat allowed) from "${anyFresh.source}": ${anyFresh.name}`);
+      return anyFresh;
     }
     logger.warn('All candidate products were recently posted — picking least-recently-used anyway');
   }
