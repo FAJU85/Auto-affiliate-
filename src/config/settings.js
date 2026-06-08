@@ -14,7 +14,7 @@ const DEFAULTS = {
   alertThreshold:   1.50,
   rateLimitWaitMs:  120000,
   postingHours:     '8-22',
-  postSystemPrompt: 'Write short affiliate posts for social media. Max 200 chars. No hashtags. Natural tone.',
+  postSystemPrompt: 'Write short affiliate posts for social media. Max 280 chars. Include 2-3 relevant hashtags. Natural tone.',
   postUserTemplate: 'Product: "{name}" ({category}). {description}. Price: {price}. Trending: {trend}. Extra context: {highlights}. Write a post with CTA, no URL.',
 };
 
