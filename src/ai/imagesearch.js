@@ -1,5 +1,6 @@
 import fetch from 'node-fetch';
 import { logger } from '../utils/logger.js';
+import { searchProductUrls } from './exa.js';
 
 // Patterns that indicate a logo, icon, QR code, or other non-product image
 const BAD_URL_PATTERNS = [
@@ -49,48 +50,70 @@ function extractMetaImage(html, siteUrl) {
   return null;
 }
 
+async function scrapeMetaImage(url) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const res = await fetch(url, {
+      signal: controller.signal,
+      redirect: 'follow',
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; bot/1.0)', 'Accept': 'text/html' },
+    });
+    const html = res.ok ? await res.text() : null;
+    return html ? extractMetaImage(html, url) : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 /**
- * Returns an image URL scraped directly from the product's own siteUrl.
- * We only use the page's own og:image/twitter:image so the image always
- * matches what the user sees when they click the affiliate link.
- * Third-party image search is intentionally excluded — it returns images
- * for similarly-named products that may differ from the linked product.
+ * Find a product image. Search order:
+ *
+ *  1. Scrape og:image / twitter:image directly from the affiliate siteUrl.
+ *     This gives the exact product image when the URL is a real product page.
+ *
+ *  2. Exa semantic search (EXA_API_KEY required) — finds the canonical product
+ *     page for the product name (retailer, manufacturer, review site) and
+ *     scrapes its og:image. This succeeds where step 1 fails, e.g. tracking
+ *     redirect URLs that return no HTML of their own.
+ *
+ * The affiliate link itself is NEVER changed — only the image is sourced from Exa.
  */
 export async function findProductImage(productName, siteUrl, source) {
   try {
-    if (!siteUrl) return null;
-
     // Flight booking pages always return a site logo, not a useful product image
-    if (source === 'travelpayouts' || FLIGHT_SITE_PATTERNS.some(p => p.test(siteUrl))) {
-      logger.info(`Skipping image scrape for flight site: ${siteUrl.slice(0, 60)}`);
+    if (source === 'travelpayouts' || (siteUrl && FLIGHT_SITE_PATTERNS.some(p => p.test(siteUrl)))) {
+      logger.info(`Skipping image scrape for flight source: ${source}`);
       return null;
     }
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15_000);
-    let html;
-    try {
-      const res = await fetch(siteUrl, {
-        signal: controller.signal,
-        redirect: 'follow',
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; bot/1.0)', 'Accept': 'text/html' },
-      });
-      html = res.ok ? await res.text() : null;
-    } finally {
-      clearTimeout(timeout);
+    // Step 1: scrape affiliate URL directly
+    if (siteUrl) {
+      const img = await scrapeMetaImage(siteUrl);
+      if (img) {
+        logger.info(`Affiliate URL image for "${productName}": ${img.slice(0, 80)}`);
+        return img;
+      }
     }
 
-    if (!html) return null;
-
-    const imageUrl = extractMetaImage(html, siteUrl);
-    if (imageUrl) {
-      logger.info(`Meta image for "${productName}": ${imageUrl.slice(0, 80)}`);
-      return imageUrl;
+    // Step 2: Exa semantic search → og:image from canonical product page
+    if (process.env.EXA_API_KEY && productName) {
+      const urls = await searchProductUrls(productName, 3);
+      for (const url of urls) {
+        const img = await scrapeMetaImage(url);
+        if (img) {
+          logger.info(`Exa image for "${productName}": ${img.slice(0, 80)}`);
+          return img;
+        }
+      }
     }
-    logger.info(`No usable image found for "${productName}" at ${siteUrl.slice(0, 60)}`);
+
+    logger.info(`No image found for "${productName}"`);
     return null;
   } catch (err) {
-    logger.warn(`findProductImage error for ${siteUrl?.slice(0, 60)}: ${err.message}`);
+    logger.warn(`findProductImage error: ${err.message}`);
     return null;
   }
 }

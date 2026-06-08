@@ -10,7 +10,6 @@ import { getBskyAgent } from '../bluesky/client.js';
 import { recordRun, wasRecentlyPosted, recordEngagement } from '../utils/metrics.js';
 import { getDailySpend } from '../utils/budget.js';
 import { logger } from '../utils/logger.js';
-import { getProductHighlights } from '../ai/exa.js';
 
 async function downloadImage(url) {
   try {
@@ -70,14 +69,6 @@ function computeQualityScore(runMeta) {
   return Math.min(score, 100);
 }
 
-// Sources where the affiliate link points to a brand/category page rather than a specific product.
-// Exa enrichment for these would add specific product details that don't match the link destination,
-// causing the post text to describe something the user won't find when they click.
-// travelpayouts: flight route search page — Exa "flight review" returns irrelevant travel articles.
-// cj: Text Link / Banner link types are brand/category level; even Product Links are managed by the
-//     advertiser and Exa may find a different model/variant than what the destination shows.
-const BRAND_LEVEL_SOURCES = new Set(['admitad-api', 'temu', 'takeads', 'impact', 'cj', 'travelpayouts']);
-
 async function executePost(runMeta) {
   const [product, trends] = await Promise.all([getProduct(wasRecentlyPosted), getTopTrends(5)]);
   // Normalise description length — long descriptions waste AI context window
@@ -90,21 +81,8 @@ async function executePost(runMeta) {
   runMeta.productsFiltered = 1;
   logger.info(`Affiliate URL (deeplink): ${payload.deeplink}`);
 
-  // Enrich short/missing descriptions with Exa highlights — but only for product-specific sources.
-  // Brand/campaign-level sources (temu, admitad-api, takeads, impact) link to a category or brand
-  // homepage; adding specific product details from Exa would make the caption describe products
-  // the user won't find when they click the link.
-  const isBrandLevel = BRAND_LEVEL_SOURCES.has(payload.source);
-  const descTooShort = !payload.description || payload.description.trim().length < 10;
-  if (!isBrandLevel) {
-    const exaHighlights = await getProductHighlights(payload.name, payload.category);
-    if (exaHighlights) {
-      payload = { ...payload, exaHighlights };
-      if (descTooShort) payload = { ...payload, description: exaHighlights.slice(0, 200) };
-    }
-  } else {
-    logger.info(`Skipping Exa enrichment for brand-level source: ${payload.source}`);
-  }
+  // Exa is used only for image search (in imagesearch.js) — not for text enrichment.
+  // The caption is written purely from product data provided by the affiliate network.
 
   const caption = await generatePostText(payload, trends);
   payload = { ...payload, caption };
