@@ -23,5 +23,8 @@
     "rss-parser": "^3.13.0",
     "sharp": "^0.34.5",
     "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "puppeteer": "^25.1.0"
   }
 }
