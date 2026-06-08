@@ -23,7 +23,7 @@ function save(data) {
 
 export function recordRun(metrics) {
   const data = load();
-  data.runs.push({ timestamp: new Date().toISOString(), ...metrics });
+  data.runs.push({ timestamp: new Date().toISOString(), clicks: 0, ...metrics });
   if (data.runs.length > 500) data.runs = data.runs.slice(-500);
   save(data);
 
@@ -134,6 +134,39 @@ export function purgePostedBySource(source) {
   const remaining = entries.filter(e => e.source !== source);
   savePosted(remaining);
   return entries.length - remaining.length;
+}
+
+/** Records a click on the affiliate tracking link. Returns the updated run or null. */
+export function recordClick(trackingId) {
+  if (!trackingId) return null;
+  const data = load();
+  const run = data.runs.find(r => r.trackingId === trackingId);
+  if (!run) return null;
+  run.clicks = (run.clicks || 0) + 1;
+  run.lastClickAt = new Date().toISOString();
+  save(data);
+  return run;
+}
+
+/** Returns total clicks across all runs. */
+export function getTotalClicks() {
+  return load().runs.reduce((s, r) => s + (r.clicks || 0), 0);
+}
+
+/** Returns daily click totals for the last N days. */
+export function getDailyClicks(days = 7) {
+  const runs = load().runs;
+  const now  = new Date();
+  return Array.from({ length: days }, (_, i) => {
+    const d = new Date(now);
+    d.setUTCDate(d.getUTCDate() - (days - 1 - i));
+    const dateStr = d.toISOString().slice(0, 10);
+    const clicks = runs
+      .filter(r => r.timestamp?.startsWith(dateStr))
+      .reduce((s, r) => s + (r.clicks || 0), 0);
+    const posts = runs.filter(r => r.success && r.timestamp?.startsWith(dateStr)).length;
+    return { date: dateStr, clicks, posts, ctr: posts ? +(clicks / posts).toFixed(2) : 0 };
+  });
 }
 
 /** Records engagement (likes, reposts) for a post URI. */

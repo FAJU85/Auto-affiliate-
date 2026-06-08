@@ -7,8 +7,9 @@ import { upscaleImage } from '../ai/upscale.js';
 import { optimiseImage } from '../ai/imageoptim.js';
 import { publishPost } from '../bluesky/publisher.js';
 import { getBskyAgent } from '../bluesky/client.js';
-import { recordRun, wasRecentlyPosted, recordEngagement } from '../utils/metrics.js';
+import { recordRun, wasRecentlyPosted, recordEngagement, getRecentRuns } from '../utils/metrics.js';
 import { getDailySpend } from '../utils/budget.js';
+import { getSpaceHost } from '../config/settings.js';
 import { logger } from '../utils/logger.js';
 
 async function downloadImage(url) {
@@ -49,11 +50,21 @@ async function acquireImage(payload) {
   return { imageBuffer: null, imageSource: 'none' };
 }
 
+function generateTrackingId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
+
+function buildTrackingUrl(trackingId) {
+  const host = getSpaceHost();
+  return host ? `${host}/r/${trackingId}` : null;
+}
+
 function initRunMeta() {
   return {
     success: false, error: null, errorStack: null,
     product: null, productSource: null, trend: null, caption: null, captionChars: 0,
-    postUri: null, deeplink: null, imageSource: 'none', imageGenerated: false,
+    postUri: null, deeplink: null, trackingId: null, clicks: 0,
+    imageSource: 'none', imageGenerated: false,
     durationMs: 0, dailySpendUsd: 0, productsFetched: 0, productsFiltered: 0,
     qualityScore: 0,
   };
@@ -73,13 +84,17 @@ async function executePost(runMeta) {
   const [product, trends] = await Promise.all([getProduct(wasRecentlyPosted), getTopTrends(5)]);
   // Normalise description length — long descriptions waste AI context window
   const safeDescription = (product.description || product.name || '').slice(0, 300);
-  let payload = { ...product, description: safeDescription, trend: trends[0]?.title || '', deeplink: product.siteUrl };
+  const trackingId  = generateTrackingId();
+  const trackingUrl = buildTrackingUrl(trackingId);
+  let payload = { ...product, description: safeDescription, trend: trends[0]?.title || '', deeplink: product.siteUrl, trackingUrl };
   runMeta.product       = payload.name;
   runMeta.productSource = payload.source || null;
   runMeta.trend         = payload.trend;
+  runMeta.trackingId    = trackingId;
   runMeta.productsFetched  = 1;
   runMeta.productsFiltered = 1;
   logger.info(`Affiliate URL (deeplink): ${payload.deeplink}`);
+  if (trackingUrl) logger.info(`Tracking URL: ${trackingUrl}`);
 
   // Exa is used only for image search (in imagesearch.js) — not for text enrichment.
   // The caption is written purely from product data provided by the affiliate network.
@@ -97,9 +112,11 @@ async function executePost(runMeta) {
   runMeta.imageGenerated = imageBuffer !== null;
 
   await getBskyAgent();
-  const uri = await publishPost(caption, payload.deeplink, imageBuffer, payload);
+  // Use tracking URL in the post so clicks route through our server → affiliate URL
+  const postLink = payload.trackingUrl || payload.deeplink;
+  const uri = await publishPost(caption, postLink, imageBuffer, { ...payload, deeplink: postLink });
   runMeta.postUri  = uri;
-  runMeta.deeplink = payload.deeplink;
+  runMeta.deeplink = payload.deeplink;  // store real affiliate URL, not tracking URL
   runMeta.success  = true;
   logger.info(`=== Pipeline v2 complete. Post: ${uri} ===`);
 }
@@ -128,9 +145,13 @@ export async function runPipeline() {
   recordRun(runMeta);
   notifyWebhook(runMeta);
   if (runMeta.success && runMeta.postUri) {
-    // Fire-and-forget engagement poll after 30 min
     pollEngagement(runMeta.postUri).catch(() => {});
   }
+  // Fire-and-forget: analyze click patterns and improve prompts over time
+  const recentForOptimizer = getRecentRuns(200);
+  import('../ai/optimizer.js').then(({ maybeRunOptimizer }) => {
+    maybeRunOptimizer(recentForOptimizer).catch(() => {});
+  }).catch(() => {});
   return runMeta;
 }
 
