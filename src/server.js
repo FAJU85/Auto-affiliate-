@@ -9,6 +9,7 @@ import { getOAuthClient, getConnectedDid, disconnectBluesky } from './auth/blues
 import { nextCronRun } from './utils/cron-next.js';
 
 const PORT = parseInt(process.env.PORT || '7860', 10);
+const DASHBOARD_PATH = new URL('./dashboard.html', import.meta.url).pathname;
 
 function json(res, status, data) {
   res.writeHead(status, { 'Content-Type': 'application/json' });

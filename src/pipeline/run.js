@@ -1,4 +1,5 @@
 import fetch from 'node-fetch';
+import { randomBytes } from 'crypto';
 import { getProduct } from '../feeds/index.js';
 import { getTopTrends } from '../admitad/trends.js';
 import { generatePostText } from '../ai/text.js';
