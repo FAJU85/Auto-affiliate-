@@ -1,6 +1,8 @@
 import fetch from 'node-fetch';
-import { getAdmitadToken } from './auth.js';
+import { getAdmitadToken, invalidateAdmitadToken } from './auth.js';
 import { logger } from '../utils/logger.js';
+import { normaliseAliExpressUrl, isAliExpressUrl } from '../utils/aliexpress-url.js';
+import { sleepRetryAfter } from '../utils/rate-limit.js';
 
 const API_BASE = 'https://api.admitad.com';
 
@@ -9,17 +11,31 @@ const API_BASE = 'https://api.admitad.com';
  * Returns one product in the unified feed interface.
  */
 export async function getAdmitadApiProduct() {
-  const token = await getAdmitadToken();
   const websiteId = process.env.ADMITAD_WEBSITE_ID;
 
-  // Use website-scoped endpoint if ADMITAD_WEBSITE_ID is set, else global list
-  const endpoint = websiteId
-    ? `${API_BASE}/advcampaigns/website/${websiteId}/?limit=50&order_by=-ecpc`
-    : `${API_BASE}/advcampaigns/?limit=50&order_by=-ecpc`;
+  // Without ADMITAD_WEBSITE_ID we cannot generate affiliate deeplinks,
+  // so there is no point fetching campaigns — plain site_url earns no commission.
+  if (!websiteId) {
+    throw new Error('ADMITAD_WEBSITE_ID not set — skipping admitad-api (no deeplink possible)');
+  }
 
-  const res = await fetch(endpoint, {
+  const token = await getAdmitadToken();
+
+  // Global endpoint only — website-scoped requires advcampaigns_for_website scope
+  const endpoint = `${API_BASE}/advcampaigns/?limit=50&order_by=-ecpc`;
+
+  let res = await fetch(endpoint, {
     headers: { Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(20_000),
   });
+
+  // Refresh token once on 401 (token may have expired mid-use despite local TTL)
+  if (res.status === 401) {
+    logger.warn('Admitad campaigns: 401 — refreshing token and retrying');
+    invalidateAdmitadToken();
+    const freshToken = await getAdmitadToken();
+    res = await fetch(endpoint, { headers: { Authorization: `Bearer ${freshToken}` }, signal: AbortSignal.timeout(20_000) });
+  }
 
   if (!res.ok) {
     const text = await res.text();
@@ -27,32 +43,30 @@ export async function getAdmitadApiProduct() {
   }
 
   const data = await res.json();
-  const campaigns = (data.results || []).filter(c => c.site_url && parseFloat(c.avg_ecpc || 0) > 0);
+  const campaigns = (data.results || []).filter(c => {
+    if (!c.site_url || parseFloat(c.avg_ecpc || 0) <= 0) return false;
+    const name = String(c.name || '');
+    const nonLatin = (name.match(/[^ -ɏ\s\d\p{P}]/gu) || []).length;
+    return nonLatin / (name.length || 1) < 0.4;
+  });
 
   if (campaigns.length === 0) throw new Error('No valid campaigns from Admitad API');
 
-  campaigns.sort((a, b) => parseFloat(b.avg_ecpc || 0) - parseFloat(a.avg_ecpc || 0));
-  const top5 = campaigns.slice(0, 5);
-  const c = top5[Math.floor(Math.random() * top5.length)];
+  // Shuffle fully so all campaigns rotate over time
+  campaigns.sort(() => Math.random() - 0.5);
+  const c = campaigns[0];
 
   logger.info(`Admitad API campaign selected: ${c.name} (ecpc: ${c.avg_ecpc})`);
 
-  // Generate deeplink if website ID is available
-  let siteUrl = c.site_url;
-  if (websiteId) {
-    try {
-      siteUrl = await generateDeeplink(token, websiteId, c.id, c.site_url);
-    } catch (err) {
-      logger.warn(`Deeplink failed, using site_url: ${err.message}`);
-    }
-  }
+  // Deeplink is mandatory — plain site_url is not an affiliate link
+  const siteUrl = await generateDeeplink(token, websiteId, c.id, c.site_url);
 
   return {
     id:             String(c.id),
     name:           String(c.name || '').trim(),
     description:    String(c.description || c.name || '').trim(),
     siteUrl,
-    imageUrl:       c.logo || null,
+    imageUrl:       null, // brand logos are not product images
     price:          null,
     currency:       String(c.currency || 'USD'),
     commissionRate: parseFloat(c.avg_ecpc || 0),
@@ -61,15 +75,27 @@ export async function getAdmitadApiProduct() {
 }
 
 async function generateDeeplink(token, websiteId, campaignId, targetUrl) {
+  // Normalise AliExpress URLs so the app opens to the correct product page
+  const ulp = isAliExpressUrl(targetUrl) ? normaliseAliExpressUrl(targetUrl) : targetUrl;
+  if (ulp !== targetUrl) logger.info(`AliExpress URL normalised for app compatibility`);
+
   const params = new URLSearchParams({
-    ulp: targetUrl,
+    ulp,
     subid: `auto-${Date.now()}`,
   });
 
-  const res = await fetch(
+  let res = await fetch(
     `${API_BASE}/deeplink/${websiteId}/advcampaign/${campaignId}/?${params}`,
-    { headers: { Authorization: `Bearer ${token}` } },
+    { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(20_000) },
   );
+
+  if (res.status === 429) {
+    await sleepRetryAfter(res.headers.get('Retry-After'), { name: 'Admitad deeplink', fallbackMs: 10_000 });
+    res = await fetch(
+      `${API_BASE}/deeplink/${websiteId}/advcampaign/${campaignId}/?${params}`,
+      { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(20_000) },
+    );
+  }
 
   if (!res.ok) throw new Error(`Deeplink API ${res.status}`);
 

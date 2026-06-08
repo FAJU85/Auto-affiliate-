@@ -8,6 +8,11 @@ let cachedToken = null;
 let tokenExpiry  = 0;
 let refreshPromise = null;
 
+export function invalidateAdmitadToken() {
+  cachedToken = null;
+  tokenExpiry  = 0;
+}
+
 export function getAdmitadToken() {
   if (cachedToken && Date.now() < tokenExpiry - 60_000) return Promise.resolve(cachedToken);
   if (refreshPromise) return refreshPromise;
@@ -21,10 +26,14 @@ async function _fetchToken() {
     throw new Error('Missing ADMITAD_CLIENT_ID or ADMITAD_CLIENT_SECRET');
   }
 
-  // Correct scopes from official admitad-python-api library
+  // admitad-python-api sends client_id + client_secret in the POST body, not Basic Auth
   const scope = process.env.ADMITAD_SCOPE || 'public_data advcampaigns deeplink_generator';
-  const basicAuth = Buffer.from(`${ADMITAD_CLIENT_ID}:${ADMITAD_CLIENT_SECRET}`).toString('base64');
-  const body = new URLSearchParams({ grant_type: 'client_credentials', scope });
+  const body = new URLSearchParams({
+    grant_type: 'client_credentials',
+    client_id: ADMITAD_CLIENT_ID,
+    client_secret: ADMITAD_CLIENT_SECRET,
+    scope,
+  });
 
   logger.info(`Admitad OAuth: requesting token with scope="${scope}"`);
 
@@ -33,10 +42,7 @@ async function _fetchToken() {
     try {
       const res = await fetch(TOKEN_URL, {
         method: 'POST',
-        headers: {
-          Authorization: `Basic ${basicAuth}`,
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body,
       });
 
@@ -47,7 +53,7 @@ async function _fetchToken() {
 
       const data = await res.json();
       cachedToken = data.access_token;
-      tokenExpiry  = Date.now() + data.expires_in * 1000;
+      tokenExpiry  = Date.now() + (parseInt(data.expires_in, 10) || 3600) * 1000;
       logger.info(`Admitad OAuth token obtained, expires in ${data.expires_in}s`);
       return cachedToken;
     } catch (err) {

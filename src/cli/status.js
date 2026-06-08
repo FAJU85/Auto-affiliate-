@@ -27,8 +27,9 @@ if (runs.length === 0) {
     const filtered = r.productsFiltered != null ? `${r.productsFiltered}/${r.productsFetched} products` : '';
     const cost = r.dailySpendUsd != null ? `$${r.dailySpendUsd.toFixed(4)}` : '';
     const dur = r.durationMs ? `${(r.durationMs / 1000).toFixed(1)}s` : '';
+    const src = r.productSource ? `[${r.productSource}]` : '';
     const err = r.error ? ` ERR: ${r.error.slice(0, 60)}` : '';
-    console.log(`  ${ok} ${ts}  ${r.product || '?'}  ${img}  ${filtered}  ${cost}  ${dur}${err}`);
+    console.log(`  ${ok} ${ts}  ${src}  ${r.product || '?'}  ${img}  ${filtered}  ${cost}  ${dur}${err}`);
   }
 }
 console.log('');

@@ -1,12 +1,7 @@
-import { getBskyAgent } from './client.js';
+import { getBskyAgent, invalidateAgent } from './client.js';
 import { logger } from '../utils/logger.js';
 import { sleep } from '../utils/sleep.js';
 
-/**
- * Publishes an affiliate post to Bluesky.
- * Uploads image blob if provided, then creates the post record.
- * Returns the published post URI.
- */
 function isValidHttpUrl(str) {
   try {
     const u = new URL(str);
@@ -16,63 +11,162 @@ function isValidHttpUrl(str) {
   }
 }
 
-export async function publishPost(text, deeplink, imageBuffer, productName) {
-  if (!isValidHttpUrl(deeplink)) {
-    throw new Error(`publishPost: deeplink is not a valid URL: ${deeplink}`);
+function buildAltText(product) {
+  if (!product) return 'Product image';
+  const parts = [];
+  if (product.name)        parts.push(product.name.trim());
+  if (product.category && product.category !== product.name)
+                           parts.push(product.category.trim());
+  if (product.price)       parts.push(`$${product.price} ${product.currency || 'USD'}`);
+  if (product.description && product.description !== product.name)
+                           parts.push(product.description.trim().slice(0, 120));
+  return parts.join(' · ').slice(0, 999) || 'Product image';
+}
+
+async function uploadImageBlob(agentRef, imageBuffer, altText) {
+  try {
+    const upload = await agentRef.uploadBlob(imageBuffer, { encoding: 'image/jpeg' });
+    logger.info(`Image blob uploaded: ${upload.data.blob.ref}`);
+    return { $type: 'app.bsky.embed.images', images: [{ image: upload.data.blob, alt: altText }] };
+  } catch (err) {
+    if (!/deleted|revoked|expired/i.test(err.message)) {
+      logger.warn(`Image upload failed: ${err.message}. Posting without image.`);
+      return null;
+    }
+    logger.warn(`Image upload session error: ${err.message} — re-authenticating`);
+    invalidateAgent();
+    try {
+      const fresh = await getBskyAgent();
+      const upload = await fresh.uploadBlob(imageBuffer, { encoding: 'image/jpeg' });
+      logger.info(`Image blob uploaded after re-auth: ${upload.data.blob.ref}`);
+      return { $type: 'app.bsky.embed.images', images: [{ image: upload.data.blob, alt: altText }] };
+    } catch (err2) {
+      logger.warn(`Image upload failed after re-auth: ${err2.message}. Posting without image.`);
+      return null;
+    }
   }
+}
 
-  const agent = await getBskyAgent();
-  const maxLen = parseInt(process.env.MAX_POST_LENGTH || '300', 10);
+function safeByteSlice(str, maxBytes) {
+  const buf = Buffer.from(str, 'utf8');
+  if (buf.length <= maxBytes) return str;
+  // Walk back from maxBytes until we land on a valid UTF-8 sequence boundary
+  let end = maxBytes;
+  while (end > 0 && (buf[end] & 0xc0) === 0x80) end--;
+  return buf.slice(0, end).toString('utf8');
+}
 
-  // Build combined text, then truncate by byte length to respect Bluesky's limit
-  const combined = `${text}\n\n${deeplink}`;
-  const combinedBytes = Buffer.from(combined, 'utf8');
-  const truncatedBytes = combinedBytes.slice(0, maxLen);
-  const truncated = truncatedBytes.toString('utf8');
+const SOURCE_EMOJI = {
+  travelpayouts:    '✈️',
+  temu:             '🛍️',
+  cj:               '🏷️',
+  shareasale:       '🎁',
+  impact:           '⭐',
+  takeads:          '💼',
+  admitad:          '🛒',
+  'admitad-catalog':'🛒',
+  'admitad-api':    '🛒',
+};
 
-  // Facet indices are byte offsets into the final truncated text
+export function sourceEmoji(source) {
+  return SOURCE_EMOJI[source] || '🔗';
+}
+
+function buildHashtagFacets(text) {
+  const facets = [];
+  const buf = Buffer.from(text, 'utf8');
+  const re = /#([a-zA-Z][a-zA-Z0-9_]*)/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const start = Buffer.byteLength(text.slice(0, m.index), 'utf8');
+    const end   = start + Buffer.byteLength(m[0], 'utf8');
+    facets.push({
+      index: { byteStart: start, byteEnd: end },
+      features: [{ $type: 'app.bsky.richtext.facet#tag', tag: m[1] }],
+    });
+  }
+  return facets;
+}
+
+function buildPostRecord(text, deeplink, maxLen) {
+  const combined    = `${text}\n\n${deeplink}`;
+  const truncated   = safeByteSlice(combined, maxLen);
   const prefixBytes = Buffer.byteLength(text + '\n\n', 'utf8');
-  const linkStart = prefixBytes;
-  const linkEnd = Math.min(prefixBytes + Buffer.byteLength(deeplink, 'utf8'), truncatedBytes.length);
+  const linkStart   = prefixBytes;
+  const linkEnd     = Math.min(prefixBytes + Buffer.byteLength(deeplink, 'utf8'), Buffer.byteLength(truncated, 'utf8'));
 
-  const postRecord = {
+  const facets = [];
+  if (linkStart < linkEnd) {
+    facets.push({ index: { byteStart: linkStart, byteEnd: linkEnd }, features: [{ $type: 'app.bsky.richtext.facet#link', uri: deeplink }] });
+  }
+  facets.push(...buildHashtagFacets(truncated));
+
+  return {
     $type: 'app.bsky.feed.post',
     text: truncated,
     createdAt: new Date().toISOString(),
-    facets: linkStart < linkEnd
-      ? [{ index: { byteStart: linkStart, byteEnd: linkEnd }, features: [{ $type: 'app.bsky.richtext.facet#link', uri: deeplink }] }]
-      : [],
+    facets,
   };
+}
 
-  // Upload image if we have one
-  if (imageBuffer) {
-    try {
-      const upload = await agent.uploadBlob(imageBuffer, { encoding: 'image/png' });
-      postRecord.embed = {
-        $type: 'app.bsky.embed.images',
-        images: [
-          {
-            image: upload.data.blob,
-            alt: productName ? `Product image: ${productName}`.slice(0, 300) : 'Product image',
-          },
-        ],
-      };
-      logger.info(`Image blob uploaded: ${upload.data.blob.ref}`);
-    } catch (err) {
-      logger.warn(`Image upload failed: ${err.message}. Posting without image.`);
-    }
-  }
-
+async function postWithRetry(record) {
+  let currentAgent = await getBskyAgent();
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      const result = await agent.post(postRecord);
+      const result = await currentAgent.post(record);
       logger.info(`Post published: ${result.uri}`);
       return result.uri;
     } catch (err) {
       logger.warn(`Bluesky post attempt ${attempt} failed: ${err.message}`);
-      if (attempt < 3) await sleep(attempt * 2000);
+      if (/deleted|revoked|expired/i.test(err.message)) {
+        invalidateAgent();
+        try { currentAgent = await getBskyAgent(); } catch {}
+      }
+      // Bluesky rate-limit: response may include Retry-After or status 429
+      const isRateLimit = /rate.?limit|429/i.test(err.message);
+      const waitMs = isRateLimit ? 30_000 : attempt * 2000;
+      if (attempt < 3) await sleep(waitMs);
       else throw err;
     }
   }
 }
 
+function buildExternalEmbed(product, deeplink) {
+  if (typeof product !== 'object' || !product) return null;
+  const priceTag = product.price ? ` — ${product.currency === 'USD' ? '$' : product.currency || ''}${product.price}` : '';
+  const title = ((product.name || '') + priceTag).slice(0, 300);
+  const desc  = (product.description || product.name || '').slice(0, 300);
+  return {
+    $type: 'app.bsky.embed.external',
+    external: { uri: deeplink, title, description: desc },
+  };
+}
+
+export async function publishPost(text, deeplink, imageBuffer, product) {
+  const productName = typeof product === 'string' ? product : product?.name;
+  const altText = typeof product === 'object' ? buildAltText(product) : `${productName || 'Product image'}`;
+  const source  = typeof product === 'object' ? product?.source : null;
+  const emoji   = sourceEmoji(source);
+  const prefixed = text.startsWith(emoji) ? text : `${emoji} ${text}`;
+
+  if (!isValidHttpUrl(deeplink)) {
+    throw new Error(`publishPost: deeplink is not a valid URL: ${deeplink}`);
+  }
+
+  // Bluesky facet URIs have a practical length limit
+  const truncatedDeeplink = deeplink.length > 2048 ? deeplink.slice(0, 2048) : deeplink;
+
+  const maxLen = parseInt(process.env.MAX_POST_LENGTH || '300', 10);
+  const record = buildPostRecord(prefixed, truncatedDeeplink, maxLen);
+
+  if (imageBuffer) {
+    const agent = await getBskyAgent();
+    const embed = await uploadImageBlob(agent, imageBuffer, altText);
+    if (embed) record.embed = embed;
+  } else {
+    const extEmbed = buildExternalEmbed(product, truncatedDeeplink);
+    if (extEmbed) record.embed = extEmbed;
+  }
+
+  return postWithRetry(record);
+}
