@@ -496,7 +496,7 @@ function renderRunHistory(runs) {
   if (sel) {
     const sources = [...new Set(runs.map(r => r.productSource).filter(Boolean))].sort();
     const current = sel.value;
-    sel.innerHTML = '<option value="">All networks</option>' + sources.map(s => `<option value="${esc(s)}"${s===current?' selected':''}>${esc(s)}</option>`).join('');
+    sel.innerHTML = '<option value="">All networks</option>' + sources.map(s => \`<option value="${esc(s)}"${s===current?' selected':''}>${esc(s)}</option>\`).join('');
   }
   applyRunFilter();
 }
@@ -542,8 +542,8 @@ function renderStatus(d) {
     const nr = new Date(d.pipeline.nextRun);
     const diffMs = nr - Date.now();
     const diffMin = Math.max(0, Math.floor(diffMs / 60000));
-    const countdown = diffMin < 60 ? `${diffMin}m` : `${Math.floor(diffMin/60)}h${diffMin%60 ? diffMin%60+'m' : ''}`;
-    document.getElementById('kpi-posting-hours').textContent = `next run in ${countdown} · hours (UTC): ${d.pipeline.postingHours || '8-22'}`;
+    const countdown = diffMin < 60 ? \`${diffMin}m\` : \`${Math.floor(diffMin/60)}h${diffMin%60 ? diffMin%60+'m' : ''}\`;
+    document.getElementById('kpi-posting-hours').textContent = \`next run in ${countdown} · hours (UTC): ${d.pipeline.postingHours || '8-22'}\`;
   } else {
     document.getElementById('kpi-posting-hours').textContent = 'posting hours (UTC): ' + (d.pipeline.postingHours || '8-22');
   }
@@ -602,7 +602,7 @@ function renderSparkline(runs) {
   const pts = runs.slice(-20).map(r => r.success ? 1 : 0);
   if (pts.length < 2) return;
   const w = 100, h = 30, step = w / (pts.length - 1);
-  const points = pts.map((v,i) => `${(i*step).toFixed(1)},${v ? 4 : h-4}`).join(' ');
+  const points = pts.map((v,i) => \`${(i*step).toFixed(1)},${v ? 4 : h-4}\`).join(' ');
   svg.innerHTML = '<polyline points="'+points+'" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'
     + pts.map((v,i)=>'<circle cx="'+(i*step).toFixed(1)+'" cy="'+(v?4:h-4)+'" r="2.5" fill="'+(v?'#22c55e':'#ef4444')+'"/>').join('');
 }
@@ -666,7 +666,7 @@ async function fetchDedup() {
     const bsEl = document.getElementById('dedup-by-source');
     if (bsEl && d.bySource && Object.keys(d.bySource).length) {
       bsEl.innerHTML = Object.entries(d.bySource).sort((a,b)=>b[1]-a[1])
-        .map(([src, cnt]) => `<span style="background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:.2rem .6rem;font-size:.78rem;color:var(--muted)"><b style="color:var(--text)">${cnt}</b> ${esc(src)}</span>`).join('');
+        .map(([src, cnt]) => \`<span style="background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:.2rem .6rem;font-size:.78rem;color:var(--muted)"><b style="color:var(--text)">${cnt}</b> ${esc(src)}</span>\`).join('');
     } else if (bsEl) { bsEl.innerHTML = ''; }
     const rEl = document.getElementById('dedup-recent');
     if (rEl && d.recent?.length) {
@@ -865,12 +865,12 @@ async function fetchStats(days = 7) {
     // Build SVG bar chart
     const barW = 40, gap = 12, padL = 32, padB = 30, padT = 10, h = 180;
     const totalW = padL + data.length * (barW + gap);
-    let svg = `<svg viewBox="0 0 ${totalW} ${h+padB+padT}" style="width:100%;max-width:700px;display:block">`;
+    let svg = \`<svg viewBox="0 0 ${totalW} ${h+padB+padT}" style="width:100%;max-width:700px;display:block">\`;
     // Grid lines
     for (let v of [0, Math.ceil(maxVal/2), maxVal]) {
       const y = padT + h - Math.round(v / maxVal * h);
-      svg += `<line x1="${padL}" y1="${y}" x2="${totalW}" y2="${y}" stroke="#1e293b" stroke-width="1"/>`;
-      svg += `<text x="${padL-4}" y="${y+4}" text-anchor="end" font-size="10" fill="#64748b">${v}</text>`;
+      svg += \`<line x1="${padL}" y1="${y}" x2="${totalW}" y2="${y}" stroke="#1e293b" stroke-width="1"/>\`;
+      svg += \`<text x="${padL-4}" y="${y+4}" text-anchor="end" font-size="10" fill="#64748b">${v}</text>\`;
     }
     data.forEach((day, i) => {
       const x = padL + i * (barW + gap);
@@ -880,18 +880,18 @@ async function fetchStats(days = 7) {
         if (!cnt) return;
         const barH = Math.round(cnt / maxVal * h);
         yOff -= barH;
-        svg += `<rect x="${x}" y="${padT+yOff}" width="${barW}" height="${barH}" fill="${NET_COLORS[net]||'#64748b'}" rx="2"><title>${net}: ${cnt}</title></rect>`;
+        svg += \`<rect x="${x}" y="${padT+yOff}" width="${barW}" height="${barH}" fill="${NET_COLORS[net]||'#64748b'}" rx="2"><title>${net}: ${cnt}</title></rect>\`;
       });
       // X label
-      svg += `<text x="${x+barW/2}" y="${padT+h+16}" text-anchor="middle" font-size="10" fill="#94a3b8">${day.date.slice(5)}</text>`;
+      svg += \`<text x="${x+barW/2}" y="${padT+h+16}" text-anchor="middle" font-size="10" fill="#94a3b8">${day.date.slice(5)}</text>\`;
       // Total on top
       if (day.total > 0)
-        svg += `<text x="${x+barW/2}" y="${padT+h-yOff-4}" text-anchor="middle" font-size="10" fill="#e2e8f0">${day.total}</text>`;
+        svg += \`<text x="${x+barW/2}" y="${padT+h-yOff-4}" text-anchor="middle" font-size="10" fill="#e2e8f0">${day.total}</text>\`;
     });
     svg += '</svg>';
     // Legend
     svg += '<div style="display:flex;gap:.75rem;flex-wrap:wrap;margin-top:.5rem">' +
-      allNets.map(n => `<span style="display:flex;align-items:center;gap:.3rem;font-size:.8rem"><span style="width:10px;height:10px;border-radius:2px;background:${NET_COLORS[n]||'#64748b'};display:inline-block"></span>${n}</span>`).join('') +
+      allNets.map(n => \`<span style="display:flex;align-items:center;gap:.3rem;font-size:.8rem"><span style="width:10px;height:10px;border-radius:2px;background:${NET_COLORS[n]||'#64748b'};display:inline-block"></span>${n}</span>\`).join('') +
       '</div>';
     chartEl.innerHTML = svg;
 
@@ -899,7 +899,7 @@ async function fetchStats(days = 7) {
     const grandTotals = {};
     data.forEach(d => { Object.entries(d.byNetwork).forEach(([k,v]) => { grandTotals[k] = (grandTotals[k]||0)+v; }); });
     totalsEl.innerHTML = Object.entries(grandTotals).sort((a,b)=>b[1]-a[1])
-      .map(([k,v]) => `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:.5rem 1rem;text-align:center"><div style="font-size:.75rem;color:var(--muted)">${k}</div><div style="font-size:1.5rem;font-weight:700;color:${NET_COLORS[k]||'#94a3b8'}">${v}</div></div>`).join('');
+      .map(([k,v]) => \`<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:.5rem 1rem;text-align:center"><div style="font-size:.75rem;color:var(--muted)">${k}</div><div style="font-size:1.5rem;font-weight:700;color:${NET_COLORS[k]||'#94a3b8'}">${v}</div></div>\`).join('');
 
     // Network health
     const healthEl = document.getElementById('network-health');
@@ -912,11 +912,11 @@ async function fetchStats(days = 7) {
         healthEl.innerHTML = entries.map(([net, h]) => {
           const pct = Math.round(h.rate * 100);
           const color = pct >= 80 ? 'var(--green)' : pct >= 50 ? 'var(--yellow)' : 'var(--red)';
-          return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:.6rem 1rem;min-width:130px">` +
-            `<div style="font-size:.75rem;color:var(--muted);margin-bottom:.25rem">${esc(net)}</div>` +
-            `<div style="font-size:1.4rem;font-weight:700;color:${color}">${pct}%</div>` +
-            `<div style="font-size:.72rem;color:var(--muted)">${h.successes}/${h.attempts} runs</div>` +
-            `</div>`;
+          return \`<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:.6rem 1rem;min-width:130px">\` +
+            \`<div style="font-size:.75rem;color:var(--muted);margin-bottom:.25rem">${esc(net)}</div>\` +
+            \`<div style="font-size:1.4rem;font-weight:700;color:${color}">${pct}%</div>\` +
+            \`<div style="font-size:.72rem;color:var(--muted)">${h.successes}/${h.attempts} runs</div>\` +
+            \`</div>\`;
         }).join('');
       }
     }
@@ -932,13 +932,13 @@ async function fetchStats(days = 7) {
           topEl.innerHTML = '<table style="width:100%;border-collapse:collapse">' +
             '<thead><tr><th style="text-align:left;padding:.3rem .5rem;color:var(--muted);font-weight:400">Product</th><th style="text-align:left;padding:.3rem .5rem;color:var(--muted);font-weight:400">Network</th><th style="padding:.3rem .5rem;color:var(--muted);font-weight:400">❤️</th><th style="padding:.3rem .5rem;color:var(--muted);font-weight:400">🔁</th><th style="padding:.3rem .5rem;color:var(--muted);font-weight:400">Link</th></tr></thead>' +
             '<tbody>' + top.map(r =>
-              `<tr style="border-top:1px solid var(--border)">` +
-              `<td style="padding:.3rem .5rem">${esc(r.product||'—')}</td>` +
-              `<td style="padding:.3rem .5rem"><span class="badge img">${esc(r.productSource||'—')}</span></td>` +
-              `<td style="padding:.3rem .5rem;text-align:center;font-weight:700">${r.likes||0}</td>` +
-              `<td style="padding:.3rem .5rem;text-align:center">${r.reposts||0}</td>` +
-              `<td style="padding:.3rem .5rem">${r.postUri?'<a href="https://bsky.app/profile/post/'+esc(r.postUri.split('/').at(-1))+'" target="_blank" style="color:var(--accent)">view</a>':'—'}</td>` +
-              `</tr>`
+              \`<tr style="border-top:1px solid var(--border)">\` +
+              \`<td style="padding:.3rem .5rem">${esc(r.product||'—')}</td>\` +
+              \`<td style="padding:.3rem .5rem"><span class="badge img">${esc(r.productSource||'—')}</span></td>\` +
+              \`<td style="padding:.3rem .5rem;text-align:center;font-weight:700">${r.likes||0}</td>\` +
+              \`<td style="padding:.3rem .5rem;text-align:center">${r.reposts||0}</td>\` +
+              \`<td style="padding:.3rem .5rem">${r.postUri?'<a href="https://bsky.app/profile/post/'+esc(r.postUri.split('/').at(-1))+'" target="_blank" style="color:var(--accent)">view</a>':'—'}</td>\` +
+              \`</tr>\`
             ).join('') + '</tbody></table>';
         }
       } catch { topEl.textContent = 'Engagement data unavailable.'; }

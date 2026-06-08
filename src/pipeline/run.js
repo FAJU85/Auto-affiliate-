@@ -70,6 +70,11 @@ function computeQualityScore(runMeta) {
   return Math.min(score, 100);
 }
 
+// Sources where the affiliate link is brand/category level, not a specific product page.
+// Exa enrichment for these can add specific product details that don't match the link destination,
+// causing post text to describe a product the user won't find when they click the link.
+const BRAND_LEVEL_SOURCES = new Set(['admitad-api', 'temu', 'takeads', 'impact']);
+
 async function executePost(runMeta) {
   const [product, trends] = await Promise.all([getProduct(wasRecentlyPosted), getTopTrends(5)]);
   // Normalise description length — long descriptions waste AI context window
@@ -82,12 +87,20 @@ async function executePost(runMeta) {
   runMeta.productsFiltered = 1;
   logger.info(`Affiliate URL (deeplink): ${payload.deeplink}`);
 
-  // Enrich short/missing descriptions with Exa highlights
+  // Enrich short/missing descriptions with Exa highlights — but only for product-specific sources.
+  // Brand/campaign-level sources (temu, admitad-api, takeads, impact) link to a category or brand
+  // homepage; adding specific product details from Exa would make the caption describe products
+  // the user won't find when they click the link.
+  const isBrandLevel = BRAND_LEVEL_SOURCES.has(payload.source);
   const descTooShort = !payload.description || payload.description.trim().length < 10;
-  const exaHighlights = await getProductHighlights(payload.name, payload.category);
-  if (exaHighlights) {
-    payload = { ...payload, exaHighlights };
-    if (descTooShort) payload = { ...payload, description: exaHighlights.slice(0, 200) };
+  if (!isBrandLevel) {
+    const exaHighlights = await getProductHighlights(payload.name, payload.category);
+    if (exaHighlights) {
+      payload = { ...payload, exaHighlights };
+      if (descTooShort) payload = { ...payload, description: exaHighlights.slice(0, 200) };
+    }
+  } else {
+    logger.info(`Skipping Exa enrichment for brand-level source: ${payload.source}`);
   }
 
   const caption = await generatePostText(payload, trends);
