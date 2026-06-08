@@ -85,6 +85,28 @@ export function getRecentPostedSources(n = 3) {
     .map(e => e.source);
 }
 
+function extractDomain(url) {
+  try {
+    const parts = new URL(url).hostname.replace(/^www\./, '').split('.');
+    return parts.length >= 2 ? parts.slice(-2).join('.') : parts.join('.');
+  } catch { return null; }
+}
+
+/**
+ * Returns true if this advertiser domain was posted in the last N hours.
+ * Prevents consecutive posts from the same brand (e.g., multiple Shopify posts).
+ */
+export function wasAdvertiserRecentlyPosted(deeplink, hours = 4) {
+  if (!deeplink) return false;
+  const domain = extractDomain(deeplink);
+  if (!domain) return false;
+  const cutoff = Date.now() - hours * 3600_000;
+  return loadPosted().some(e => {
+    if (new Date(e.postedAt).getTime() <= cutoff) return false;
+    return extractDomain(e.deeplink || '') === domain;
+  });
+}
+
 /**
  * Returns true if this deeplink OR product name was posted in the last 60 days.
  * Catches duplicates even when the URL differs slightly between runs.
