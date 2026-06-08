@@ -2,7 +2,7 @@ import http from 'http';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { getDailySpend } from './utils/budget.js';
-import { getRecentRuns, getDedupStatus, clearPostedStore, wasRecentlyPosted, getDailyNetworkStats, purgePostedBySource, getDedupBySource, getTopPosts, getNetworkHealth } from './utils/metrics.js';
+import { getRecentRuns, getDedupStatus, clearPostedStore, wasRecentlyPosted, getDailyNetworkStats, purgePostedBySource, getDedupBySource, getTopPosts, getNetworkHealth, recordClick, getTotalClicks, getDailyClicks } from './utils/metrics.js';
 import { logger, getRecentLogs } from './utils/logger.js';
 import { getSettings, saveSettings, getSpaceHost } from './config/settings.js';
 import { getOAuthClient, getConnectedDid, disconnectBluesky } from './auth/bluesky-oauth.js';
@@ -200,6 +200,22 @@ async function routeRequest(req, res, url, getIsRunning, triggerRunFn, getMissin
     return json(res, 200, getDailyNetworkStats(days));
   }
   if (path === '/api/engagement/top' && req.method === 'GET') return json(res, 200, getTopPosts(30, 10));
+  if (path === '/api/clicks' && req.method === 'GET') {
+    const days = Math.min(parseInt(url.searchParams.get('days') || '7', 10), 90);
+    return json(res, 200, { total: getTotalClicks(), daily: getDailyClicks(days) });
+  }
+  if (path === '/api/insights' && req.method === 'GET') {
+    const { loadInsights } = await import('./ai/optimizer.js');
+    return json(res, 200, loadInsights());
+  }
+  // Click tracking redirect: /r/<trackingId>
+  const trackMatch = path.match(/^\/r\/([a-z0-9]+)$/i);
+  if (trackMatch) {
+    const run = recordClick(trackMatch[1]);
+    const dest = run?.deeplink || '/';
+    res.writeHead(302, { Location: dest, 'Cache-Control': 'no-store' });
+    return res.end();
+  }
   if (path === '/api/dedup' && req.method === 'GET') {
     const status = getDedupStatus();
     return json(res, 200, { ...status, bySource: getDedupBySource() });

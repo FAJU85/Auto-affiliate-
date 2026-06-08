@@ -118,7 +118,7 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
     <button class="tab" onclick="showTab('accounts')">🔗 Accounts</button>
     <button class="tab" onclick="showTab('config')">⚙️ Space Config</button>
     <button class="tab" onclick="showTab('logs');fetchLogs()">🪵 Logs</button>
-    <button class="tab" onclick="showTab('analytics');fetchStats()">📈 Analytics</button>
+    <button class="tab" onclick="showTab('analytics');fetchStats();fetchClickChart();fetchInsights()">📈 Analytics</button>
   </div>
 
   <!-- ═══ STATUS TAB ═══ -->
@@ -151,6 +151,11 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
         <div class="card-label">Avg quality</div>
         <div class="card-value" id="kpi-quality">—</div>
         <div class="card-sub">last 20 runs (0–100)</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Total clicks</div>
+        <div class="card-value" id="kpi-clicks">—</div>
+        <div class="card-sub" id="kpi-clicks-sub">on affiliate links</div>
       </div>
       <div class="card">
         <div class="card-label">Schedule</div>
@@ -197,8 +202,8 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Status</th><th>Time (UTC)</th><th>Product</th><th>Network</th><th>Post</th><th>Image</th><th>Q</th><th>Duration</th><th>Error</th></tr></thead>
-          <tbody id="runs-body"><tr><td colspan="8" style="text-align:center;color:var(--muted);padding:2rem">Loading…</td></tr></tbody>
+          <thead><tr><th>Status</th><th>Time (UTC)</th><th>Product</th><th>Network</th><th>Post</th><th>Clicks</th><th>Image</th><th>Q</th><th>Duration</th><th>Error</th></tr></thead>
+          <tbody id="runs-body"><tr><td colspan="10" style="text-align:center;color:var(--muted);padding:2rem">Loading…</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -392,6 +397,23 @@ footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border
       <div class="section-title">Top Posts by Engagement (last 30 days)</div>
       <div id="top-posts" style="font-size:.85rem;color:var(--muted)">Loading…</div>
     </div>
+    <div class="section">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem">
+        <div class="section-title" style="margin:0">Daily Link Clicks</div>
+        <div style="display:flex;gap:.5rem">
+          <button onclick="fetchClickChart(7)"  class="btn btn-outline" style="font-size:.75rem;padding:.25rem .6rem">7d</button>
+          <button onclick="fetchClickChart(14)" class="btn btn-outline" style="font-size:.75rem;padding:.25rem .6rem">14d</button>
+          <button onclick="fetchClickChart(30)" class="btn btn-outline" style="font-size:.75rem;padding:.25rem .6rem">30d</button>
+        </div>
+      </div>
+      <div id="click-chart" style="overflow-x:auto;min-height:160px">Loading…</div>
+    </div>
+    <div class="section" id="insights-section" style="display:none">
+      <div class="section-title">AI-Learned Click Patterns</div>
+      <div id="insights-summary" style="color:var(--muted);font-size:.9rem;margin-bottom:.75rem"></div>
+      <div id="insights-list" style="display:flex;flex-direction:column;gap:.5rem"></div>
+      <div id="insights-updated" style="font-size:.75rem;color:var(--muted);margin-top:.75rem"></div>
+    </div>
   </div>
 
 </main>
@@ -409,13 +431,23 @@ function showTab(name) {
 let statusData = {};
 async function fetchStatus() {
   try {
-    const [status, networks] = await Promise.all([
+    const [status, networks, clickData] = await Promise.all([
       fetch('/api/status').then(r=>r.json()),
       fetch('/api/networks').then(r=>r.json()),
+      fetch('/api/clicks?days=7').then(r=>r.json()).catch(()=>null),
     ]);
     statusData = status;
     renderStatus(statusData);
     renderNetworks(networks);
+    if (clickData) {
+      const el = document.getElementById('kpi-clicks');
+      const sub = document.getElementById('kpi-clicks-sub');
+      if (el) el.textContent = clickData.total || 0;
+      if (sub) {
+        const todayClicks = clickData.daily?.at(-1)?.clicks || 0;
+        sub.textContent = 'today: ' + todayClicks;
+      }
+    }
   } catch(e) {
     const pill = document.getElementById('status-pill');
     if (pill && !pill.classList.contains('running')) {
@@ -475,7 +507,11 @@ function renderRunHistoryRows(runs) {
     const postLink=r.postUri?'<a href="'+esc(r.postUri)+'" target="_blank" rel="noopener" style="font-size:.75rem;color:var(--accent)" title="'+esc(r.caption||'')+'">view</a>':'<span style="color:var(--muted)">—</span>';
     const pName = r.product || '—';
     const pDisplay = pName.length > 45 ? pName.slice(0,45)+'…' : pName;
-    return '<tr><td>'+ok+'</td><td>'+ts+'</td><td title="'+esc(pName)+'" style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(pDisplay)+'</td><td>'+src+'</td><td>'+postLink+'</td><td>'+img+'</td><td>'+qs+'</td><td>'+(r.durationMs?(r.durationMs/1000).toFixed(1)+'s':'—')+'</td><td>'+err+'</td></tr>';
+    const clickCount = r.clicks || 0;
+    const clickCell = clickCount > 0
+      ? '<span style="font-weight:700;color:var(--green)">'+clickCount+'</span>'
+      : '<span style="color:var(--muted)">0</span>';
+    return '<tr><td>'+ok+'</td><td>'+ts+'</td><td title="'+esc(pName)+'" style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(pDisplay)+'</td><td>'+src+'</td><td>'+postLink+'</td><td style="text-align:center">'+clickCell+'</td><td>'+img+'</td><td>'+qs+'</td><td>'+(r.durationMs?(r.durationMs/1000).toFixed(1)+'s':'—')+'</td><td>'+err+'</td></tr>';
   }).join('');
 }
 
@@ -913,6 +949,65 @@ async function fetchStats(days = 7) {
     const el = document.getElementById('stats-chart');
     if (el) el.textContent = 'Failed to load stats.';
   }
+}
+
+// ── Click chart ──
+async function fetchClickChart(days = 7) {
+  const el = document.getElementById('click-chart');
+  if (!el) return;
+  try {
+    const data = await fetch('/api/clicks?days='+days).then(r=>r.json());
+    const daily = data.daily || [];
+    const maxClicks = Math.max(1, ...daily.map(d => d.clicks));
+    const barW = 40, gap = 12, padL = 32, padB = 30, padT = 10, h = 140;
+    const totalW = padL + daily.length * (barW + gap);
+    let svg = `<svg viewBox="0 0 ${totalW} ${h+padB+padT}" style="width:100%;max-width:700px;display:block">`;
+    for (let v of [0, Math.ceil(maxClicks/2), maxClicks]) {
+      const y = padT + h - Math.round(v / maxClicks * h);
+      svg += `<line x1="${padL}" y1="${y}" x2="${totalW}" y2="${y}" stroke="#1e293b" stroke-width="1"/>`;
+      svg += `<text x="${padL-4}" y="${y+4}" text-anchor="end" font-size="10" fill="#64748b">${v}</text>`;
+    }
+    daily.forEach((d, i) => {
+      const x = padL + i * (barW + gap);
+      const barH = Math.round(d.clicks / maxClicks * h);
+      if (barH > 0) {
+        svg += `<rect x="${x}" y="${padT+h-barH}" width="${barW}" height="${barH}" fill="#22c55e" rx="2"><title>${d.date}: ${d.clicks} clicks (${d.posts} posts, CTR ${d.ctr})</title></rect>`;
+        svg += `<text x="${x+barW/2}" y="${padT+h-barH-4}" text-anchor="middle" font-size="10" fill="#22c55e">${d.clicks}</text>`;
+      } else {
+        svg += `<rect x="${x}" y="${padT+h-2}" width="${barW}" height="2" fill="#1e293b" rx="1"/>`;
+      }
+      svg += `<text x="${x+barW/2}" y="${padT+h+16}" text-anchor="middle" font-size="10" fill="#94a3b8">${d.date.slice(5)}</text>`;
+    });
+    svg += '</svg>';
+    const totalClicks = daily.reduce((s,d)=>s+d.clicks,0);
+    const avgCtr = daily.filter(d=>d.posts>0).reduce((s,d)=>s+d.ctr,0) / Math.max(1, daily.filter(d=>d.posts>0).length);
+    svg += `<div style="font-size:.8rem;color:var(--muted);margin-top:.5rem">${days}d total: <strong style="color:#22c55e">${totalClicks} clicks</strong> · avg CTR: <strong>${avgCtr.toFixed(2)} clicks/post</strong></div>`;
+    el.innerHTML = svg;
+  } catch { el.textContent = 'Click data unavailable.'; }
+}
+
+// ── AI Insights ──
+async function fetchInsights() {
+  try {
+    const data = await fetch('/api/insights').then(r=>r.json());
+    if (!data.insights?.length) return;
+    const section = document.getElementById('insights-section');
+    if (section) section.style.display = '';
+    const sum = document.getElementById('insights-summary');
+    if (sum && data.summary) sum.textContent = '💡 ' + data.summary;
+    const list = document.getElementById('insights-list');
+    if (list) {
+      list.innerHTML = data.insights.map(ins =>
+        `<div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.5rem .75rem;font-size:.85rem">✓ ${esc(ins)}</div>`
+      ).join('');
+    }
+    const upd = document.getElementById('insights-updated');
+    if (upd && data.updatedAt) upd.textContent = 'Last analyzed: ' + data.updatedAt.replace('T',' ').slice(0,16) + ' UTC';
+    if (data.bestCategories?.length) {
+      const el = document.getElementById('insights-updated');
+      if (el) el.textContent += ' · Best: ' + data.bestCategories.join(', ');
+    }
+  } catch {}
 }
 </script>
 </body>
