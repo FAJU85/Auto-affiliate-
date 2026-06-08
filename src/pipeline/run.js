@@ -70,9 +70,6 @@ function computeQualityScore(runMeta) {
   return Math.min(score, 100);
 }
 
-// Sources where the affiliate link is brand/category level, not a specific product page.
-// Exa enrichment for these can add specific product details that don't match the link destination,
-// causing post text to describe a product the user won't find when they click the link.
 // Sources where the affiliate link points to a brand/category page rather than a specific product.
 // Exa enrichment for these would add specific product details that don't match the link destination,
 // causing the post text to describe something the user won't find when they click.
