@@ -73,7 +73,13 @@ function computeQualityScore(runMeta) {
 // Sources where the affiliate link is brand/category level, not a specific product page.
 // Exa enrichment for these can add specific product details that don't match the link destination,
 // causing post text to describe a product the user won't find when they click the link.
-const BRAND_LEVEL_SOURCES = new Set(['admitad-api', 'temu', 'takeads', 'impact']);
+// Sources where the affiliate link points to a brand/category page rather than a specific product.
+// Exa enrichment for these would add specific product details that don't match the link destination,
+// causing the post text to describe something the user won't find when they click.
+// travelpayouts: flight route search page — Exa "flight review" returns irrelevant travel articles.
+// cj: Text Link / Banner link types are brand/category level; even Product Links are managed by the
+//     advertiser and Exa may find a different model/variant than what the destination shows.
+const BRAND_LEVEL_SOURCES = new Set(['admitad-api', 'temu', 'takeads', 'impact', 'cj', 'travelpayouts']);
 
 async function executePost(runMeta) {
   const [product, trends] = await Promise.all([getProduct(wasRecentlyPosted), getTopTrends(5)]);
