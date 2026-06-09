@@ -25,7 +25,7 @@ function getStatusPayload(isRunning) {
   const today = new Date().toISOString().slice(0, 10);
   return {
     pipeline:    { running: isRunning, schedule: settings.cronSchedule, postingHours: process.env.POSTING_HOURS || settings.postingHours || '8-22', nextRun: nextCronRun(settings.cronSchedule || '0 * * * *')?.toISOString() || null },
-    budget:      { spent: spend, cap, alert, pct: spend / cap },
+    budget:      { spent: spend, cap, alert, pct: cap > 0 ? spend / cap : 0 },
     stats:       {
       postsToday:   runs.filter(r => r.success && r.timestamp?.startsWith(today)).length,
       maxPostsPerDay: parseInt(process.env.MAX_POSTS_PER_DAY || '24', 10),
