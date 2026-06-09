@@ -56,6 +56,8 @@ export async function getAdmitadApiProduct() {
   campaigns.sort(() => Math.random() - 0.5);
   const c = campaigns[0];
 
+  if (!c.id) throw new Error('Admitad campaign missing id field — cannot generate deeplink');
+
   logger.info(`Admitad API campaign selected: ${c.name} (ecpc: ${c.avg_ecpc})`);
 
   // Deeplink is mandatory — plain site_url is not an affiliate link
@@ -75,6 +77,7 @@ export async function getAdmitadApiProduct() {
 }
 
 async function generateDeeplink(token, websiteId, campaignId, targetUrl) {
+  if (!targetUrl) throw new Error(`Admitad campaign ${campaignId} has no site_url — cannot generate deeplink`);
   // Normalise AliExpress URLs so the app opens to the correct product page
   const ulp = isAliExpressUrl(targetUrl) ? normaliseAliExpressUrl(targetUrl) : targetUrl;
   if (ulp !== targetUrl) logger.info(`AliExpress URL normalised for app compatibility`);
