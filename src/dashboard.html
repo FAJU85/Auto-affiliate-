@@ -196,6 +196,82 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
 .prog { display: flex; align-items: center; gap: 8px; }
 .prog-bar { flex: 1; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
 .prog-fill { height: 100%; border-radius: 2px; }
+
+/* ── HAMBURGER BUTTON (hidden on desktop) ── */
+#hamburger {
+  display: none; align-items: center; justify-content: center;
+  width: 36px; height: 36px; border-radius: 8px;
+  background: rgba(255,255,255,.06); border: 1px solid var(--border);
+  font-size: 18px; flex-shrink: 0; cursor: pointer;
+}
+
+/* ── SIDEBAR OVERLAY BACKDROP ── */
+#sb-backdrop {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,.55);
+  z-index: 90; backdrop-filter: blur(2px);
+}
+#sb-backdrop.show { display: block; }
+
+/* ── TABLET: icon-rail (48px) ── */
+@media (max-width: 900px) {
+  :root { --sw: 52px; }
+  #sidebar { transition: width .22s ease, min-width .22s ease; }
+  #sidebar:not(.open) {
+    width: 52px; min-width: 52px;
+    overflow: hidden;
+  }
+  #sidebar.open {
+    width: 240px; min-width: 240px;
+    position: fixed; top: 0; left: 0; bottom: 0;
+    z-index: 100; box-shadow: 4px 0 32px rgba(0,0,0,.5);
+  }
+  /* hide text labels when collapsed */
+  #sidebar:not(.open) .nav-label,
+  #sidebar:not(.open) .nav-badge,
+  #sidebar:not(.open) .sb-logo-text,
+  #sidebar:not(.open) .sb-logo-sub,
+  #sidebar:not(.open) .sb-section-label,
+  #sidebar:not(.open) .status-text,
+  #sidebar:not(.open) .status-next { display: none; }
+  #sidebar:not(.open) .sb-logo { justify-content: center; padding: 14px 8px; }
+  #sidebar:not(.open) .sb-section { padding: 8px 4px 2px; }
+  #sidebar:not(.open) .nav-item { padding: 10px; justify-content: center; }
+  #sidebar:not(.open) .nav-item.active::before { display: none; }
+  #sidebar:not(.open) .sb-status { padding: 10px 8px; }
+  #sidebar:not(.open) .status-row { justify-content: center; }
+  /* push main content flush left */
+  #main { min-width: 0; }
+  #topbar { padding: 0 14px; gap: 8px; }
+  #topbar-ts { display: none; }
+  #hamburger { display: flex; }
+}
+
+/* ── MOBILE: sidebar fully off-canvas ── */
+@media (max-width: 520px) {
+  :root { --sw: 0px; }
+  #sidebar:not(.open) {
+    width: 0; min-width: 0; border: none;
+  }
+  #sidebar.open {
+    width: 240px; min-width: 240px;
+  }
+  #content { padding: 14px; }
+  .g4 { grid-template-columns: repeat(2,1fr); gap: 10px; }
+  .g3, .g2 { grid-template-columns: 1fr; gap: 10px; }
+  .f-row { grid-template-columns: 1fr; }
+  .kpi-val { font-size: 24px; }
+  #topbar { padding: 0 12px; gap: 8px; }
+  .topbar-title { font-size: 14px; }
+  .topbar-sub { display: none; }
+  .btn { padding: 6px 10px; font-size: 12px; }
+  /* hide Refresh on mobile to save space */
+  #btn-refresh { display: none; }
+  /* table horizontal scroll */
+  .tbl-wrap { overflow-x: auto; }
+  table { min-width: 560px; }
+  /* stack last-run grid to 1 col */
+  #lr-grid { grid-template-columns: 1fr !important; }
+}
 </style>
 </head>
 <body>
@@ -247,13 +323,14 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
 <!-- ═══════════ MAIN ═══════════ -->
 <div id="main">
   <div id="topbar">
+    <button id="hamburger" onclick="toggleSidebar()" aria-label="Toggle menu">☰</button>
     <div>
       <div class="topbar-title" id="pg-title">Overview</div>
       <div class="topbar-sub" id="pg-sub">Pipeline status &amp; KPIs</div>
     </div>
     <div class="topbar-spacer"></div>
     <span id="topbar-ts" style="font-size:11px;color:var(--dim);margin-right:10px"></span>
-    <button class="btn btn-secondary" onclick="refresh()">↻ Refresh</button>
+    <button class="btn btn-secondary" onclick="refresh()" id="btn-refresh">↻ Refresh</button>
     <button class="btn btn-primary" onclick="triggerRun()" id="btn-run" style="margin-left:8px">▶ Run Now</button>
   </div>
 
@@ -539,6 +616,7 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
 </div><!-- /main -->
 </div><!-- /app -->
 <div id="toast"></div>
+<div id="sb-backdrop" onclick="closeSidebar()"></div>
 
 <script>
 // ── STATE ──────────────────────────────────────────────────────
@@ -901,6 +979,26 @@ function gradeHtml(score, grade) {
   return `<span class="badge ${cls}">${grade||'?'} ${score||''}</span>`;
 }
 function toast(msg,type='ok'){const e=document.getElementById('toast');e.textContent=msg;e.className='show '+type;clearTimeout(e._t);e._t=setTimeout(()=>e.className='',3500);}
+
+// ── SIDEBAR RESPONSIVE ────────────────────────────────────────
+function toggleSidebar() {
+  const sb = document.getElementById('sidebar');
+  sb.classList.toggle('open');
+  document.getElementById('sb-backdrop').classList.toggle('show', sb.classList.contains('open'));
+}
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sb-backdrop').classList.remove('show');
+}
+// Close sidebar on nav click (mobile/tablet) — patch all nav-item onclick calls
+document.querySelectorAll('.nav-item').forEach(el => {
+  const orig = el.getAttribute('onclick');
+  el.setAttribute('onclick', orig + '; if(window.innerWidth<=900) closeSidebar();');
+});
+// Close on resize to desktop
+window.addEventListener('resize', () => {
+  if (window.innerWidth > 900) closeSidebar();
+});
 
 // ── INIT ───────────────────────────────────────────────────────
 loadAll();
