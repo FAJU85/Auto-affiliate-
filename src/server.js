@@ -324,6 +324,10 @@ async function routeRequest(req, res, url, getIsRunning, triggerRunFn, getMissin
     }
   }
   if (path === '/api/run' && req.method === 'POST') {
+    // Live network check (does not depend on async startup timing)
+    if (!hasAnyNetworkEnabled()) {
+      return json(res, 503, { ok: false, error: 'No affiliate network configured. Add ADMITAD_FEED_URL, SOVRN_API_KEY, or another network key in HF Space secrets.' });
+    }
     const missing = getMissingVars();
     if (missing.length) return json(res, 503, { ok: false, error: `Not ready: ${missing.join(', ')}` });
     if (getIsRunning()) return json(res, 409, { ok: false, error: 'Pipeline already running' });
