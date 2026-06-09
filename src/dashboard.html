@@ -561,14 +561,92 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
     <!-- ══ ACCOUNTS ══ -->
     <div class="page" id="page-accounts">
       <div class="sec-hdr" style="margin-bottom:20px"><div class="sec-title">Connected Accounts</div></div>
-      <div id="accounts-list"><div class="empty"><div class="empty-icon">👤</div><div class="empty-txt">Loading…</div></div></div>
-      <div class="card" style="margin-top:24px">
-        <div class="card-hdr"><div class="card-title">🦋 Connect Bluesky</div></div>
-        <p style="font-size:13px;color:var(--muted);margin-bottom:14px">Set <code style="background:var(--bg);padding:2px 6px;border-radius:4px">BSKY_HANDLE</code> and <code style="background:var(--bg);padding:2px 6px;border-radius:4px">BSKY_APP_PASSWORD</code> in HuggingFace Space secrets.</p>
-        <div style="display:flex;gap:8px">
-          <input class="f-input" style="max-width:280px" id="bsky-handle" placeholder="yourhandle.bsky.social" />
-          <button class="btn btn-primary" onclick="startOAuth()">🔑 Connect via OAuth</button>
+
+      <!-- Connected summary grid -->
+      <div id="accounts-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;margin-bottom:24px"></div>
+
+      <!-- Bluesky connect card -->
+      <div class="card" id="card-bluesky">
+        <div class="card-hdr"><div class="card-title">🦋 Bluesky</div><span id="bsky-badge" class="badge badge-fail">✗ Not connected</span></div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Connect via AT Protocol OAuth. Your handle must be a valid Bluesky account.</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <input class="f-input" style="max-width:260px;flex:1" id="bsky-handle" placeholder="yourhandle.bsky.social" />
+          <button class="btn btn-primary" id="btn-bsky-connect" onclick="startOAuth()">🔑 Connect</button>
+          <button class="btn btn-secondary" id="btn-bsky-disconnect" style="display:none" onclick="disconnectBsky()">✗ Disconnect</button>
         </div>
+        <div id="bsky-status-msg" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
+      </div>
+
+      <!-- Mastodon family card -->
+      <div class="card" style="margin-top:14px" id="card-mastodon">
+        <div class="card-hdr"><div class="card-title" style="display:flex;gap:10px;align-items:center">
+          <span>🐘 Mastodon / Fediverse</span>
+          <span style="font-size:11px;color:var(--muted)">— also Truth Social, CounterSocial</span>
+        </div></div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Connect any Mastodon-compatible instance using OAuth.</p>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div id="mastodon-connected-list"></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <select class="f-input" id="mastodon-platform" style="max-width:180px">
+              <option value="mastodon">Mastodon</option>
+              <option value="truth_social">Truth Social</option>
+              <option value="counter">CounterSocial</option>
+            </select>
+            <input class="f-input" style="flex:1;min-width:200px" id="mastodon-instance" placeholder="https://mastodon.social" />
+            <button class="btn btn-primary" onclick="connectMastodon()">🔑 Connect</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Threads card -->
+      <div class="card" style="margin-top:14px" id="card-threads">
+        <div class="card-hdr"><div class="card-title">🧵 Threads (Meta)</div><span id="threads-badge" class="badge badge-fail">✗ Not connected</span></div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Requires <code style="background:var(--bg);padding:2px 5px;border-radius:4px">THREADS_APP_ID</code> + <code style="background:var(--bg);padding:2px 5px;border-radius:4px">THREADS_APP_SECRET</code> in Space secrets.</p>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary" onclick="connectOAuth2('threads')">🔑 Connect via Meta OAuth</button>
+          <button class="btn btn-secondary" id="btn-threads-disconnect" style="display:none" onclick="disconnectSocial('threads')">✗ Disconnect</button>
+        </div>
+      </div>
+
+      <!-- Tumblr card -->
+      <div class="card" style="margin-top:14px" id="card-tumblr">
+        <div class="card-hdr"><div class="card-title">📝 Tumblr</div><span id="tumblr-badge" class="badge badge-fail">✗ Not connected</span></div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Requires <code style="background:var(--bg);padding:2px 5px;border-radius:4px">TUMBLR_CLIENT_ID</code> + <code style="background:var(--bg);padding:2px 5px;border-radius:4px">TUMBLR_CLIENT_SECRET</code> in Space secrets.</p>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary" onclick="connectOAuth2('tumblr')">🔑 Connect via Tumblr OAuth</button>
+          <button class="btn btn-secondary" id="btn-tumblr-disconnect" style="display:none" onclick="disconnectSocial('tumblr')">✗ Disconnect</button>
+        </div>
+      </div>
+
+      <!-- Nostr card -->
+      <div class="card" style="margin-top:14px" id="card-nostr">
+        <div class="card-hdr"><div class="card-title">⚡ Nostr</div><span id="nostr-badge" class="badge badge-fail">✗ Not connected</span></div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Enter your private key (nsec). It is stored server-side in <code style="background:var(--bg);padding:2px 5px;border-radius:4px">/data/social-connections.json</code>.</p>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <input class="f-input" id="nostr-nsec" type="password" placeholder="nsec1…" autocomplete="off" />
+          <input class="f-input" id="nostr-npub" placeholder="npub1… (optional, for display)" />
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-primary" onclick="connectNostr()">🔑 Save Key</button>
+            <button class="btn btn-secondary" id="btn-nostr-disconnect" style="display:none" onclick="disconnectSocial('nostr')">✗ Disconnect</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Plurk card -->
+      <div class="card" style="margin-top:14px" id="card-plurk">
+        <div class="card-hdr"><div class="card-title">📣 Plurk</div><span id="plurk-badge" class="badge badge-fail">✗ Not connected</span></div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Requires <code style="background:var(--bg);padding:2px 5px;border-radius:4px">PLURK_CONSUMER_KEY</code> + <code style="background:var(--bg);padding:2px 5px;border-radius:4px">PLURK_CONSUMER_SECRET</code>.</p>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary" onclick="connectOAuth2('plurk')">🔑 Connect via Plurk OAuth</button>
+          <button class="btn btn-secondary" id="btn-plurk-disconnect" style="display:none" onclick="disconnectSocial('plurk')">✗ Disconnect</button>
+        </div>
+      </div>
+
+      <!-- Credentials-based platforms -->
+      <div class="card" style="margin-top:14px">
+        <div class="card-hdr"><div class="card-title">🔐 Other Platforms</div></div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:14px">These platforms use username/password credentials stored server-side.</p>
+        <div id="cred-platforms-list" style="display:flex;flex-direction:column;gap:12px"></div>
       </div>
     </div>
 
@@ -756,8 +834,13 @@ function nav(p) {
 }
 
 // ── API ────────────────────────────────────────────────────────
-async function api(path) {
-  try { const r=await fetch(path); return r.ok ? r.json() : null; } catch { return null; }
+async function api(path, method='GET', body=null) {
+  try {
+    const opts = { method, headers: {} };
+    if (body != null) { opts.headers['Content-Type']='application/json'; opts.body=JSON.stringify(body); }
+    const r = await fetch(path, opts);
+    return r.json();
+  } catch { return null; }
 }
 
 // ── LOAD ALL ───────────────────────────────────────────────────
@@ -808,10 +891,7 @@ async function loadNetworkStats() {
   const d = await api('/api/stats?days=7');
   S.networkStats = Array.isArray(d) ? d : [];
 }
-async function loadAccounts() {
-  const d = await api('/api/accounts');
-  S.accounts = d||{};
-}
+// loadAccounts is defined further down (after renderSocialPlatforms)
 async function loadLogs() {
   const d = await api('/api/logs?n=150');
   S.allLogs = Array.isArray(d) ? d : (Array.isArray(d?.logs) ? d.logs : []);
@@ -1060,14 +1140,102 @@ async function testNetwork(key, btn) {
 
 // ── RENDER ACCOUNTS ───────────────────────────────────────────
 function renderAccounts() {
-  const d=S.accounts, list=document.getElementById('accounts-list');
-  const rows=[];
-  if (d?.bluesky?.connected) {
-    rows.push(`<div class="acct-row"><div class="acct-av" style="background:#0085ff;color:#fff">🦋</div><div class="acct-info"><div class="acct-name">Bluesky</div><div class="acct-handle">${esc(d.bluesky.did||'Connected')}</div></div><span class="badge badge-ok">✓ Connected</span></div>`);
-  } else {
-    rows.push(`<div class="acct-row"><div class="acct-av" style="background:var(--dim);color:#fff">🦋</div><div class="acct-info"><div class="acct-name">Bluesky</div><div class="acct-handle">Not connected</div></div><span class="badge badge-fail">✗ Disconnected</span></div>`);
+  const d = S.accounts || {};
+
+  // Bluesky
+  const bsky = d.bluesky || {};
+  const bskyBadge = document.getElementById('bsky-badge');
+  const bskyDisc  = document.getElementById('btn-bsky-disconnect');
+  const bskyConn  = document.getElementById('btn-bsky-connect');
+  if (bskyBadge) bskyBadge.className = bsky.connected ? 'badge badge-ok' : 'badge badge-fail';
+  if (bskyBadge) bskyBadge.textContent = bsky.connected ? `✓ ${bsky.did||'Connected'}` : '✗ Not connected';
+  if (bskyDisc)  bskyDisc.style.display = bsky.connected ? '' : 'none';
+  if (bskyConn)  bskyConn.style.display = bsky.connected ? 'none' : '';
+
+  // Social platforms from FastAPI
+  renderSocialPlatforms(d.social || {});
+
+  // Connected summary grid
+  const grid = document.getElementById('accounts-grid');
+  if (!grid) return;
+  const all = [
+    { key:'bluesky', name:'Bluesky', icon:'🦋', c: bsky.connected, handle: bsky.did },
+    ...Object.entries(d.social||{}).map(([k,v])=>({ key:k, name:v.name, icon:v.icon, c:v.connected, handle:v.handle }))
+  ];
+  const connected = all.filter(a=>a.c);
+  if (!connected.length) { grid.innerHTML = ''; return; }
+  grid.innerHTML = connected.map(a=>`
+    <div class="card" style="display:flex;align-items:center;gap:12px;padding:14px 16px">
+      <span style="font-size:28px">${a.icon}</span>
+      <div style="flex:1"><div style="font-weight:700">${esc(a.name)}</div><div style="font-size:12px;color:var(--muted)">${esc(a.handle||'Connected')}</div></div>
+      <span class="badge badge-ok">✓</span>
+    </div>`).join('');
+}
+
+function renderSocialPlatforms(social) {
+  // OAuth2 platforms: threads, tumblr, plurk
+  for (const p of ['threads','tumblr','plurk']) {
+    const badge = document.getElementById(`${p}-badge`);
+    const disc  = document.getElementById(`btn-${p}-disconnect`);
+    const conn  = social[p];
+    if (badge) {
+      badge.className   = conn?.connected ? 'badge badge-ok' : 'badge badge-fail';
+      badge.textContent = conn?.connected ? `✓ @${conn.handle||'Connected'}` : '✗ Not connected';
+    }
+    if (disc) disc.style.display = conn?.connected ? '' : 'none';
   }
-  list.innerHTML = rows.join('') || '<div class="empty"><div class="empty-txt">No accounts</div></div>';
+
+  // Nostr
+  const nostrBadge = document.getElementById('nostr-badge');
+  const nostrDisc  = document.getElementById('btn-nostr-disconnect');
+  const nostr = social.nostr;
+  if (nostrBadge) {
+    nostrBadge.className   = nostr?.connected ? 'badge badge-ok' : 'badge badge-fail';
+    nostrBadge.textContent = nostr?.connected ? `✓ ${nostr.handle||'Connected'}` : '✗ Not connected';
+  }
+  if (nostrDisc) nostrDisc.style.display = nostr?.connected ? '' : 'none';
+
+  // Mastodon family
+  const mastoList = document.getElementById('mastodon-connected-list');
+  if (mastoList) {
+    const mastoItems = ['mastodon','truth_social','counter'].map(k=>{
+      const c = social[k];
+      if (!c?.connected) return '';
+      return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
+        <span style="font-size:18px">${c.icon||'🐘'}</span>
+        <div style="flex:1"><div style="font-size:13px;font-weight:600">${esc(c.name||k)}</div>
+        <div style="font-size:11px;color:var(--muted)">@${esc(c.handle||'')} · ${esc(c.instance||'')}</div></div>
+        <button class="btn btn-secondary" style="font-size:11px;padding:3px 8px" onclick="disconnectSocial('${k}')">✗</button></div>`;
+    }).filter(Boolean).join('');
+    mastoList.innerHTML = mastoItems;
+  }
+
+  // Credentials platforms
+  const credList = document.getElementById('cred-platforms-list');
+  if (!credList) return;
+  const credPlatforms = [
+    {key:'pillowfort', name:'Pillowfort', icon:'🐾'},
+    {key:'squabblr',   name:'Squabblr',   icon:'💬'},
+    {key:'spill',      name:'Spill',      icon:'🫗'},
+    {key:'substack',   name:'Substack',   icon:'📰'},
+    {key:'semble',     name:'Semble',     icon:'🔗'},
+  ];
+  credList.innerHTML = credPlatforms.map(p => {
+    const c = social[p.key];
+    return `<div style="border:1px solid var(--border);border-radius:8px;padding:12px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span style="font-size:20px">${p.icon}</span>
+        <span style="font-weight:600">${p.name}</span>
+        <span class="badge ${c?.connected?'badge-ok':'badge-fail'}">${c?.connected?'✓ @'+esc(c.handle||''):'✗ Not connected'}</span>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <input class="f-input" id="cred-${p.key}-handle" style="flex:1;min-width:140px" placeholder="Username" value="${esc(c?.handle||'')}" />
+        <input class="f-input" id="cred-${p.key}-pass" type="password" style="flex:1;min-width:140px" placeholder="Password" autocomplete="off" />
+        <button class="btn btn-primary" style="font-size:12px;padding:6px 12px" onclick="connectCredentials('${p.key}')">Save</button>
+        ${c?.connected?`<button class="btn btn-secondary" style="font-size:12px;padding:6px 12px" onclick="disconnectSocial('${p.key}')">✗</button>`:''}
+      </div>
+    </div>`;
+  }).join('');
 }
 
 // ── FILTER LOGS ───────────────────────────────────────────────
@@ -1150,9 +1318,59 @@ async function generateCaption() {
   } else toast(d?.error||'Generation failed','err');
 }
 function startOAuth() {
-  const h=document.getElementById('bsky-handle').value.trim();
-  if (!h) { toast('Enter a Bluesky handle','err'); return; }
-  window.location.href='/oauth/start?handle='+encodeURIComponent(h);
+  const h = document.getElementById('bsky-handle').value.trim();
+  if (!h) { toast('Enter your Bluesky handle (e.g. user.bsky.social)', 'err'); return; }
+  document.getElementById('bsky-status-msg').textContent = '⏳ Redirecting to Bluesky…';
+  window.location.href = '/oauth/start?handle=' + encodeURIComponent(h);
+}
+async function disconnectBsky() {
+  if (!confirm('Disconnect Bluesky?')) return;
+  const d = await fetch('/api/accounts/bluesky/disconnect', {method:'POST'}).then(r=>r.json()).catch(()=>null);
+  if (d?.ok) { toast('Bluesky disconnected'); await loadAccounts(); }
+  else toast('Disconnect failed','err');
+}
+async function connectMastodon() {
+  const platform  = document.getElementById('mastodon-platform').value;
+  const instance  = document.getElementById('mastodon-instance').value.trim();
+  if (!instance) { toast('Enter the instance URL (e.g. https://mastodon.social)', 'err'); return; }
+  const d = await api('/api/social/mastodon/register', 'POST', { platform, instance });
+  if (d?.url) { window.location.href = d.url; }
+  else toast(d?.error || d?.detail || 'Registration failed', 'err');
+}
+async function connectOAuth2(platform) {
+  const d = await api(`/api/social/${platform}/auth`);
+  if (d?.url) { window.location.href = d.url; }
+  else toast(d?.error || d?.detail || `${platform} OAuth failed`, 'err');
+}
+async function connectNostr() {
+  const nsec = document.getElementById('nostr-nsec').value.trim();
+  const npub = document.getElementById('nostr-npub').value.trim();
+  if (!nsec) { toast('Enter your nsec private key', 'err'); return; }
+  const d = await api('/api/social/nostr/connect', 'POST', { nsec, npub });
+  if (d?.ok) { toast('Nostr key saved ⚡'); await loadAccounts(); }
+  else toast(d?.error || d?.detail || 'Failed to save key', 'err');
+}
+async function connectCredentials(platform) {
+  const handle   = document.getElementById(`cred-${platform}-handle`)?.value.trim();
+  const password = document.getElementById(`cred-${platform}-pass`)?.value;
+  if (!handle) { toast('Enter a username', 'err'); return; }
+  const d = await api(`/api/social/${platform}/credentials`, 'POST', { handle, password });
+  if (d?.ok) { toast(`${platform} saved ✓`); await loadAccounts(); }
+  else toast(d?.error || d?.detail || 'Failed', 'err');
+}
+async function disconnectSocial(platform) {
+  if (!confirm(`Disconnect ${platform}?`)) return;
+  const d = await api(`/api/social/${platform}/disconnect`, 'DELETE');
+  if (d?.ok) { toast(`${platform} disconnected`); await loadAccounts(); }
+  else toast('Disconnect failed', 'err');
+}
+async function loadAccounts() {
+  const [bsky, social] = await Promise.all([
+    api('/api/accounts'),
+    api('/api/social/status'),
+  ]);
+  S.accounts = { ...(bsky||{}), social: social||{} };
+  renderAccounts();
 }
 async function refresh() {
   const b=document.getElementById('btn-refresh');
@@ -1347,6 +1565,21 @@ window.addEventListener('resize', () => {
 });
 
 // ── INIT ───────────────────────────────────────────────────────
+// Handle OAuth redirect back to dashboard
+(function handleOAuthReturn() {
+  const p = new URLSearchParams(window.location.search);
+  const connected = p.get('connected');
+  const error     = p.get('error');
+  const page      = p.get('page') || p.get('tab');
+  if (connected || error || page === 'accounts') {
+    // Navigate to accounts page
+    nav('accounts');
+    if (connected) toast(`✓ ${connected} connected!`);
+    if (error)     toast(`✗ OAuth error: ${decodeURIComponent(error)}`, 'err');
+    // Clean URL
+    history.replaceState({}, '', '/');
+  }
+})();
 loadAll();
 setInterval(()=>{ loadStatus(); if(currentPage==='analytics'){loadClicks().then(renderAnalytics);} if(currentPage==='logs')loadLogs(); }, 20000);
 </script>
