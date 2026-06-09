@@ -377,6 +377,13 @@ async function routeRequest(req, res, url, getIsRunning, triggerRunFn, getMissin
 export function startServer(getIsRunning, triggerRun, getMissingVars = () => []) {
   const server = http.createServer(async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    // Handle CORS preflight
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204);
+      return res.end();
+    }
     const url = new URL(req.url, 'http://localhost');
     await routeRequest(req, res, url, getIsRunning, triggerRun, getMissingVars);
   });
