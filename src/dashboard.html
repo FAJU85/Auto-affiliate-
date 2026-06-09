@@ -398,14 +398,26 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
         </div>
       </div>
 
-      <!-- Posts bar chart -->
-      <div class="card" style="margin-bottom:24px">
-        <div class="card-hdr">
-          <div class="card-title">Posts — Last 7 Days</div>
-          <span style="font-size:12px;color:var(--muted)" id="chart-total"></span>
+      <!-- Posts bar chart + Network breakdown -->
+      <div class="g2" style="margin-bottom:24px">
+        <div class="card">
+          <div class="card-hdr">
+            <div class="card-title">Posts — Last 7 Days</div>
+            <span style="font-size:12px;color:var(--muted)" id="chart-total"></span>
+          </div>
+          <div class="bar-wrap" id="posts-chart" style="height:64px">
+            <div class="empty"><div class="empty-txt">Loading…</div></div>
+          </div>
         </div>
-        <div class="bar-wrap" id="posts-chart" style="height:64px">
-          <div class="empty"><div class="empty-txt">Loading…</div></div>
+        <div class="card">
+          <div class="card-hdr">
+            <div class="card-title">Network Breakdown</div>
+            <span style="font-size:12px;color:var(--muted)" id="net-breakdown-sub">posts by source</span>
+          </div>
+          <div id="net-breakdown" style="display:flex;flex-direction:column;gap:6px;min-height:64px">
+            <div class="empty"><div class="empty-txt">Loading…</div></div>
+          </div>
+          <div style="margin-top:10px;font-size:11px;color:var(--muted)">Last post: <span id="kpi-last-post">—</span></div>
         </div>
       </div>
 
@@ -713,7 +725,7 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
 
 <script>
 // ── STATE ──────────────────────────────────────────────────────
-const S = { status:null, clicks:[], history:[], networks:[], insights:{}, accounts:null, allLogs:[], totalClicks:0 };
+const S = { status:null, clicks:[], history:[], networks:[], insights:{}, accounts:null, allLogs:[], totalClicks:0, networkStats:[] };
 let currentPage = 'overview';
 
 // ── NAV ────────────────────────────────────────────────────────
@@ -750,7 +762,7 @@ async function api(path) {
 
 // ── LOAD ALL ───────────────────────────────────────────────────
 async function loadAll() {
-  await Promise.all([loadStatus(), loadClicks(), loadHistory(), loadNetworks(), loadInsights(), loadAccounts()]);
+  await Promise.all([loadStatus(), loadClicks(), loadHistory(), loadNetworks(), loadInsights(), loadAccounts(), loadNetworkStats()]);
   renderOverview(); renderAnalytics(); renderPosts(); renderSEO(); renderAI(); renderNetworks(); renderAccounts();
   document.getElementById('topbar-ts').textContent = 'Updated ' + new Date().toLocaleTimeString();
 }
@@ -792,13 +804,17 @@ async function loadInsights() {
   const d = await api('/api/insights');
   S.insights = d||{};
 }
+async function loadNetworkStats() {
+  const d = await api('/api/stats?days=7');
+  S.networkStats = Array.isArray(d) ? d : [];
+}
 async function loadAccounts() {
   const d = await api('/api/accounts');
   S.accounts = d||{};
 }
 async function loadLogs() {
-  const d = await api('/api/logs?limit=150');
-  S.allLogs = Array.isArray(d) ? d : [];
+  const d = await api('/api/logs?n=150');
+  S.allLogs = Array.isArray(d) ? d : (Array.isArray(d?.logs) ? d.logs : []);
   filterLogs();
 }
 
@@ -848,6 +864,37 @@ function renderOverview() {
   const maxB = Math.max(...days.map(d=>d.posts),1);
   chart.innerHTML = days.map(d=>`<div class="bar-col"><div class="bar-fill" style="height:${Math.max((d.posts/maxB)*100,2)}%;background:var(--accent)" title="${d.posts} posts on ${d.date}"></div><div class="bar-lbl">${d.date.slice(5)}</div></div>`).join('');
   document.getElementById('chart-total').textContent = days.reduce((s,d)=>s+d.posts,0)+' posts this week';
+
+  // Last post time
+  const lastSuccess = [...(S.history||[])].reverse().find(r=>r.success);
+  const lpEl = document.getElementById('kpi-last-post');
+  if (lpEl) lpEl.textContent = lastSuccess?.timestamp ? new Date(lastSuccess.timestamp).toLocaleString() : 'never';
+
+  // Network breakdown mini chart
+  const nbEl = document.getElementById('net-breakdown');
+  if (nbEl && S.networkStats) {
+    const byNet = {};
+    for (const d of S.networkStats) {
+      for (const [src, cnt] of Object.entries(d.byNetwork||{})) {
+        byNet[src] = (byNet[src]||0)+cnt;
+      }
+    }
+    const entries = Object.entries(byNet).sort((a,b)=>b[1]-a[1]);
+    if (!entries.length) {
+      nbEl.innerHTML = '<div class="empty"><div class="empty-txt">No posts yet</div></div>';
+    } else {
+      const total = entries.reduce((s,[,v])=>s+v,0)||1;
+      nbEl.innerHTML = entries.slice(0,6).map(([src,cnt])=>`
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:12px;min-width:110px;color:var(--muted)">${esc(src)}</span>
+          <div style="flex:1;background:var(--border);border-radius:3px;height:8px">
+            <div style="width:${Math.round(cnt/total*100)}%;background:var(--accent);height:100%;border-radius:3px"></div>
+          </div>
+          <span style="font-size:12px;min-width:24px;text-align:right">${cnt}</span>
+        </div>`).join('');
+    }
+    document.getElementById('net-breakdown-sub').textContent = total+' total posts (7d)';
+  }
 }
 
 // ── RENDER ANALYTICS ──────────────────────────────────────────

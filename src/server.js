@@ -21,18 +21,19 @@ function getStatusPayload(isRunning) {
   const cap   = settings.dailyCostCap;
   const alert = settings.alertThreshold;
   const spend = getDailySpend();
-  const runs  = getRecentRuns(20);
+  const allRecentRuns = getRecentRuns(100);
+  const runs          = allRecentRuns.slice(-20);
   const today = new Date().toISOString().slice(0, 10);
   return {
     pipeline:    { running: isRunning, schedule: settings.cronSchedule, postingHours: process.env.POSTING_HOURS || settings.postingHours || '8-22', nextRun: nextCronRun(settings.cronSchedule || '0 * * * *')?.toISOString() || null },
-    budget:      { spent: spend, cap, alert, pct: spend / cap },
+    budget:      { spent: spend, cap, alert, pct: cap > 0 ? spend / cap : 0 },
     stats:       {
-      postsToday:   runs.filter(r => r.success && r.timestamp?.startsWith(today)).length,
-      maxPostsPerDay: parseInt(process.env.MAX_POSTS_PER_DAY || '24', 10),
+      postsToday:   allRecentRuns.filter(r => r.success && r.timestamp?.startsWith(today)).length,
+      maxPostsPerDay: settings.postsPerDay ?? parseInt(process.env.MAX_POSTS_PER_DAY || '24', 10),
       totalRuns:    runs.length,
       successRate:  runs.length ? Math.round(runs.filter(r=>r.success).length/runs.length*100) : null,
     },
-    lastRun:       runs.at(-1) ?? null,
+    lastRun:       allRecentRuns.at(-1) ?? null,
     runs:          [...runs].reverse(),
     networkHealth: getNetworkHealth(100),
   };
@@ -377,6 +378,13 @@ async function routeRequest(req, res, url, getIsRunning, triggerRunFn, getMissin
 export function startServer(getIsRunning, triggerRun, getMissingVars = () => []) {
   const server = http.createServer(async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    // Handle CORS preflight
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204);
+      return res.end();
+    }
     const url = new URL(req.url, 'http://localhost');
     await routeRequest(req, res, url, getIsRunning, triggerRun, getMissingVars);
   });
