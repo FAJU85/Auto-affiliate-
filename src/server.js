@@ -10,6 +10,15 @@ import { nextCronRun } from './utils/cron-next.js';
 
 const PORT = parseInt(process.env.PORT || '7860', 10);
 const DASHBOARD_PATH = new URL('./dashboard.html', import.meta.url).pathname;
+const FASTAPI_BASE = 'http://127.0.0.1:8000';
+
+async function proxyToFastAPI(method, fapiPath, body = null) {
+  const { default: fetch } = await import('node-fetch');
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body) opts.body = body;
+  const res = await fetch(`${FASTAPI_BASE}${fapiPath}`, opts);
+  return res.json();
+}
 
 function json(res, status, data) {
   res.setHeader('Content-Type', 'application/json');
@@ -124,31 +133,17 @@ async function handleSettingsPost(req, res) {
   }
 }
 
-async function handleOAuthStart(url, res) {
-  const handle = url.searchParams.get('handle');
-  if (!handle) return json(res, 400, { error: 'handle param required' });
-  const client = getOAuthClient();
-  if (!client) return json(res, 503, { error: 'Space URL not configured — set it in Space Config tab' });
-  try {
-    const authUrl = await client.authorize(handle, { scope: 'atproto transition:generic' });
-    return json(res, 200, { url: authUrl.toString() });
-  } catch (err) {
-    logger.warn(`Bluesky OAuth start failed: ${err.message}`);
-    return json(res, 500, { error: err.message });
-  }
-}
-
 async function handleOAuthCallback(url, res) {
   const client = getOAuthClient();
   if (!client) { res.writeHead(302, { Location: '/?error=no_client' }); return res.end(); }
   try {
     const { session } = await client.callback(new URLSearchParams(Object.fromEntries(url.searchParams)));
     logger.info(`Bluesky OAuth connected: ${session.did}`);
-    res.writeHead(302, { Location: '/?tab=accounts&connected=1' });
+    res.writeHead(302, { Location: '/?page=accounts&connected=bluesky' });
     return res.end();
   } catch (err) {
     logger.warn(`Bluesky OAuth callback failed: ${err.message}`);
-    res.writeHead(302, { Location: '/?tab=accounts&error=' + encodeURIComponent(err.message) });
+    res.writeHead(302, { Location: '/?page=accounts&error=' + encodeURIComponent(err.message) });
     return res.end();
   }
 }
@@ -185,7 +180,10 @@ async function routeRequest(req, res, url, getIsRunning, triggerRunFn, getMissin
   if (path === '/api/settings' && req.method === 'POST') return handleSettingsPost(req, res);
   if (path === '/api/accounts' && req.method === 'GET') {
     const did = await getConnectedDid().catch(() => null);
-    return json(res, 200, { spaceConfigured: !!getSpaceHost(), bluesky: { connected: !!did, did } });
+    // Also fetch social platforms from FastAPI (non-blocking, best-effort)
+    let social = {};
+    try { social = await proxyToFastAPI('GET', '/social/status'); } catch {}
+    return json(res, 200, { spaceConfigured: !!getSpaceHost(), bluesky: { connected: !!did, did }, social });
   }
   if (path === '/api/accounts/bluesky/disconnect' && req.method === 'POST') {
     await disconnectBluesky();
@@ -278,8 +276,52 @@ async function routeRequest(req, res, url, getIsRunning, triggerRunFn, getMissin
       return json(res, 200, { posted: wasRecentlyPosted(url, name) });
     } catch (err) { return json(res, 400, { ok: false, error: err.message }); }
   }
-  if (path === '/oauth/bsky/start')  return handleOAuthStart(url, res);
+  // Bluesky OAuth — /oauth/start redirects browser directly to Bluesky
+  if ((path === '/oauth/start' || path === '/oauth/bsky/start') && req.method === 'GET') {
+    const handle = url.searchParams.get('handle');
+    if (!handle) { res.writeHead(302, { Location: '/?error=handle_required' }); return res.end(); }
+    const client = getOAuthClient();
+    if (!client) { res.writeHead(302, { Location: '/?error=space_not_configured' }); return res.end(); }
+    try {
+      const authUrl = await client.authorize(handle, { scope: 'atproto transition:generic' });
+      res.writeHead(302, { Location: authUrl.toString() });
+      return res.end();
+    } catch (err) {
+      logger.warn(`Bluesky OAuth start failed: ${err.message}`);
+      res.writeHead(302, { Location: '/?error=' + encodeURIComponent(err.message) });
+      return res.end();
+    }
+  }
   if (path === '/oauth/callback')    return handleOAuthCallback(url, res);
+
+  // Social OAuth callback — relayed from FastAPI, then redirect to dashboard
+  if (path === '/oauth/social/callback' && req.method === 'GET') {
+    const platform = url.searchParams.get('platform') || '';
+    try {
+      const params = new URLSearchParams(url.searchParams);
+      const apiRes = await proxyToFastAPI('GET', `/social/callback?${params.toString()}`);
+      if (apiRes.ok) {
+        res.writeHead(302, { Location: `/?page=accounts&connected=${encodeURIComponent(platform)}` });
+      } else {
+        res.writeHead(302, { Location: `/?page=accounts&error=${encodeURIComponent(apiRes.error || 'oauth_failed')}` });
+      }
+    } catch (err) {
+      res.writeHead(302, { Location: `/?page=accounts&error=${encodeURIComponent(err.message)}` });
+    }
+    return res.end();
+  }
+
+  // Social platform API — proxy to FastAPI
+  if (path.startsWith('/api/social/')) {
+    const fapiPath = path.replace('/api/social/', '/social/') + (url.search || '');
+    try {
+      const body = req.method !== 'GET' ? await readBody(req) : null;
+      const result = await proxyToFastAPI(req.method, fapiPath, body);
+      return json(res, 200, result);
+    } catch (err) {
+      return json(res, 502, { ok: false, error: err.message });
+    }
+  }
   if (path === '/api/run' && req.method === 'POST') {
     const missing = getMissingVars();
     if (missing.length) return json(res, 503, { ok: false, error: `Not ready: ${missing.join(', ')}` });
