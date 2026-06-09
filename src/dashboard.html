@@ -673,6 +673,13 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
             <button class="btn btn-secondary" onclick="loadSettingsForm()">↺ Reset</button>
           </div>
           <div id="s-msg" style="font-size:13px"></div>
+          <div class="card" style="margin-top:16px">
+            <div class="card-hdr">
+              <div class="card-title">🔑 Environment Variables</div>
+              <button class="btn btn-secondary" style="font-size:11px;padding:4px 10px" onclick="loadEnvStatus()">↻ Refresh</button>
+            </div>
+            <div id="env-status-list" style="font-size:12px"><div class="empty"><div class="empty-txt">Click Refresh to load</div></div></div>
+          </div>
         </div>
       </div>
     </div>
@@ -760,7 +767,7 @@ async function loadStatus() {
     ? 'Next: '+new Date(d.pipeline.nextRun).toLocaleTimeString()
     : d.pipeline?.schedule || '';
   document.getElementById('btn-run').disabled  = !!running;
-  document.getElementById('btn-run2')?.disabled && (document.getElementById('btn-run2').disabled = !!running);
+  if (document.getElementById('btn-run2')) document.getElementById('btn-run2').disabled = !!running;
   const pb = document.getElementById('btn-pause');
   if (pb) pb.textContent = d.pipeline?.paused ? '▶ Resume' : '⏸ Pause';
   if (d.missingVars?.length) {
@@ -953,11 +960,27 @@ function renderNetworks() {
   const act=nets.filter(n=>n.enabled).length;
   document.getElementById('nets-summary').innerHTML=`<span class="badge badge-ok">${act} active</span> <span class="badge badge-warn">${nets.length-act} off</span>`;
   const nl=document.getElementById('nets-list');
-  if (!nets.length) { nl.innerHTML='<div class="empty"><div class="empty-icon">🌐</div><div class="empty-txt">Configure affiliate network credentials in HF Space secrets</div></div>'; }
-  else {
-    nl.innerHTML='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px">'
-      +nets.map(n=>`<div class="net-pill"><div class="net-dot" style="background:${NC[n.key||n.id]||'#64748b'}"></div><span>${NE[n.key||n.id]||'🔗'}</span><span style="font-size:13px;font-weight:600;flex:1">${esc(n.label||n.key||'?')}</span><span>${n.enabled?'<span class="badge badge-ok">On</span>':'<span class="badge badge-warn">Off</span>'}</span></div>`).join('')+'</div>';
-  }
+  if (!nets.length) { nl.innerHTML='<div class="empty"><div class="empty-icon">🌐</div><div class="empty-txt">Configure affiliate network credentials in HF Space secrets</div></div>'; return; }
+  nl.innerHTML='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px">'
+    +nets.map(n=>{
+      const key=n.key||n.id||'';
+      const color=NC[key]||'#64748b';
+      const icon=NE[key]||'🔗';
+      const errHtml=n.lastError?`<div style="margin-top:6px;font-size:11px;color:var(--red);word-break:break-all" title="${esc(n.lastError)}">⚠ ${esc(n.lastError.slice(0,80))}${n.lastError.length>80?'…':''}</div>`:'';
+      const checkedHtml=n.lastErrorAt?`<div style="font-size:10px;color:var(--dim);margin-top:2px">Last checked: ${n.lastErrorAt.replace('T',' ').slice(0,16)} UTC</div>`:'';
+      return `<div style="border:1px solid var(--border);border-radius:10px;padding:14px;background:var(--card)">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <div style="width:10px;height:10px;border-radius:50%;background:${color};flex-shrink:0"></div>
+          <span>${icon}</span>
+          <span style="font-size:13px;font-weight:700;flex:1">${esc(n.label||key||'?')}</span>
+          ${n.enabled?'<span class="badge badge-ok">On</span>':'<span class="badge badge-warn">Off</span>'}
+        </div>
+        <div style="font-size:12px;color:var(--muted)">Selected: <strong style="color:var(--fg)">${n.selectCount||0}</strong> times</div>
+        ${errHtml}${checkedHtml}
+        <button class="btn btn-secondary" style="margin-top:10px;font-size:11px;padding:4px 10px;width:100%" onclick="testNetwork('${esc(key)}',this)" ${n.enabled?'':'disabled'}>🧪 Test</button>
+        <div id="net-test-${key}" style="margin-top:6px;font-size:11px"></div>
+      </div>`;
+    }).join('')+'</div>';
   const th=document.getElementById('nets-health');
   if (!nets.length) { th.innerHTML='<tr><td colspan="4" style="text-align:center;color:var(--dim);padding:32px">No data</td></tr>'; return; }
   th.innerHTML=nets.map(n=>`<tr>
@@ -966,6 +989,26 @@ function renderNetworks() {
     <td>${n.selectCount||0}</td>
     <td><div class="prog"><div class="prog-bar"><div class="prog-fill" style="width:${n.successRate||0}%;background:${(n.successRate||0)>=80?'var(--green)':(n.successRate||0)>=50?'var(--yellow)':'var(--red)'}"></div></div><span style="font-size:12px;color:var(--muted)">${n.successRate||0}%</span></div></td>
   </tr>`).join('');
+}
+
+async function testNetwork(key, btn) {
+  const out=document.getElementById('net-test-'+key);
+  btn.disabled=true; btn.textContent='⏳ Testing…';
+  out.textContent=''; out.style.color='var(--muted)';
+  try {
+    const r=await fetch('/api/network/test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({network:key})});
+    const d=r.ok||r.status===200?await r.json():null;
+    if (d?.ok) {
+      out.style.color='var(--green)';
+      out.textContent='✓ OK — '+esc(d.product?.name||'product received');
+    } else {
+      out.style.color='var(--red)';
+      out.textContent='✗ '+esc(d?.error||'unknown error');
+    }
+  } catch(e) {
+    out.style.color='var(--red)'; out.textContent='✗ Request failed';
+  }
+  btn.disabled=false; btn.textContent='🧪 Test';
 }
 
 // ── RENDER ACCOUNTS ───────────────────────────────────────────
@@ -1008,6 +1051,20 @@ async function loadSettingsForm() {
   document.getElementById('s-template').value  = d.postUserTemplate||'';
   document.getElementById('s-seo').value     = d.seoMinScore||50;
 }
+async function loadEnvStatus() {
+  const el=document.getElementById('env-status-list');
+  if (!el) return;
+  el.innerHTML='<div class="empty"><div class="empty-txt">Loading…</div></div>';
+  const d=await api('/api/env-status');
+  if (!d) { el.innerHTML='<div class="empty"><div class="empty-txt">Failed to load</div></div>'; return; }
+  const entries=Object.entries(d);
+  const set=entries.filter(([,v])=>v);
+  const unset=entries.filter(([,v])=>!v);
+  el.innerHTML='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:4px 16px;padding:4px 0">'
+    +entries.map(([k,v])=>`<div style="display:flex;align-items:center;gap:6px;padding:3px 0;border-bottom:1px solid var(--border)"><span style="font-size:10px;color:${v?'var(--green)':'var(--dim)'}">${v?'●':'○'}</span><code style="font-size:11px;flex:1;word-break:break-all">${esc(k)}</code><span style="font-size:10px;color:${v?'var(--green)':'var(--dim)'}">${v?'set':'—'}</span></div>`).join('')
+    +'</div><div style="font-size:11px;color:var(--muted);margin-top:6px">'+set.length+' set · '+unset.length+' unset</div>';
+}
+
 async function saveSettings() {
   const p={cronSchedule:document.getElementById('s-cron').value,postingHours:document.getElementById('s-hours').value,maxPostLength:parseInt(document.getElementById('s-maxlen').value)||280,dailyCostCap:parseFloat(document.getElementById('s-cap').value)||2,alertThreshold:parseFloat(document.getElementById('s-alert').value)||1.5,postSystemPrompt:document.getElementById('s-sysprompt').value,postUserTemplate:document.getElementById('s-template').value,seoMinScore:parseInt(document.getElementById('s-seo').value)||50};
   const d=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)}).then(r=>r.json()).catch(()=>null);
@@ -1029,7 +1086,7 @@ async function triggerDryRun() {
   toast(d?.message||'Dry run N/A', d?.ok?'ok':'err');
 }
 async function togglePause() {
-  const d=await fetch('/api/pause',{method:'POST'}).then(r=>r.json()).catch(()=>null);
+  const d=await fetch('/api/schedule/pause',{method:'POST'}).then(r=>r.json()).catch(()=>null);
   toast(d?.message||'Done', d?.ok?'ok':'err');
   await loadStatus();
 }

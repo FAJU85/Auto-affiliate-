@@ -166,16 +166,28 @@ async function routeRequest(req, res, url, getIsRunning, triggerRunFn, getMissin
     await disconnectBluesky();
     return json(res, 200, { ok: true });
   }
+  if (path === '/api/env-status' && req.method === 'GET') {
+    const { OPTIONAL_LABELS } = await import('./utils/env.js');
+    const vars = [...Object.keys(OPTIONAL_LABELS), 'BSKY_HANDLE', 'BSKY_APP_PASSWORD'];
+    const status = Object.fromEntries(vars.map(k => [k, !!process.env[k]]));
+    return json(res, 200, status);
+  }
   if (path === '/api/networks' && req.method === 'GET') {
     const { getNetworkErrors, getNetworkSelectCounts } = await import('./feeds/index.js');
     const errors = getNetworkErrors();
     const counts = getNetworkSelectCounts();
-    const networks = getNetworkStatus().map(n => ({
-      ...n,
-      lastError: errors[n.key]?.error || null,
-      lastErrorAt: errors[n.key]?.at || null,
-      selectCount: counts[n.key] || 0,
-    }));
+    const health = getNetworkHealth(100);
+    const networks = getNetworkStatus().map(n => {
+      const h = health[n.key] || null;
+      return {
+        ...n,
+        lastError:    errors[n.key]?.error || null,
+        lastErrorAt:  errors[n.key]?.at    || null,
+        selectCount:  counts[n.key] || 0,
+        successRate:  h ? Math.round(h.rate * 100) : null,
+        totalAttempts: h?.attempts || 0,
+      };
+    });
     return json(res, 200, networks);
   }
   if (path === '/api/history' && req.method === 'GET') {
@@ -195,7 +207,10 @@ async function routeRequest(req, res, url, getIsRunning, triggerRunFn, getMissin
     res.writeHead(200, { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename="pipeline-history.csv"' });
     return res.end(header + rows);
   }
-  if (path === '/api/logs' && req.method === 'GET') return json(res, 200, getRecentLogs(100));
+  if (path === '/api/logs' && req.method === 'GET') {
+    const n = Math.min(parseInt(url.searchParams.get('n') || '100', 10), 500);
+    return json(res, 200, { logs: getRecentLogs(n), logFile: '/data/app.log' });
+  }
   if (path === '/api/stats' && req.method === 'GET') {
     const days = Math.min(parseInt(url.searchParams.get('days') || '7', 10), 90);
     return json(res, 200, getDailyNetworkStats(days));

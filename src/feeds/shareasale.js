@@ -27,7 +27,7 @@ async function searchProducts(token, secret, affiliateId) {
     action,
     affiliateId,
     token,
-    version:   '2.8',
+    version:   '2.9',
     XMLFormat: '1',
     joined:    '1',   // only merchants you have joined
     pageSize:  '100',

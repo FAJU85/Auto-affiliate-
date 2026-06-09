@@ -16,47 +16,49 @@ const SEARCH_KEYWORDS = [
   'free shipping', 'bundle', 'gift', 'seasonal',
 ];
 
-async function fetchLinks(apiKey, websiteId) {
-  // Randomise page to spread across the catalogue over successive runs
-  const page = Math.ceil(Math.random() * 5);
-  const keyword = SEARCH_KEYWORDS[Math.floor(Math.random() * SEARCH_KEYWORDS.length)];
-  const params = new URLSearchParams({
-    'website-id':        websiteId,
-    'advertiser-ids':    'joined',   // only advertisers you are already joined with
-    'records-per-page':  '100',
-    'page-number':       String(page),
-    'keywords':          keyword,
-  });
-
+async function doFetch(apiKey, params) {
   const res = await fetch(`${API_BASE}?${params}`, {
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      Accept: 'application/json',
-    },
+    headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' },
     signal: AbortSignal.timeout(30_000),
   });
-
   if (res.status === 429) {
     await sleepRetryAfter(res.headers.get('Retry-After'), { name: 'CJ Affiliate', fallbackMs: 10_000 });
-    const res2 = await fetch(`${API_BASE}?${params}`, {
+    const r2 = await fetch(`${API_BASE}?${params}`, {
       headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' },
       signal: AbortSignal.timeout(30_000),
     });
-    if (!res2.ok) throw new Error(`CJ API ${res2.status} (retry)`);
-    const data2 = await res2.json();
-    const raw2 = data2?.links?.link ?? [];
-    return Array.isArray(raw2) ? raw2 : [raw2];
+    if (!r2.ok) throw new Error(`CJ API ${r2.status} (retry)`);
+    const d2 = await r2.json();
+    const raw2 = d2?.links?.link ?? [];
+    return Array.isArray(raw2) ? raw2 : (raw2 && typeof raw2 === 'object' ? [raw2] : []);
   }
-
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`CJ API ${res.status}: ${text.slice(0, 200)}`);
   }
-
   const data = await res.json();
-  // Response: { links: { link: [...] } }  (array or single object if one result)
   const raw = data?.links?.link ?? [];
-  return Array.isArray(raw) ? raw : [raw];
+  return Array.isArray(raw) ? raw : (raw && typeof raw === 'object' ? [raw] : []);
+}
+
+async function fetchLinks(apiKey, websiteId) {
+  const page    = Math.ceil(Math.random() * 5);
+  const keyword = SEARCH_KEYWORDS[Math.floor(Math.random() * SEARCH_KEYWORDS.length)];
+
+  // Try joined advertisers first; fall back to all if empty (account may have no joined advertisers yet)
+  for (const advertiserIds of ['joined', 'all']) {
+    const params = new URLSearchParams({
+      'website-id':        websiteId,
+      'advertiser-ids':    advertiserIds,
+      'records-per-page':  '100',
+      'page-number':       String(page),
+      'keywords':          keyword,
+    });
+    const links = await doFetch(apiKey, params);
+    logger.info(`CJ Affiliate (${advertiserIds}): ${links.length} links`);
+    if (links.length > 0) return links;
+  }
+  return [];
 }
 
 function isLatinName(str) {
