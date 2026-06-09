@@ -1,1014 +1,910 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <meta name="mitgo-verification" content="59e6a3e7-c3cf-4275-9389-f395e13df3a2" />
 <script data-cfasync="false" data-no-defer="1">(function(){var s=document.createElement("script");s.async=1;s.src="https://emrldtp.cc/NTM2NzQw.js?t=536740";document.head.appendChild(s);})();</script>
-<title>Auto-Affiliate · Dashboard</title>
+<title>Auto-Affiliate Control Center</title>
 <style>
-:root{--bg:#0a0f1e;--surface:#111827;--border:#1f2937;--text:#f1f5f9;--muted:#64748b;--accent:#6366f1;--green:#22c55e;--yellow:#f59e0b;--red:#ef4444;--radius:12px}
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
-header{display:flex;align-items:center;justify-content:space-between;padding:1.25rem 2rem;border-bottom:1px solid var(--border)}
-.logo{display:flex;align-items:center;gap:.6rem;font-size:1.1rem;font-weight:700}
-.logo span{color:var(--accent)}
-main{max-width:1200px;margin:0 auto;padding:2rem}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:      #0b1120;
+  --sidebar: #0d1628;
+  --card:    #111827;
+  --card2:   #131f35;
+  --border:  #1e293b;
+  --accent:  #3b82f6;
+  --accent2: #2563eb;
+  --text:    #e2e8f0;
+  --muted:   #94a3b8;
+  --dim:     #64748b;
+  --green:   #22c55e;
+  --yellow:  #f59e0b;
+  --red:     #ef4444;
+  --purple:  #a855f7;
+  --cyan:    #06b6d4;
+  --pink:    #ec4899;
+  --sw:      240px;
+}
+html, body { height: 100%; font-family: 'Inter', system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5; }
+a { color: inherit; text-decoration: none; }
+button { cursor: pointer; border: none; background: none; color: inherit; font: inherit; }
+input, select, textarea { font: inherit; color: inherit; }
 
-/* Tabs */
-.tabs{display:flex;gap:.25rem;border-bottom:1px solid var(--border);margin-bottom:2rem}
-.tab{padding:.6rem 1.25rem;border-radius:8px 8px 0 0;border:1px solid transparent;border-bottom:none;font-size:.875rem;font-weight:600;cursor:pointer;background:none;color:var(--muted);transition:.15s}
-.tab.active{background:var(--surface);border-color:var(--border);color:var(--text)}
-.tab:not(.active):hover{color:var(--text)}
-.tab-panel{display:none}.tab-panel.active{display:block}
+/* APP SHELL */
+#app { display: flex; height: 100vh; overflow: hidden; }
 
-/* Pills */
-.pill{display:inline-flex;align-items:center;gap:.4rem;padding:.3rem .85rem;border-radius:999px;font-size:.8rem;font-weight:600}
-.pill.idle{background:#052e16;color:var(--green)}.pill.running{background:#422006;color:var(--yellow)}
-.dot{width:8px;height:8px;border-radius:50%;background:currentColor}
-.dot.pulse{animation:pulse 1.4s ease-in-out infinite}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+/* SIDEBAR */
+#sidebar {
+  width: var(--sw); min-width: var(--sw);
+  background: var(--sidebar); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; overflow-y: auto; overflow-x: hidden;
+  scrollbar-width: thin; scrollbar-color: var(--border) transparent; z-index: 10;
+}
+.sb-logo { padding: 18px 16px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.sb-logo-icon { width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, var(--accent), var(--purple)); display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+.sb-logo-text { font-size: 14px; font-weight: 700; }
+.sb-logo-sub  { font-size: 11px; color: var(--muted); }
+.sb-section   { padding: 12px 8px 4px; }
+.sb-section-label { font-size: 10px; font-weight: 700; color: var(--dim); text-transform: uppercase; letter-spacing: .1em; padding: 0 8px 6px; }
+.nav-item { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 8px; margin-bottom: 1px; color: var(--muted); font-size: 13.5px; font-weight: 500; cursor: pointer; transition: background .12s, color .12s; position: relative; user-select: none; }
+.nav-item:hover { background: rgba(59,130,246,.07); color: var(--text); }
+.nav-item.active { background: rgba(59,130,246,.14); color: var(--accent); }
+.nav-item.active::before { content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 3px; height: 60%; background: var(--accent); border-radius: 0 3px 3px 0; }
+.nav-icon  { width: 20px; text-align: center; font-size: 15px; flex-shrink: 0; }
+.nav-label { flex: 1; }
+.nav-badge { font-size: 10px; font-weight: 700; background: var(--red); color: #fff; padding: 1px 6px; border-radius: 10px; min-width: 18px; text-align: center; }
+.sb-status { margin-top: auto; padding: 14px 16px; border-top: 1px solid var(--border); flex-shrink: 0; }
+.status-row  { display: flex; align-items: center; gap: 8px; }
+.status-dot  { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); flex-shrink: 0; }
+.status-dot.running { background: var(--yellow); animation: pulse 1.4s infinite; }
+.status-dot.ok      { background: var(--green); }
+.status-dot.error   { background: var(--red); }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+.status-text { font-size: 12px; color: var(--muted); }
+.status-text strong { color: var(--text); }
+.status-next { font-size: 11px; color: var(--dim); margin-top: 4px; }
 
-/* KPI cards */
-.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:1rem;margin-bottom:2rem}
-.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem}
-.card-label{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:.5rem}
-.card-value{font-size:2rem;font-weight:700;line-height:1}
-.card-sub{font-size:.78rem;color:var(--muted);margin-top:.35rem}
-.budget-bar{background:#1f2937;border-radius:999px;height:6px;margin-top:.6rem;overflow:hidden}
-.budget-fill{height:100%;border-radius:999px;transition:width .6s}
+/* MAIN */
+#main  { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+#topbar { height: 52px; min-height: 52px; flex-shrink: 0; background: var(--sidebar); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 24px; gap: 12px; }
+.topbar-title { font-size: 16px; font-weight: 700; }
+.topbar-sub   { font-size: 12px; color: var(--muted); }
+.topbar-spacer { flex: 1; }
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; transition: opacity .15s, background .15s; white-space: nowrap; }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+.btn-primary   { background: var(--accent); color: #fff; }
+.btn-primary:not(:disabled):hover { background: var(--accent2); }
+.btn-secondary { background: rgba(255,255,255,.06); color: var(--text); border: 1px solid var(--border); }
+.btn-secondary:not(:disabled):hover { background: rgba(255,255,255,.1); }
+.btn-danger    { background: rgba(239,68,68,.12); color: var(--red); border: 1px solid rgba(239,68,68,.25); }
 
-/* Sections */
-.section{margin-bottom:2rem}
-.section-title{font-size:.85rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:1rem}
+/* CONTENT */
+#content { flex: 1; overflow-y: auto; padding: 24px; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+.page { display: none; }
+.page.active { display: block; }
 
-/* Last run */
-.last-run{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem;display:flex;flex-wrap:wrap;gap:1.5rem}
-.last-run-field{flex:1;min-width:140px}
-.lrf-label{font-size:.72rem;color:var(--muted);margin-bottom:.25rem}
-.lrf-value{font-size:.9rem;font-weight:500}
+/* GRIDS */
+.g4 { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; margin-bottom: 24px; }
+.g3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; margin-bottom: 24px; }
+.g2 { display: grid; grid-template-columns: repeat(2,1fr); gap: 16px; margin-bottom: 24px; }
+@media(max-width:1100px){ .g4{grid-template-columns:repeat(2,1fr)} }
+@media(max-width:700px) { .g4,.g3,.g2{grid-template-columns:1fr} }
 
-/* Table */
-.table-wrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
-table{width:100%;border-collapse:collapse}
-thead th{background:#0f172a;padding:.75rem 1rem;text-align:left;font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);white-space:nowrap}
-tbody td{padding:.7rem 1rem;border-top:1px solid var(--border);font-size:.85rem;white-space:nowrap}
-tbody tr:hover td{background:#151e2e}
-.badge{display:inline-flex;align-items:center;gap:.3rem;padding:.2rem .6rem;border-radius:6px;font-size:.75rem;font-weight:600}
-.badge.ok{background:#052e16;color:var(--green)}.badge.err{background:#2d0e0e;color:var(--red)}
-.badge.img{background:#1e1b4b;color:#a5b4fc}
-.err-cell{color:var(--red);max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* CARD */
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 20px; }
+.card-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.card-title { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; }
 
-/* Buttons */
-.btn{display:inline-flex;align-items:center;gap:.5rem;padding:.55rem 1.25rem;border-radius:8px;border:none;font-size:.875rem;font-weight:600;cursor:pointer;transition:opacity .2s}
-.btn:disabled{opacity:.45;cursor:not-allowed}
-.btn-primary{background:var(--accent);color:#fff}.btn-primary:not(:disabled):hover{opacity:.85}
-.btn-success{background:#15803d;color:#fff}.btn-success:not(:disabled):hover{opacity:.85}
-.btn-danger{background:#991b1b;color:#fff}.btn-danger:not(:disabled):hover{opacity:.85}
-.btn-outline{background:none;border:1px solid var(--border);color:var(--text)}.btn-outline:hover{border-color:var(--accent);color:var(--accent)}
+/* KPI */
+.kpi-lbl  { font-size: 12px; color: var(--muted); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+.kpi-val  { font-size: 32px; font-weight: 800; line-height: 1; letter-spacing: -.02em; }
+.kpi-sub  { font-size: 12px; color: var(--muted); margin-top: 6px; }
+.kpi-bar  { height: 4px; background: var(--border); border-radius: 4px; margin-top: 12px; overflow: hidden; }
+.kpi-fill { height: 100%; border-radius: 4px; transition: width .6s; }
 
-/* Account card */
-.account-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.5rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;margin-bottom:1rem}
-.account-info{display:flex;align-items:center;gap:1rem}
-.account-icon{width:44px;height:44px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.4rem}
-.account-name{font-weight:700;margin-bottom:.2rem}
-.account-status{font-size:.8rem;color:var(--muted)}
-.account-status.connected{color:var(--green)}
+/* BADGES */
+.badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border-radius: 20px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.badge-ok     { background: rgba(34,197,94,.12);  color: var(--green); }
+.badge-fail   { background: rgba(239,68,68,.12);  color: var(--red); }
+.badge-warn   { background: rgba(245,158,11,.12); color: var(--yellow); }
+.badge-info   { background: rgba(59,130,246,.12); color: var(--accent); }
+.badge-purple { background: rgba(168,85,247,.12); color: var(--purple); }
+.badge-cyan   { background: rgba(6,182,212,.12);  color: var(--cyan); }
 
-/* Settings form */
-.settings-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.5rem;margin-bottom:2rem}
-.field{display:flex;flex-direction:column;gap:.5rem}
-.field label{font-size:.8rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
-.field input{background:#0f172a;border:1px solid var(--border);border-radius:8px;padding:.65rem .9rem;color:var(--text);font-size:.9rem;transition:.15s}
-.field input:focus{outline:none;border-color:var(--accent)}
-.field .hint{font-size:.75rem;color:var(--muted)}
+/* TABLE */
+.tbl-wrap { background: var(--card); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+table { width: 100%; border-collapse: collapse; }
+thead th { background: var(--card2); padding: 10px 14px; text-align: left; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--dim); white-space: nowrap; border-bottom: 1px solid var(--border); }
+tbody td { padding: 10px 14px; border-top: 1px solid var(--border); font-size: 13px; }
+tbody tr:hover td { background: rgba(255,255,255,.02); }
 
-/* OAuth connect form */
-.connect-box{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.5rem;max-width:480px}
-.connect-box h3{font-size:1rem;margin-bottom:.5rem}
-.connect-box p{font-size:.875rem;color:var(--muted);margin-bottom:1rem}
-.connect-row{display:flex;gap:.75rem;align-items:center}
-.connect-row input{flex:1;background:#0f172a;border:1px solid var(--border);border-radius:8px;padding:.6rem .9rem;color:var(--text);font-size:.9rem}
-.connect-row input:focus{outline:none;border-color:var(--accent)}
+/* BAR CHART */
+.bar-wrap { display: flex; align-items: flex-end; gap: 4px; }
+.bar-col  { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.bar-fill { width: 100%; border-radius: 3px 3px 0 0; min-height: 2px; transition: height .3s; }
+.bar-lbl  { font-size: 9px; color: var(--dim); white-space: nowrap; }
 
-/* Alert */
-.alert{padding:.9rem 1.1rem;border-radius:8px;font-size:.875rem;margin-bottom:1rem}
-.alert-warn{background:#1c1408;border:1px solid #92400e;color:#fcd34d}
-.alert-ok{background:#052e16;border:1px solid #166534;color:#86efac}
+/* FORMS */
+.f-group   { margin-bottom: 14px; }
+.f-label   { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 5px; }
+.f-input, .f-select, .f-textarea { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; font-size: 13px; color: var(--text); outline: none; transition: border-color .15s; }
+.f-input:focus, .f-select:focus, .f-textarea:focus { border-color: var(--accent); }
+.f-textarea { resize: vertical; min-height: 80px; }
+.f-hint { font-size: 11px; color: var(--dim); margin-top: 3px; }
+.f-row  { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 
-/* Footer */
-footer{text-align:center;color:var(--muted);font-size:.75rem;padding:2rem;border-top:1px solid var(--border)}
-#last-updated{color:var(--muted);font-size:.78rem}
+/* LOGS */
+.log-row { display: flex; gap: 10px; padding: 5px 0; border-bottom: 1px solid rgba(30,41,59,.6); font-size: 12px; font-family: monospace; }
+.log-row:last-child { border: none; }
+.log-ts  { color: var(--dim); white-space: nowrap; flex-shrink: 0; }
+.log-lvl { padding: 0 6px; border-radius: 4px; font-size: 10px; font-weight: 700; flex-shrink: 0; align-self: flex-start; margin-top: 1px; }
+.log-lvl.info  { background: rgba(59,130,246,.15); color: var(--accent); }
+.log-lvl.warn  { background: rgba(245,158,11,.15); color: var(--yellow); }
+.log-lvl.error { background: rgba(239,68,68,.15);  color: var(--red); }
+.log-lvl.debug { background: rgba(100,116,139,.1); color: var(--dim); }
+.log-msg { color: var(--text); word-break: break-all; flex: 1; }
+
+/* NET PILL */
+.net-pill { display: flex; align-items: center; gap: 10px; padding: 12px 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 8px; }
+.net-dot  { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+
+/* INSIGHT */
+.insight-card { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-bottom: 8px; display: flex; gap: 10px; }
+.insight-icon { font-size: 18px; flex-shrink: 0; }
+.insight-text { font-size: 13px; line-height: 1.5; }
+
+/* ACCOUNT ROW */
+.acct-row { display: flex; align-items: center; gap: 14px; padding: 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 8px; }
+.acct-av  { width: 42px; height: 42px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+.acct-info { flex: 1; min-width: 0; }
+.acct-name   { font-size: 14px; font-weight: 700; }
+.acct-handle { font-size: 12px; color: var(--muted); }
+
+/* SEO GRADES */
+.grade { font-weight: 900; }
+.grade-A { color: var(--green); }
+.grade-B { color: #84cc16; }
+.grade-C { color: var(--yellow); }
+.grade-D { color: #f97316; }
+.grade-F { color: var(--red); }
+
+/* TOAST */
+#toast { position: fixed; bottom: 24px; right: 24px; z-index: 1000; background: var(--card2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 18px; font-size: 13px; font-weight: 500; box-shadow: 0 8px 32px rgba(0,0,0,.5); transform: translateY(80px); opacity: 0; transition: all .25s; pointer-events: none; }
+#toast.show { transform: translateY(0); opacity: 1; }
+#toast.ok   { border-left: 3px solid var(--green); }
+#toast.err  { border-left: 3px solid var(--red); }
+
+/* EMPTY */
+.empty { text-align: center; padding: 40px 24px; color: var(--dim); }
+.empty-icon { font-size: 36px; margin-bottom: 10px; }
+.empty-txt  { font-size: 13px; }
+
+/* SCROLLBAR */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* SEC HDR */
+.sec-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.sec-title { font-size: 15px; font-weight: 700; }
+.sec-sub   { font-size: 12px; color: var(--muted); }
+.sec-ctrl  { display: flex; gap: 8px; align-items: center; }
+
+/* PROGRESS BAR INLINE */
+.prog { display: flex; align-items: center; gap: 8px; }
+.prog-bar { flex: 1; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+.prog-fill { height: 100%; border-radius: 2px; }
 </style>
 </head>
 <body>
+<div id="app">
 
-<header>
-  <div class="logo">🤖 <span>Auto-Affiliate</span> Pipeline</div>
-  <div style="display:flex;align-items:center;gap:1rem">
-    <span id="status-pill" class="pill idle"><span class="dot"></span> Idle</span>
-    <span id="last-updated"></span>
-  </div>
-</header>
-
-<main>
-  <!-- Tabs -->
-  <div class="tabs">
-    <button class="tab active" onclick="showTab('status')">📊 Status</button>
-    <button class="tab" onclick="showTab('accounts')">🔗 Accounts</button>
-    <button class="tab" onclick="showTab('config')">⚙️ Space Config</button>
-    <button class="tab" onclick="showTab('logs');fetchLogs()">🪵 Logs</button>
-    <button class="tab" onclick="showTab('analytics');fetchStats();fetchClickChart();fetchInsights()">📈 Analytics</button>
+<!-- ═══════════ SIDEBAR ═══════════ -->
+<nav id="sidebar">
+  <div class="sb-logo">
+    <div class="sb-logo-icon">🤖</div>
+    <div>
+      <div class="sb-logo-text">Auto-Affiliate</div>
+      <div class="sb-logo-sub">Control Center</div>
+    </div>
   </div>
 
-  <!-- ═══ STATUS TAB ═══ -->
-  <div id="tab-status" class="tab-panel active">
+  <div class="sb-section">
+    <div class="sb-section-label">Dashboard</div>
+    <div class="nav-item active" onclick="nav('overview')" id="nav-overview"><span class="nav-icon">⚡</span><span class="nav-label">Overview</span></div>
+    <div class="nav-item" onclick="nav('analytics')" id="nav-analytics"><span class="nav-icon">📊</span><span class="nav-label">Analytics</span></div>
+    <div class="nav-item" onclick="nav('posts')" id="nav-posts"><span class="nav-icon">📝</span><span class="nav-label">Post History</span></div>
+  </div>
 
-    <div id="setup-banner" class="alert alert-warn" style="display:none">
-      <strong>⚠ Setup required:</strong> <span id="missing-vars-text"></span> —
-      go to the <button class="tab" style="display:inline;padding:.1rem .4rem" onclick="showTab('accounts')">Accounts tab</button> to connect.
+  <div class="sb-section">
+    <div class="sb-section-label">Intelligence</div>
+    <div class="nav-item" onclick="nav('seo')" id="nav-seo"><span class="nav-icon">🔍</span><span class="nav-label">SEO</span></div>
+    <div class="nav-item" onclick="nav('ai')" id="nav-ai"><span class="nav-icon">🧠</span><span class="nav-label">AI Studio</span></div>
+    <div class="nav-item" onclick="nav('networks')" id="nav-networks"><span class="nav-icon">🌐</span><span class="nav-label">Networks</span></div>
+  </div>
+
+  <div class="sb-section">
+    <div class="sb-section-label">Management</div>
+    <div class="nav-item" onclick="nav('accounts')" id="nav-accounts"><span class="nav-icon">👤</span><span class="nav-label">Accounts</span></div>
+    <div class="nav-item" onclick="nav('settings')" id="nav-settings"><span class="nav-icon">⚙️</span><span class="nav-label">Settings</span></div>
+    <div class="nav-item" onclick="nav('logs')" id="nav-logs">
+      <span class="nav-icon">📋</span><span class="nav-label">Logs</span>
+      <span class="nav-badge" id="log-badge" style="display:none">0</span>
     </div>
+  </div>
 
-    <div class="cards">
-      <div class="card">
-        <div class="card-label">Posts today</div>
-        <div class="card-value" id="kpi-posts">—</div>
-        <div class="card-sub" id="kpi-posts-sub">Limit: 24/day</div>
-      </div>
-      <div class="card">
-        <div class="card-label">Success rate</div>
-        <div class="card-value" id="kpi-success">—</div>
-        <div class="card-sub" id="kpi-success-sub">last runs</div>
-        <svg id="sparkline" viewBox="0 0 100 30" preserveAspectRatio="none" style="width:100%;height:30px;margin-top:.5rem;display:block"></svg>
-      </div>
-      <div class="card">
-        <div class="card-label">Daily spend</div>
-        <div class="card-value" id="kpi-spend">—</div>
-        <div class="card-sub" id="kpi-spend-sub">of $— cap</div>
-        <div class="budget-bar"><div class="budget-fill" id="budget-fill" style="width:0%"></div></div>
-      </div>
-      <div class="card">
-        <div class="card-label">Avg quality</div>
-        <div class="card-value" id="kpi-quality">—</div>
-        <div class="card-sub">last 20 runs (0–100)</div>
-      </div>
-      <div class="card">
-        <div class="card-label">Total clicks</div>
-        <div class="card-value" id="kpi-clicks">—</div>
-        <div class="card-sub" id="kpi-clicks-sub">on affiliate links</div>
-      </div>
-      <div class="card">
-        <div class="card-label">Schedule</div>
-        <div class="card-value" style="font-size:1rem;padding-top:.35rem" id="kpi-schedule">—</div>
-        <div class="card-sub" id="kpi-posting-hours">posting hours: —</div>
-      </div>
+  <div class="sb-status">
+    <div class="status-row">
+      <div class="status-dot" id="status-dot"></div>
+      <div class="status-text" id="status-text">Bot <strong>Idle</strong></div>
     </div>
+    <div class="status-next" id="status-next">Loading…</div>
+  </div>
+</nav>
 
-    <div class="section">
-      <div class="section-title">Last run</div>
-      <div class="last-run">
-        <div class="last-run-field"><div class="lrf-label">Time</div><div class="lrf-value" id="lr-time">—</div></div>
-        <div class="last-run-field"><div class="lrf-label">Product</div><div class="lrf-value" id="lr-product">—</div></div>
-        <div class="last-run-field"><div class="lrf-label">Network</div><div class="lrf-value" id="lr-source">—</div></div>
-        <div class="last-run-field"><div class="lrf-label">Trend</div><div class="lrf-value" id="lr-trend">—</div></div>
-        <div class="last-run-field" style="grid-column:1/-1"><div class="lrf-label">Caption</div><div class="lrf-value" id="lr-caption" style="font-size:.82rem;color:var(--muted);white-space:pre-wrap">—</div></div>
-        <div class="last-run-field"><div class="lrf-label">Image</div><div class="lrf-value" id="lr-img">—</div></div>
-        <div class="last-run-field"><div class="lrf-label">Duration</div><div class="lrf-value" id="lr-dur">—</div></div>
-        <div class="last-run-field"><div class="lrf-label">Post</div>
-          <div class="lrf-value"><a id="lr-uri" href="#" target="_blank" style="color:#818cf8;word-break:break-all">—</a></div>
+<!-- ═══════════ MAIN ═══════════ -->
+<div id="main">
+  <div id="topbar">
+    <div>
+      <div class="topbar-title" id="pg-title">Overview</div>
+      <div class="topbar-sub" id="pg-sub">Pipeline status &amp; KPIs</div>
+    </div>
+    <div class="topbar-spacer"></div>
+    <span id="topbar-ts" style="font-size:11px;color:var(--dim);margin-right:10px"></span>
+    <button class="btn btn-secondary" onclick="refresh()">↻ Refresh</button>
+    <button class="btn btn-primary" onclick="triggerRun()" id="btn-run" style="margin-left:8px">▶ Run Now</button>
+  </div>
+
+  <div id="content">
+
+    <!-- ══ OVERVIEW ══ -->
+    <div class="page active" id="page-overview">
+      <div class="g4">
+        <div class="card">
+          <div class="kpi-lbl">📤 Posts Today</div>
+          <div class="kpi-val" id="kpi-posts">—</div>
+          <div class="kpi-sub" id="kpi-posts-sub">of 24 target</div>
+          <div class="kpi-bar"><div class="kpi-fill" id="kpi-posts-bar" style="background:var(--accent);width:0%"></div></div>
+        </div>
+        <div class="card">
+          <div class="kpi-lbl">✅ Success Rate</div>
+          <div class="kpi-val" id="kpi-sr">—</div>
+          <div class="kpi-sub" id="kpi-sr-sub">recent runs</div>
+          <div class="kpi-bar"><div class="kpi-fill" id="kpi-sr-bar" style="background:var(--green);width:0%"></div></div>
+        </div>
+        <div class="card">
+          <div class="kpi-lbl">🖱️ Total Clicks</div>
+          <div class="kpi-val" id="kpi-clicks">—</div>
+          <div class="kpi-sub" id="kpi-clicks-sub">affiliate link clicks</div>
+        </div>
+        <div class="card">
+          <div class="kpi-lbl">💰 Daily Spend</div>
+          <div class="kpi-val" id="kpi-spend">—</div>
+          <div class="kpi-sub" id="kpi-spend-sub">of $2.00 cap</div>
+          <div class="kpi-bar"><div class="kpi-fill" id="kpi-spend-bar" style="background:var(--green);width:0%"></div></div>
+        </div>
+      </div>
+
+      <div class="g2" style="margin-bottom:24px">
+        <div class="card">
+          <div class="card-hdr">
+            <div class="card-title">Last Run</div>
+            <div id="lr-badge"></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div><div style="font-size:11px;color:var(--muted);margin-bottom:2px">Product</div><div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="lr-product">—</div></div>
+            <div><div style="font-size:11px;color:var(--muted);margin-bottom:2px">Network</div><div style="font-size:13px" id="lr-source">—</div></div>
+            <div><div style="font-size:11px;color:var(--muted);margin-bottom:2px">Time</div><div style="font-size:13px" id="lr-time">—</div></div>
+            <div><div style="font-size:11px;color:var(--muted);margin-bottom:2px">Duration</div><div style="font-size:13px" id="lr-dur">—</div></div>
+            <div><div style="font-size:11px;color:var(--muted);margin-bottom:2px">SEO Grade</div><div id="lr-seo">—</div></div>
+            <div><div style="font-size:11px;color:var(--muted);margin-bottom:2px">Image</div><div style="font-size:13px" id="lr-img">—</div></div>
+            <div style="grid-column:1/-1"><div style="font-size:11px;color:var(--muted);margin-bottom:2px">Post URL</div><a id="lr-uri" href="#" target="_blank" style="color:var(--accent);font-size:12px;word-break:break-all">—</a></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-hdr"><div class="card-title">Pipeline</div></div>
+          <div style="display:flex;flex-direction:column;gap:11px">
+            <div style="display:flex;justify-content:space-between"><span style="color:var(--muted);font-size:13px">Schedule</span><code style="font-size:13px" id="p-sched">—</code></div>
+            <div style="display:flex;justify-content:space-between"><span style="color:var(--muted);font-size:13px">Next run</span><span style="font-size:13px" id="p-next">—</span></div>
+            <div style="display:flex;justify-content:space-between"><span style="color:var(--muted);font-size:13px">Total runs</span><strong id="p-total">—</strong></div>
+            <div style="display:flex;justify-content:space-between"><span style="color:var(--muted);font-size:13px">Active networks</span><strong id="p-nets">—</strong></div>
+            <div style="border-top:1px solid var(--border);padding-top:11px;display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn btn-primary" style="font-size:12px;padding:5px 12px" onclick="triggerRun()" id="btn-run2">▶ Run</button>
+              <button class="btn btn-secondary" style="font-size:12px;padding:5px 12px" id="btn-pause" onclick="togglePause()">⏸ Pause</button>
+              <button class="btn btn-secondary" style="font-size:12px;padding:5px 12px" onclick="triggerDryRun()">🔍 Dry Run</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Posts bar chart -->
+      <div class="card" style="margin-bottom:24px">
+        <div class="card-hdr">
+          <div class="card-title">Posts — Last 7 Days</div>
+          <span style="font-size:12px;color:var(--muted)" id="chart-total"></span>
+        </div>
+        <div class="bar-wrap" id="posts-chart" style="height:64px">
+          <div class="empty"><div class="empty-txt">Loading…</div></div>
+        </div>
+      </div>
+
+      <!-- Setup banner -->
+      <div id="setup-banner" style="display:none" class="card">
+        <div style="display:flex;gap:12px;align-items:flex-start">
+          <span style="font-size:24px">⚠️</span>
+          <div>
+            <div style="font-weight:700;color:var(--yellow);margin-bottom:6px">Configuration required</div>
+            <div style="color:var(--muted);font-size:13px;margin-bottom:8px">Add these secrets in HuggingFace Space → Settings → Variables and secrets:</div>
+            <div id="missing-vars" style="font-family:monospace;font-size:12px"></div>
+          </div>
         </div>
       </div>
     </div>
 
-    <div class="section" style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
-      <button class="btn btn-primary" id="run-btn" onclick="triggerRun()">▶ Run now</button>
-      <button class="btn btn-outline" id="dry-btn" onclick="dryRun()">🔍 Dry run</button>
-      <button class="btn btn-outline" id="pause-btn" onclick="toggleScheduler()" style="font-size:.85rem">⏸ Pause scheduler</button>
-      <span id="run-msg" style="font-size:.85rem;color:var(--muted)"></span>
-    </div>
-    <div id="dry-result" style="display:none;margin-top:1rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem;font-size:.875rem"></div>
-
-    <div class="section">
-      <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:.75rem">
-        <div class="section-title" style="margin-bottom:0">Run history</div>
-        <select id="run-filter-source" onchange="applyRunFilter()" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.25rem .5rem;font-size:.8rem;color:var(--text)">
-          <option value="">All networks</option>
-        </select>
-        <select id="run-filter-status" onchange="applyRunFilter()" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.25rem .5rem;font-size:.8rem;color:var(--text)">
-          <option value="">All statuses</option>
-          <option value="ok">Success only</option>
-          <option value="fail">Failures only</option>
-        </select>
+    <!-- ══ ANALYTICS ══ -->
+    <div class="page" id="page-analytics">
+      <div class="g4">
+        <div class="card"><div class="kpi-lbl">🖱️ Total Clicks</div><div class="kpi-val" id="a-clicks">—</div><div class="kpi-sub">all time</div></div>
+        <div class="card"><div class="kpi-lbl">📈 Avg CTR</div><div class="kpi-val" id="a-ctr">—</div><div class="kpi-sub">clicks / post</div></div>
+        <div class="card"><div class="kpi-lbl">🏆 Best Day</div><div class="kpi-val" id="a-best">—</div><div class="kpi-sub" id="a-best-sub">clicks</div></div>
+        <div class="card"><div class="kpi-lbl">🔍 Avg SEO</div><div class="kpi-val" id="a-seo">—</div><div class="kpi-sub">caption score</div></div>
       </div>
-      <div class="table-wrap">
+
+      <div class="card" style="margin-bottom:24px">
+        <div class="card-hdr"><div class="card-title">Clicks Per Day — Last 30 Days</div></div>
+        <div class="bar-wrap" id="clicks-chart" style="height:80px">
+          <div class="empty"><div class="empty-txt">Loading…</div></div>
+        </div>
+      </div>
+
+      <div class="tbl-wrap">
+        <div class="card-hdr" style="padding:14px 16px 0"><div class="card-title">Top Posts by Clicks</div></div>
         <table>
-          <thead><tr><th>Status</th><th>Time (UTC)</th><th>Product</th><th>Network</th><th>Post</th><th>Clicks</th><th>Image</th><th>Q</th><th>Duration</th><th>Error</th></tr></thead>
-          <tbody id="runs-body"><tr><td colspan="10" style="text-align:center;color:var(--muted);padding:2rem">Loading…</td></tr></tbody>
+          <thead><tr><th>Product</th><th>Network</th><th>Clicks</th><th>SEO</th><th>Posted</th><th>Link</th></tr></thead>
+          <tbody id="top-posts-body"><tr><td colspan="6" style="text-align:center;color:var(--dim);padding:32px">Loading…</td></tr></tbody>
         </table>
       </div>
     </div>
 
-    <div class="section">
-      <div class="section-title">Affiliate networks</div>
-      <div id="networks-list" style="display:flex;flex-wrap:wrap;gap:.5rem;padding:.25rem 0">Loading…</div>
-    </div>
-
-    <div class="section">
-      <div class="section-title">60-day dedup store</div>
-      <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:.75rem">
-        <span id="dedup-count" style="font-size:.9rem;color:var(--muted)">Loading…</span>
-        <button id="dedup-clear-btn" onclick="clearDedup()" style="padding:.25rem .75rem;font-size:.8rem;background:#ef4444;color:#fff;border:none;border-radius:6px;cursor:pointer">Clear store</button>
-        <span id="dedup-clear-msg" style="font-size:.8rem;color:var(--muted)"></span>
+    <!-- ══ POSTS ══ -->
+    <div class="page" id="page-posts">
+      <div class="sec-hdr">
+        <div><div class="sec-title">Post History</div><div class="sec-sub" id="posts-count"></div></div>
+        <div class="sec-ctrl">
+          <select class="f-select" style="width:auto;font-size:12px" id="posts-filter" onchange="filterPosts()">
+            <option value="all">All</option>
+            <option value="success">Successful</option>
+            <option value="failed">Failed</option>
+          </select>
+        </div>
       </div>
-      <div id="dedup-by-source" style="display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:.5rem"></div>
-      <div id="dedup-recent" style="display:flex;flex-wrap:wrap;gap:.4rem"></div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>#</th><th>Status</th><th>Time</th><th>Product</th><th>Network</th><th>SEO</th><th>Clicks</th><th>Image</th><th>Dur</th><th>Error</th></tr></thead>
+          <tbody id="posts-body"><tr><td colspan="10" style="text-align:center;color:var(--dim);padding:32px">Loading…</td></tr></tbody>
+        </table>
+      </div>
     </div>
-  </div>
 
-  <!-- ═══ ACCOUNTS TAB ═══ -->
-  <div id="tab-accounts" class="tab-panel">
-
-    <div class="section">
-      <div class="section-title">Connected Accounts</div>
-
-      <!-- Bluesky -->
-      <div class="account-card" id="bsky-card">
-        <div class="account-info">
-          <div class="account-icon" style="background:#0a1628">🦋</div>
-          <div>
-            <div class="account-name">Bluesky</div>
-            <div class="account-status" id="bsky-status">Checking…</div>
+    <!-- ══ SEO ══ -->
+    <div class="page" id="page-seo">
+      <div class="g3" style="margin-bottom:24px">
+        <div class="card" style="text-align:center">
+          <div class="card-title" style="margin-bottom:16px">Avg SEO Score</div>
+          <div style="font-size:60px;font-weight:900;line-height:1" id="seo-grade-big">—</div>
+          <div style="font-size:28px;font-weight:800;margin:4px 0" id="seo-score-big">—</div>
+          <div style="font-size:12px;color:var(--muted)">/ 100</div>
+        </div>
+        <div class="card" style="grid-column:span 2">
+          <div class="card-hdr"><div class="card-title">Score Distribution</div></div>
+          <div class="bar-wrap" id="seo-dist" style="height:80px">
+            <div class="empty"><div class="empty-txt">No data yet</div></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--dim);margin-top:6px">
+            <span>F (&lt;35)</span><span>D (35-49)</span><span>C (50-64)</span><span>B (65-79)</span><span>A (80+)</span>
           </div>
         </div>
-        <div id="bsky-actions"></div>
       </div>
 
-      <!-- Future platforms -->
-      <div class="account-card" style="opacity:.45">
-        <div class="account-info">
-          <div class="account-icon" style="background:#1a1a1a">𝕏</div>
-          <div>
-            <div class="account-name">X / Twitter</div>
-            <div class="account-status">Coming soon</div>
+      <div class="g2">
+        <div class="card">
+          <div class="card-hdr"><div class="card-title">🔥 Top Trending Keywords Used</div></div>
+          <div id="seo-kw-list"><div class="empty"><div class="empty-txt">Run the pipeline to see keyword data</div></div></div>
+        </div>
+        <div class="card">
+          <div class="card-hdr"><div class="card-title">📋 SEO Stats</div></div>
+          <div id="seo-stats"><div class="empty"><div class="empty-txt">Loading…</div></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ AI STUDIO ══ -->
+    <div class="page" id="page-ai">
+      <div class="card" style="margin-bottom:24px">
+        <div class="card-hdr">
+          <div class="card-title">🧠 Learned Click Insights</div>
+          <div style="font-size:11px;color:var(--dim)" id="insights-ts"></div>
+        </div>
+        <div id="insights-summary" style="font-size:13px;color:var(--muted);margin-bottom:14px;font-style:italic"></div>
+        <div id="insights-list">
+          <div class="empty"><div class="empty-icon">🔬</div><div class="empty-txt">Need at least 5 affiliate link clicks to generate insights. Keep posting!</div></div>
+        </div>
+        <div id="cat-row" style="margin-top:12px;display:none;flex-wrap:wrap;gap:6px;align-items:center"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-hdr"><div class="card-title">✍️ Caption Generator</div></div>
+        <div class="f-row" style="margin-bottom:12px">
+          <div class="f-group" style="margin:0"><label class="f-label">Product Name</label><input class="f-input" id="gen-name" placeholder="e.g. Sony WH-1000XM5 Headphones" /></div>
+          <div class="f-group" style="margin:0"><label class="f-label">Category</label><input class="f-input" id="gen-cat" placeholder="e.g. Electronics" /></div>
+        </div>
+        <div class="f-group"><label class="f-label">Description (optional)</label><input class="f-input" id="gen-desc" placeholder="Brief product description…" /></div>
+        <button class="btn btn-primary" onclick="generateCaption()" id="btn-gen">✨ Generate Caption</button>
+        <div id="gen-out" style="display:none;margin-top:14px">
+          <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;font-size:13px;line-height:1.6" id="gen-text"></div>
+          <div style="margin-top:8px;display:flex;gap:10px;align-items:center;font-size:12px;color:var(--muted)">
+            SEO: <strong id="gen-score"></strong> &nbsp; <span id="gen-chars"></span>
           </div>
         </div>
-        <button class="btn btn-outline" disabled>Connect</button>
       </div>
+    </div>
 
-      <div class="account-card" style="opacity:.45">
-        <div class="account-info">
-          <div class="account-icon" style="background:#1a1235">🦣</div>
-          <div>
-            <div class="account-name">Mastodon</div>
-            <div class="account-status">Coming soon</div>
+    <!-- ══ NETWORKS ══ -->
+    <div class="page" id="page-networks">
+      <div class="sec-hdr" style="margin-bottom:20px">
+        <div><div class="sec-title">Affiliate Networks</div><div class="sec-sub">Credentials managed via HuggingFace Space secrets</div></div>
+        <div id="nets-summary"></div>
+      </div>
+      <div id="nets-list"><div class="empty"><div class="empty-icon">🌐</div><div class="empty-txt">Loading…</div></div></div>
+      <div class="sec-hdr" style="margin-top:24px;margin-bottom:14px"><div class="sec-title">Performance</div></div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Network</th><th>Status</th><th>Posts</th><th>Success Rate</th></tr></thead>
+          <tbody id="nets-health"><tr><td colspan="4" style="text-align:center;color:var(--dim);padding:32px">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ══ ACCOUNTS ══ -->
+    <div class="page" id="page-accounts">
+      <div class="sec-hdr" style="margin-bottom:20px"><div class="sec-title">Connected Accounts</div></div>
+      <div id="accounts-list"><div class="empty"><div class="empty-icon">👤</div><div class="empty-txt">Loading…</div></div></div>
+      <div class="card" style="margin-top:24px">
+        <div class="card-hdr"><div class="card-title">🦋 Connect Bluesky</div></div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:14px">Set <code style="background:var(--bg);padding:2px 6px;border-radius:4px">BSKY_HANDLE</code> and <code style="background:var(--bg);padding:2px 6px;border-radius:4px">BSKY_APP_PASSWORD</code> in HuggingFace Space secrets.</p>
+        <div style="display:flex;gap:8px">
+          <input class="f-input" style="max-width:280px" id="bsky-handle" placeholder="yourhandle.bsky.social" />
+          <button class="btn btn-primary" onclick="startOAuth()">🔑 Connect via OAuth</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ SETTINGS ══ -->
+    <div class="page" id="page-settings">
+      <div class="g2">
+        <div>
+          <div class="card" style="margin-bottom:16px">
+            <div class="card-hdr"><div class="card-title">⏰ Scheduling</div></div>
+            <div class="f-group"><label class="f-label">Cron Schedule</label><input class="f-input" id="s-cron" placeholder="0 * * * *" /><div class="f-hint">Default: every hour</div></div>
+            <div class="f-group"><label class="f-label">Posting Hours</label><input class="f-input" id="s-hours" placeholder="8-22" /><div class="f-hint">Only post during these UTC hours</div></div>
+            <div class="f-group"><label class="f-label">Max Post Length</label><input class="f-input" id="s-maxlen" type="number" placeholder="280" /></div>
+          </div>
+          <div class="card">
+            <div class="card-hdr"><div class="card-title">💸 Budget</div></div>
+            <div class="f-group"><label class="f-label">Daily Cost Cap (USD)</label><input class="f-input" id="s-cap" type="number" step="0.01" placeholder="2.00" /></div>
+            <div class="f-group"><label class="f-label">Alert Threshold (USD)</label><input class="f-input" id="s-alert" type="number" step="0.01" placeholder="1.50" /></div>
           </div>
         </div>
-        <button class="btn btn-outline" disabled>Connect</button>
+        <div>
+          <div class="card" style="margin-bottom:16px">
+            <div class="card-hdr"><div class="card-title">🤖 AI Prompts</div></div>
+            <div class="f-group"><label class="f-label">System Prompt</label><textarea class="f-textarea" id="s-sysprompt" rows="5"></textarea></div>
+            <div class="f-group"><label class="f-label">User Template</label><textarea class="f-textarea" id="s-template" rows="4" placeholder="Product: {name} ({category})…"></textarea><div class="f-hint">Variables: {name} {category} {description} {trend} {price}</div></div>
+            <div class="f-group"><label class="f-label">SEO Min Score (0-100)</label><input class="f-input" id="s-seo" type="number" placeholder="50" /><div class="f-hint">Captions below this score are retried</div></div>
+          </div>
+          <div style="display:flex;gap:8px;margin-bottom:10px">
+            <button class="btn btn-primary" onclick="saveSettings()">💾 Save</button>
+            <button class="btn btn-secondary" onclick="loadSettingsForm()">↺ Reset</button>
+          </div>
+          <div id="s-msg" style="font-size:13px"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ LOGS ══ -->
+    <div class="page" id="page-logs">
+      <div class="sec-hdr">
+        <div><div class="sec-title">System Logs</div><div class="sec-sub" id="logs-count"></div></div>
+        <div class="sec-ctrl">
+          <select class="f-select" style="width:auto;font-size:12px" id="log-filter" onchange="filterLogs()">
+            <option value="all">All levels</option>
+            <option value="error">Errors</option>
+            <option value="warn">Warnings+</option>
+            <option value="info">Info+</option>
+          </select>
+          <button class="btn btn-secondary" style="font-size:12px;padding:5px 12px" onclick="loadLogs()">↻</button>
+        </div>
+      </div>
+      <div class="card">
+        <div id="logs-wrap" style="max-height:600px;overflow-y:auto">
+          <div class="empty"><div class="empty-txt">Loading…</div></div>
+        </div>
       </div>
     </div>
 
-    <!-- Connect Bluesky box (shown when not connected) -->
-    <div id="bsky-connect-box" class="connect-box" style="display:none">
-      <h3>Connect Bluesky via OAuth</h3>
-      <p>Enter your Bluesky handle and click Connect. You'll be redirected to bsky.app to authorise — no passwords needed.</p>
-      <div id="bsky-no-host" class="alert alert-warn" style="display:none">
-        Space URL not configured. Go to <button onclick="showTab('config')" style="background:none;border:none;color:#fbbf24;cursor:pointer;text-decoration:underline">Space Config</button> and set your Space URL first.
-      </div>
-      <div class="connect-row" id="bsky-connect-row">
-        <input id="bsky-handle-input" type="text" placeholder="you.bsky.social" />
-        <button class="btn btn-success" onclick="connectBlueSky()">Connect →</button>
-      </div>
-      <p id="bsky-connect-msg" style="margin-top:.75rem;font-size:.8rem;color:var(--muted)"></p>
-    </div>
-
-    <!-- App-password alternative -->
-    <div id="bsky-apppass-box" class="connect-box" style="display:none;margin-top:1rem">
-      <h3>Or connect with App Password</h3>
-      <p>Set <code>BSKY_HANDLE</code> and <code>BSKY_APP_PASSWORD</code> in your Space secrets — the pipeline will use them automatically on next run.</p>
-      <p style="margin-top:.5rem;font-size:.8rem">Create an app password at <strong>bsky.app → Settings → App Passwords</strong>.</p>
-    </div>
-
-  </div>
-
-  <!-- ═══ SPACE CONFIG TAB ═══ -->
-  <div id="tab-config" class="tab-panel">
-
-    <div class="section">
-      <div class="section-title">Space Configuration</div>
-      <p style="font-size:.875rem;color:var(--muted);margin-bottom:1.5rem">
-        Edit settings here — no code changes needed. Settings are saved to <code>data/settings.json</code>.
-      </p>
-
-      <div class="settings-grid" id="settings-form">
-        <div class="field">
-          <label>Space URL</label>
-          <input id="cfg-spaceHost" type="url" placeholder="https://your-space.hf.space" />
-          <span class="hint">Your HuggingFace Space public URL. Required for OAuth callbacks.</span>
-        </div>
-        <div class="field">
-          <label>Cron Schedule</label>
-          <input id="cfg-cronSchedule" type="text" placeholder="0 * * * *" />
-          <span class="hint">How often to post. Default: every hour.</span>
-        </div>
-        <div class="field">
-          <label>Max Post Length</label>
-          <input id="cfg-maxPostLength" type="number" min="50" max="300" />
-          <span class="hint">Characters per post. Bluesky max: 300.</span>
-        </div>
-        <div class="field">
-          <label>Posting Hours (UTC)</label>
-          <input id="cfg-postingHours" type="text" placeholder="8-22" />
-          <span class="hint">UTC hour window, e.g. "8-22". Cron skips outside this window. Use "0-23" to always post.</span>
-        </div>
-        <div class="field">
-          <label>Daily Cost Cap (USD)</label>
-          <input id="cfg-dailyCostCap" type="number" step="0.01" min="0" />
-          <span class="hint">Pipeline stops if AI spend exceeds this.</span>
-        </div>
-        <div class="field">
-          <label>Alert Threshold (USD)</label>
-          <input id="cfg-alertThreshold" type="number" step="0.01" min="0" />
-          <span class="hint">Warn when spend crosses this amount.</span>
-        </div>
-      </div>
-
-      <div class="section-title" style="margin-top:2rem">AI Post Prompt</div>
-      <p style="font-size:.875rem;color:var(--muted);margin-bottom:1.25rem">
-        Customise what the AI writes. Use <code>{name}</code>, <code>{category}</code>, <code>{description}</code>, <code>{trend}</code> as placeholders.
-      </p>
-      <div style="display:grid;gap:1.25rem;margin-bottom:1.5rem">
-        <div class="field">
-          <label>System Prompt</label>
-          <textarea id="cfg-postSystemPrompt" rows="3"
-            style="background:#0f172a;border:1px solid var(--border);border-radius:8px;padding:.65rem .9rem;color:var(--text);font-size:.875rem;resize:vertical;font-family:inherit;line-height:1.5"
-          ></textarea>
-          <span class="hint">Defines the AI's persona and constraints (tone, length, style).</span>
-        </div>
-        <div class="field">
-          <label>User Message Template</label>
-          <textarea id="cfg-postUserTemplate" rows="3"
-            style="background:#0f172a;border:1px solid var(--border);border-radius:8px;padding:.65rem .9rem;color:var(--text);font-size:.875rem;resize:vertical;font-family:inherit;line-height:1.5"
-          ></textarea>
-          <span class="hint">The actual request sent per post. Placeholders: <code>{name}</code> <code>{category}</code> <code>{description}</code> <code>{price}</code> <code>{trend}</code> <code>{highlights}</code></span>
-        </div>
-      </div>
-
-      <div style="display:flex;gap:1rem;align-items:center">
-        <button class="btn btn-primary" onclick="saveConfig()">💾 Save Settings</button>
-        <span id="cfg-msg" style="font-size:.85rem;color:var(--muted)"></span>
-      </div>
-    </div>
-
-  </div>
-
-  <!-- ═══ LOGS TAB ═══ -->
-  <div id="tab-logs" class="tab-panel">
-    <div class="section">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
-        <div class="section-title" style="margin-bottom:0">Live Log Buffer (last 100)</div>
-        <button class="btn btn-outline" onclick="fetchLogs()" style="font-size:.8rem;padding:.3rem .75rem">↻ Refresh</button>
-      </div>
-      <div id="log-output" style="background:#050b15;border:1px solid var(--border);border-radius:var(--radius);padding:1rem;font-family:monospace;font-size:.85rem;line-height:1.8;max-height:600px;overflow-y:auto;color:#94a3b8">Loading…</div>
-    </div>
-  </div>
-
-  <!-- ═══ ANALYTICS TAB ═══ -->
-  <div id="tab-analytics" class="tab-panel">
-    <div class="section">
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem">
-        <div class="section-title" style="margin:0">Daily Posts by Network</div>
-        <div style="display:flex;gap:.5rem">
-          <button onclick="fetchStats(7)" class="btn btn-outline" style="font-size:.75rem;padding:.25rem .6rem">7d</button>
-          <button onclick="fetchStats(14)" class="btn btn-outline" style="font-size:.75rem;padding:.25rem .6rem">14d</button>
-          <button onclick="fetchStats(30)" class="btn btn-outline" style="font-size:.75rem;padding:.25rem .6rem">30d</button>
-        </div>
-      </div>
-      <div id="stats-chart" style="overflow-x:auto;min-height:220px">Loading…</div>
-    </div>
-    <div class="section">
-      <div class="section-title" id="stats-totals-title">Post Totals (7 days)</div>
-      <div id="stats-totals" style="display:flex;gap:1rem;flex-wrap:wrap"></div>
-    </div>
-    <div class="section">
-      <div class="section-title">Network Health (last 100 runs)</div>
-      <div id="network-health" style="display:flex;gap:.75rem;flex-wrap:wrap">Loading…</div>
-    </div>
-    <div class="section">
-      <div class="section-title">Top Posts by Engagement (last 30 days)</div>
-      <div id="top-posts" style="font-size:.85rem;color:var(--muted)">Loading…</div>
-    </div>
-    <div class="section">
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem">
-        <div class="section-title" style="margin:0">Daily Link Clicks</div>
-        <div style="display:flex;gap:.5rem">
-          <button onclick="fetchClickChart(7)"  class="btn btn-outline" style="font-size:.75rem;padding:.25rem .6rem">7d</button>
-          <button onclick="fetchClickChart(14)" class="btn btn-outline" style="font-size:.75rem;padding:.25rem .6rem">14d</button>
-          <button onclick="fetchClickChart(30)" class="btn btn-outline" style="font-size:.75rem;padding:.25rem .6rem">30d</button>
-        </div>
-      </div>
-      <div id="click-chart" style="overflow-x:auto;min-height:160px">Loading…</div>
-    </div>
-    <div class="section" id="insights-section" style="display:none">
-      <div class="section-title">AI-Learned Click Patterns</div>
-      <div id="insights-summary" style="color:var(--muted);font-size:.9rem;margin-bottom:.75rem"></div>
-      <div id="insights-list" style="display:flex;flex-direction:column;gap:.5rem"></div>
-      <div id="insights-updated" style="font-size:.75rem;color:var(--muted);margin-top:.75rem"></div>
-    </div>
-  </div>
-
-</main>
-
-<footer>Auto-Affiliate Pipeline · <a href="/health" style="color:var(--muted)">/health</a> · <a href="/api/history/csv" style="color:var(--muted)">Export CSV</a></footer>
+  </div><!-- /content -->
+</div><!-- /main -->
+</div><!-- /app -->
+<div id="toast"></div>
 
 <script>
-// ── Tab switching ──
-function showTab(name) {
-  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active', t.getAttribute('onclick').includes("'"+name+"'")));
-  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.toggle('active', p.id==='tab-'+name));
-}
+// ── STATE ──────────────────────────────────────────────────────
+const S = { status:null, clicks:[], history:[], networks:[], insights:{}, accounts:null, allLogs:[], totalClicks:0 };
+let currentPage = 'overview';
 
-// ── Status polling ──
-let statusData = {};
-async function fetchStatus() {
-  try {
-    const [status, networks, clickData] = await Promise.all([
-      fetch('/api/status').then(r=>r.json()),
-      fetch('/api/networks').then(r=>r.json()),
-      fetch('/api/clicks?days=7').then(r=>r.json()).catch(()=>null),
-    ]);
-    statusData = status;
-    renderStatus(statusData);
-    renderNetworks(networks);
-    if (clickData) {
-      const el = document.getElementById('kpi-clicks');
-      const sub = document.getElementById('kpi-clicks-sub');
-      if (el) el.textContent = clickData.total || 0;
-      if (sub) {
-        const todayClicks = clickData.daily?.at(-1)?.clicks || 0;
-        sub.textContent = 'today: ' + todayClicks;
-      }
-    }
-  } catch(e) {
-    const pill = document.getElementById('status-pill');
-    if (pill && !pill.classList.contains('running')) {
-      pill.className = 'pill'; pill.innerHTML = '<span class="dot" style="background:#ef4444"></span> Offline';
-    }
-  }
-}
-
-function renderLastRun(lr) {
-  if (!lr) return;
-  document.getElementById('lr-time').textContent    = (lr.timestamp||'').replace('T',' ').slice(0,19)||'—';
-  document.getElementById('lr-product').textContent = lr.product||'—';
-  document.getElementById('lr-source').textContent  = lr.productSource||'—';
-  document.getElementById('lr-trend').textContent   = lr.trend||'—';
-  const captionEl = document.getElementById('lr-caption');
-  if (captionEl) captionEl.textContent = lr.caption ? lr.caption.slice(0, 200) + (lr.caption.length > 200 ? '…' : '') : '—';
-  document.getElementById('lr-img').textContent     = lr.imageSource||'—';
-  document.getElementById('lr-dur').textContent     = lr.durationMs?(lr.durationMs/1000).toFixed(1)+'s':'—';
-  const ua=document.getElementById('lr-uri');
-  if (lr.postUri){ua.href=lr.postUri;ua.textContent=lr.postUri.slice(0,40)+'…';}
-  else{ua.href='#';ua.textContent='—';}
-}
-
-let _allRuns = [];
-function applyRunFilter() {
-  const src = document.getElementById('run-filter-source')?.value || '';
-  const status = document.getElementById('run-filter-status')?.value || '';
-  let filtered = _allRuns;
-  if (src) filtered = filtered.filter(r => r.productSource === src);
-  if (status === 'ok') filtered = filtered.filter(r => r.success);
-  if (status === 'fail') filtered = filtered.filter(r => !r.success);
-  renderRunHistoryRows(filtered);
-}
-
-function renderRunHistory(runs) {
-  _allRuns = runs || [];
-  // Populate source filter
-  const sel = document.getElementById('run-filter-source');
-  if (sel) {
-    const sources = [...new Set(runs.map(r => r.productSource).filter(Boolean))].sort();
-    const current = sel.value;
-    sel.innerHTML = '<option value="">All networks</option>' + sources.map(s => `<option value="${esc(s)}"${s===current?' selected':''}>${esc(s)}</option>`).join('');
-  }
-  applyRunFilter();
-}
-
-function renderRunHistoryRows(runs) {
-  const tbody=document.getElementById('runs-body');
-  if (!runs?.length){tbody.innerHTML='<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:2rem">No runs match filter</td></tr>';return;}
-  tbody.innerHTML=runs.map(r=>{
-    const ok=r.success?'<span class="badge ok">✓ OK</span>':'<span class="badge err">✗ Fail</span>';
-    const ts=(r.timestamp||'').replace('T',' ').slice(0,19);
-    const src=r.productSource?'<span class="badge img">'+esc(r.productSource)+'</span>':'<span style="color:var(--muted)">—</span>';
-    const img=r.imageGenerated?'<span class="badge img">🖼 '+(r.imageSource||'')+'</span>':'<span style="color:var(--muted)">—</span>';
-    const qs=typeof r.qualityScore==='number'?'<span style="font-weight:600;color:'+(r.qualityScore>=70?'var(--green)':r.qualityScore>=40?'var(--yellow)':'var(--red)')+'">'+r.qualityScore+'</span>':'<span style="color:var(--muted)">—</span>';
-    const err=r.error?'<span class="err-cell" title="'+esc(r.error)+'">'+esc(r.error.slice(0,50))+'</span>':'<span style="color:var(--muted)">—</span>';
-    const postLink=r.postUri?'<a href="'+esc(r.postUri)+'" target="_blank" rel="noopener" style="font-size:.75rem;color:var(--accent)" title="'+esc(r.caption||'')+'">view</a>':'<span style="color:var(--muted)">—</span>';
-    const pName = r.product || '—';
-    const pDisplay = pName.length > 45 ? pName.slice(0,45)+'…' : pName;
-    const clickCount = r.clicks || 0;
-    const clickCell = clickCount > 0
-      ? '<span style="font-weight:700;color:var(--green)">'+clickCount+'</span>'
-      : '<span style="color:var(--muted)">0</span>';
-    return '<tr><td>'+ok+'</td><td>'+ts+'</td><td title="'+esc(pName)+'" style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(pDisplay)+'</td><td>'+src+'</td><td>'+postLink+'</td><td style="text-align:center">'+clickCell+'</td><td>'+img+'</td><td>'+qs+'</td><td>'+(r.durationMs?(r.durationMs/1000).toFixed(1)+'s':'—')+'</td><td>'+err+'</td></tr>';
-  }).join('');
-}
-
-function renderStatus(d) {
-  const banner = document.getElementById('setup-banner');
-  if (d.missingVars?.length) {
-    banner.style.display='block';
-    document.getElementById('missing-vars-text').textContent = d.missingVars.join(', ');
-  } else banner.style.display='none';
-
-  const pill = document.getElementById('status-pill');
-  if (d.pipeline.running) {
-    pill.className='pill running'; pill.innerHTML='<span class="dot pulse"></span> Running';
-  } else {
-    pill.className='pill idle'; pill.innerHTML='<span class="dot"></span> Idle';
-  }
-
-  document.getElementById('kpi-posts').textContent   = d.stats.postsToday;
-  const maxPosts = d.stats.maxPostsPerDay || 24;
-  const postsSub = document.getElementById('kpi-posts-sub');
-  if (postsSub) postsSub.textContent = 'Limit: ' + maxPosts + '/day';
-  document.getElementById('kpi-success').textContent = d.stats.successRate!=null ? d.stats.successRate+'%' : '—';
-  document.getElementById('kpi-success-sub').textContent = 'last '+d.stats.totalRuns+' runs';
-  document.getElementById('kpi-schedule').textContent = d.pipeline.schedule;
-  document.getElementById('kpi-posting-hours').textContent = 'posting hours (UTC): ' + (d.pipeline.postingHours || '8-22');
-  if (d.pipeline.nextRun) {
-    const nr = new Date(d.pipeline.nextRun);
-    const diffMs = nr - Date.now();
-    const diffMin = Math.max(0, Math.floor(diffMs / 60000));
-    const countdown = diffMin < 60 ? `${diffMin}m` : `${Math.floor(diffMin/60)}h${diffMin%60 ? diffMin%60+'m' : ''}`;
-    document.getElementById('kpi-posting-hours').textContent = `next run in ${countdown} · hours (UTC): ${d.pipeline.postingHours || '8-22'}`;
-  } else {
-    document.getElementById('kpi-posting-hours').textContent = 'posting hours (UTC): ' + (d.pipeline.postingHours || '8-22');
-  }
-
-  const {spent:sp,cap,pct,alert} = d.budget;
-  document.getElementById('kpi-spend').textContent     = '$'+sp.toFixed(4);
-  document.getElementById('kpi-spend-sub').textContent = 'of $'+cap.toFixed(2)+' cap';
-  const fill = document.getElementById('budget-fill');
-  fill.style.width = Math.min(pct*100,100)+'%';
-  fill.style.background = pct>=1?'#ef4444':pct>=alert/cap?'#f59e0b':'#22c55e';
-
-  // Average quality score KPI
-  const qualEl = document.getElementById('kpi-quality');
-  if (qualEl && d.runs?.length) {
-    const scored = d.runs.filter(r => r.success && typeof r.qualityScore === 'number');
-    if (scored.length > 0) {
-      const avg = Math.round(scored.reduce((a, r) => a + r.qualityScore, 0) / scored.length);
-      qualEl.textContent = avg + '/100';
-      qualEl.style.color = avg >= 70 ? 'var(--green)' : avg >= 40 ? 'var(--yellow)' : 'var(--red)';
-    } else {
-      qualEl.textContent = '—';
-    }
-  }
-
-  renderLastRun(d.lastRun);
-  document.getElementById('run-btn').disabled = d.pipeline.running;
-  adjustPollRate(d.pipeline.running);
-  if (typeof d.pipeline.paused === 'boolean' && d.pipeline.paused !== _schedulerPaused) {
-    _schedulerPaused = d.pipeline.paused;
-    const pb = document.getElementById('pause-btn');
-    if (pb) pb.textContent = _schedulerPaused ? '▶ Resume scheduler' : '⏸ Pause scheduler';
-  }
-  renderSparkline(d.runs);
-  renderRunHistory(d.runs);
-  document.getElementById('last-updated').textContent='Updated '+new Date().toLocaleTimeString();
-}
-
-function renderNetworks(networks) {
-  const el = document.getElementById('networks-list');
-  if (!el || !Array.isArray(networks)) return;
-  el.innerHTML = networks.map(function(n) {
-    const color = n.enabled ? (n.lastError ? '#f59e0b' : '#22c55e') : '#6b7280';
-    const icon  = n.enabled ? (n.lastError ? '&#9888;' : '&#10003;') : '&#10007;';
-    const tip   = n.lastError ? ' title="Last error: '+esc(n.lastError)+'"' : '';
-    const cnt   = n.selectCount > 0 ? ' <span style="opacity:.6;font-size:.7rem">×'+n.selectCount+'</span>' : '';
-    const testBtn = n.enabled ? ' <button onclick="testNetwork(\''+esc(n.key)+'\')" style="padding:0 .4rem;font-size:.7rem;background:#1e293b;border:1px solid #334155;border-radius:4px;color:#94a3b8;cursor:pointer;line-height:1.5">test</button>' : '';
-    return '<span'+tip+' style="display:inline-flex;align-items:center;gap:.3rem;background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:.25rem .75rem;font-size:.8rem;color:'+color+';cursor:'+(n.lastError?'help':'default')+'">'+icon+' '+esc(n.label)+cnt+testBtn+'</span>';
-  }).join('');
-}
-
-function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-
-function renderSparkline(runs) {
-  const svg = document.getElementById('sparkline');
-  if (!svg || !runs?.length) return;
-  const pts = runs.slice(-20).map(r => r.success ? 1 : 0);
-  if (pts.length < 2) return;
-  const w = 100, h = 30, step = w / (pts.length - 1);
-  const points = pts.map((v,i) => `${(i*step).toFixed(1)},${v ? 4 : h-4}`).join(' ');
-  svg.innerHTML = '<polyline points="'+points+'" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'
-    + pts.map((v,i)=>'<circle cx="'+(i*step).toFixed(1)+'" cy="'+(v?4:h-4)+'" r="2.5" fill="'+(v?'#22c55e':'#ef4444')+'"/>').join('');
-}
-
-async function triggerRun() {
-  const btn=document.getElementById('run-btn'),msg=document.getElementById('run-msg');
-  btn.disabled=true; msg.textContent='Triggering…';
-  try {
-    const d=await fetch('/api/run',{method:'POST'}).then(r=>r.json());
-    msg.textContent=d.ok?'Run started…':d.error||'Error'; if(d.ok)setTimeout(fetchStatus,1500);
-    else btn.disabled=false;
-  } catch{msg.textContent='Request failed';btn.disabled=false;}
-}
-
-let _schedulerPaused = false;
-async function toggleScheduler() {
-  const btn = document.getElementById('pause-btn');
-  const msg = document.getElementById('run-msg');
-  const endpoint = _schedulerPaused ? '/api/schedule/resume' : '/api/schedule/pause';
-  try {
-    const d = await fetch(endpoint, { method: 'POST' }).then(r => r.json());
-    if (d.ok) {
-      _schedulerPaused = d.paused;
-      btn.textContent = _schedulerPaused ? '▶ Resume scheduler' : '⏸ Pause scheduler';
-      msg.textContent = _schedulerPaused ? 'Scheduler paused' : 'Scheduler resumed';
-      setTimeout(() => { msg.textContent = ''; }, 4000);
-    }
-  } catch { msg.textContent = 'Request failed'; }
-}
-
-async function dryRun() {
-  const btn=document.getElementById('dry-btn'), msg=document.getElementById('run-msg');
-  const box=document.getElementById('dry-result');
-  btn.disabled=true; msg.textContent='Running dry test…'; box.style.display='none';
-  try {
-    const d=await fetch('/api/dry-run',{method:'POST'}).then(r=>r.json());
-    if (d.ok) {
-      box.style.display='block';
-      const priceStr = d.product.price ? ' · '+(d.product.currency==='USD'?'$':d.product.currency||'')+d.product.price : '';
-      const imgHtml = d.product.imageUrl
-        ? '<br><img src="'+esc(d.product.imageUrl)+'" alt="" style="max-width:200px;max-height:140px;border-radius:8px;margin-top:.5rem;object-fit:cover">'
-        : '';
-      box.innerHTML='<strong>Product:</strong> '+esc(d.product.name)+priceStr+' <span class="badge img">'+esc(d.product.source)+'</span>'
-        +'<br><strong>URL:</strong> <a href="'+esc(d.product.siteUrl)+'" target="_blank" rel="noopener" style="color:var(--accent);font-size:.8rem">'+esc(d.product.siteUrl.slice(0,60))+'…</a>'
-        +imgHtml
-        +'<br><br><strong>Caption preview:</strong><br><em style="color:var(--muted)">'+esc(d.caption)+'</em>'
-        +'<br><button onclick="navigator.clipboard.writeText('+JSON.stringify(d.caption+'\n\n'+d.product.siteUrl)+')" style="margin-top:.5rem;padding:.2rem .6rem;font-size:.75rem;background:#1e293b;border:1px solid var(--border);border-radius:6px;color:var(--text);cursor:pointer">Copy text</button>';
-      msg.textContent='Dry run complete ✓';
-    } else {
-      msg.textContent='Dry run error: '+(d.error||'unknown');
-    }
-  } catch(e) { msg.textContent='Request failed'; }
-  btn.disabled=false;
-}
-
-async function fetchDedup() {
-  try {
-    const d = await fetch('/api/dedup').then(r=>r.json());
-    const el = document.getElementById('dedup-count');
-    if (el) el.textContent = d.total + ' active entries (60-day window)';
-    const bsEl = document.getElementById('dedup-by-source');
-    if (bsEl && d.bySource && Object.keys(d.bySource).length) {
-      bsEl.innerHTML = Object.entries(d.bySource).sort((a,b)=>b[1]-a[1])
-        .map(([src, cnt]) => `<span style="background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:.2rem .6rem;font-size:.78rem;color:var(--muted)"><b style="color:var(--text)">${cnt}</b> ${esc(src)}</span>`).join('');
-    } else if (bsEl) { bsEl.innerHTML = ''; }
-    const rEl = document.getElementById('dedup-recent');
-    if (rEl && d.recent?.length) {
-      rEl.innerHTML = d.recent.map(e =>
-        '<span title="'+esc(e.postedAt.replace('T',' ').slice(0,16))+' UTC" style="display:inline-flex;align-items:center;gap:.3rem;background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:.2rem .6rem;font-size:.75rem;color:var(--muted)">'
-        +(e.source?'<span class="badge img" style="padding:.1rem .4rem;font-size:.7rem">'+esc(e.source)+'</span>':'')+esc((e.name||'').slice(0,30))+'</span>'
-      ).join('');
-    } else if (rEl) { rEl.innerHTML = ''; }
-  } catch(e) {
-    const el = document.getElementById('dedup-count');
-    if (el) el.textContent = 'Dedup data unavailable';
-  }
-}
-
-async function clearDedup() {
-  const btn=document.getElementById('dedup-clear-btn'), msg=document.getElementById('dedup-clear-msg');
-  if (!confirm('Clear the entire 60-day dedup store? All products will be eligible to post again.')) return;
-  btn.disabled=true; msg.textContent='Clearing…';
-  try {
-    await fetch('/api/dedup',{method:'DELETE'});
-    msg.textContent='Cleared!'; fetchDedup();
-  } catch(e){msg.textContent='Error';}
-  setTimeout(()=>{ btn.disabled=false; msg.textContent=''; }, 3000);
-}
-
-fetchStatus();
-fetchDedup();
-// Poll faster (5s) while pipeline is running, slow (20s) when idle
-let _statusInterval = setInterval(fetchStatus, 20000);
-function adjustPollRate(running) {
-  clearInterval(_statusInterval);
-  _statusInterval = setInterval(fetchStatus, running ? 5000 : 20000);
-}
-setInterval(fetchDedup, 60000);
-
-// ── Accounts ──
-async function loadAccounts() {
-  try {
-    const d = await fetch('/api/accounts').then(r=>r.json());
-    renderBskyStatus(d.bluesky);
-  } catch {}
-}
-
-function renderBskyStatus(bsky) {
-  const statusEl  = document.getElementById('bsky-status');
-  const actionsEl = document.getElementById('bsky-actions');
-  const connectBox = document.getElementById('bsky-connect-box');
-
-  if (bsky?.connected) {
-    statusEl.className = 'account-status connected';
-    statusEl.textContent = 'Connected · ' + (bsky.did || '').slice(0,28) + '…';
-    actionsEl.innerHTML = '<button class="btn btn-danger" onclick="disconnectBsky()">Disconnect</button>';
-    connectBox.style.display = 'none';
-  } else {
-    statusEl.className = 'account-status';
-    statusEl.textContent = bsky?.wasConnected
-      ? '⚠ Session expired — Space was rebuilt. Reconnect below.'
-      : 'Not connected';
-    actionsEl.innerHTML = '<button class="btn btn-success" onclick="showConnectBox()">Connect</button>';
-    connectBox.style.display = 'none';
-  }
-}
-
-function showConnectBox() {
-  const box = document.getElementById('bsky-connect-box');
-  box.style.display = 'block';
-  document.getElementById('bsky-apppass-box').style.display = 'block';
-  fetch('/api/accounts').then(r=>r.json()).then(d=>{
-    const noHost = document.getElementById('bsky-no-host');
-    const row = document.getElementById('bsky-connect-row');
-    if (!d.spaceConfigured) { noHost.style.display='block'; row.style.display='none'; }
-    else { noHost.style.display='none'; row.style.display='flex'; }
-  });
-}
-
-async function connectBlueSky() {
-  const handle = document.getElementById('bsky-handle-input').value.trim();
-  if (!handle) { document.getElementById('bsky-connect-msg').textContent='Enter your handle first.'; return; }
-  const msg = document.getElementById('bsky-connect-msg');
-  msg.textContent = 'Opening Bluesky authorisation…';
-  try {
-    const d = await fetch('/oauth/bsky/start?handle='+encodeURIComponent(handle)).then(r=>r.json());
-    if (d.url) {
-      window.open(d.url, '_blank', 'noopener');
-      msg.textContent = 'A new tab opened — authorise there, then come back and the page will refresh automatically.';
-      // Poll for connection every 3 s for up to 2 min
-      const poll = setInterval(async () => {
-        try {
-          const s = await fetch('/api/accounts').then(r=>r.json());
-          if (s?.bluesky?.connected) { clearInterval(poll); loadAccounts(); }
-        } catch {}
-      }, 3000);
-      setTimeout(() => clearInterval(poll), 120_000);
-    } else {
-      msg.textContent = d.error || 'Failed to start OAuth';
-    }
-  } catch(e) {
-    msg.textContent = 'Error: '+e.message;
-  }
-}
-
-async function disconnectBsky() {
-  if (!confirm('Disconnect Bluesky?')) return;
-  await fetch('/api/accounts/bluesky/disconnect', {method:'POST'});
-  loadAccounts();
-}
-
-loadAccounts();
-
-// ── Config ──
-async function loadConfig() {
-  try {
-    const d = await fetch('/api/settings').then(r=>r.json());
-    document.getElementById('cfg-spaceHost').value          = d.spaceHost          || '';
-    document.getElementById('cfg-cronSchedule').value       = d.cronSchedule       || '0 * * * *';
-    document.getElementById('cfg-maxPostLength').value      = d.maxPostLength       || 300;
-    document.getElementById('cfg-postingHours').value       = d.postingHours        || '8-22';
-    document.getElementById('cfg-dailyCostCap').value       = d.dailyCostCap       || 2.00;
-    document.getElementById('cfg-alertThreshold').value     = d.alertThreshold     || 1.50;
-    document.getElementById('cfg-postSystemPrompt').value   = d.postSystemPrompt   || '';
-    document.getElementById('cfg-postUserTemplate').value   = d.postUserTemplate   || '';
-  } catch {}
-}
-
-async function saveConfig() {
-  const msg = document.getElementById('cfg-msg');
-  const payload = {
-    spaceHost:        document.getElementById('cfg-spaceHost').value.trim(),
-    cronSchedule:     document.getElementById('cfg-cronSchedule').value.trim(),
-    maxPostLength:    parseInt(document.getElementById('cfg-maxPostLength').value,10),
-    postingHours:     document.getElementById('cfg-postingHours').value.trim() || '8-22',
-    dailyCostCap:     parseFloat(document.getElementById('cfg-dailyCostCap').value),
-    alertThreshold:   parseFloat(document.getElementById('cfg-alertThreshold').value),
-    postSystemPrompt: document.getElementById('cfg-postSystemPrompt').value.trim(),
-    postUserTemplate: document.getElementById('cfg-postUserTemplate').value.trim(),
-  };
-  try {
-    const d = await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}).then(r=>r.json());
-    msg.textContent = d.ok ? '✓ Saved' : (d.error||'Error');
-    msg.style.color = d.ok ? 'var(--green)' : 'var(--red)';
-  } catch(e) { msg.textContent='Error: '+e.message; msg.style.color='var(--red)'; }
-}
-
-loadConfig();
-
-// ── Network test ──
-async function testNetwork(key) {
-  const msg = document.getElementById('run-msg');
-  msg.textContent = 'Testing '+key+'…';
-  try {
-    const d = await fetch('/api/network/test', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({network:key})}).then(r=>r.json());
-    if (d.ok) {
-      msg.textContent = '✓ '+key+': "'+d.product.name+'"'+(d.product.price?' $'+d.product.price:'');
-    } else {
-      msg.textContent = '✗ '+key+': '+(d.error||'failed');
-    }
-  } catch(e) { msg.textContent = '✗ '+key+': request error'; }
-  setTimeout(()=>{ msg.textContent=''; }, 8000);
-}
-
-// ── Logs ──
-const LEVEL_COLOR = { error:'#ef4444', warn:'#f59e0b', info:'#94a3b8', debug:'#4b5563' };
-async function fetchLogs() {
-  try {
-    const logs = await fetch('/api/logs').then(r=>r.json());
-    const el = document.getElementById('log-output');
-    if (!el) return;
-    if (!logs?.length) { el.textContent = 'No logs yet.'; return; }
-    el.innerHTML = logs.slice().reverse().map(l => {
-      const color = LEVEL_COLOR[l.level] || '#94a3b8';
-      const isErr = l.level === 'error';
-      const isWarn = l.level === 'warn';
-      const rowStyle = isErr ? 'background:rgba(239,68,68,.08);border-left:2px solid #ef4444;padding-left:6px;margin-left:-6px' : isWarn ? 'border-left:2px solid #f59e0b;padding-left:6px;margin-left:-6px' : '';
-      return '<div style="'+rowStyle+'"><span style="color:#4b5563">'+esc(l.ts.replace('T',' ').slice(0,19))+'</span> <span style="color:'+color+';font-weight:700;min-width:52px;display:inline-block">['+l.level.toUpperCase()+']</span> '+esc(l.msg)+'</div>';
-    }).join('');
-    el.scrollTop = 0;
-  } catch(e) { const el=document.getElementById('log-output'); if(el)el.textContent='Failed to load logs.'; }
-}
-
-// ── Analytics ──
-const NET_COLORS = {
-  'admitad-feed':'#6366f1','admitad-api':'#8b5cf6','admitad-catalog':'#a78bfa',
-  temu:'#f59e0b', cj:'#10b981', shareasale:'#ec4899', impact:'#3b82f6',
-  takeads:'#f97316', travelpayouts:'#06b6d4', unknown:'#64748b'
+// ── NAV ────────────────────────────────────────────────────────
+const PAGE_META = {
+  overview:  ['Overview',       'Pipeline status & KPIs'],
+  analytics: ['Analytics',      'Clicks, CTR & performance'],
+  posts:     ['Post History',   'All published posts'],
+  seo:       ['SEO',            'Search optimisation & keywords'],
+  ai:        ['AI Studio',      'Insights & caption generator'],
+  networks:  ['Networks',       'Affiliate network health'],
+  accounts:  ['Accounts',       'Connected social accounts'],
+  settings:  ['Settings',       'Pipeline configuration'],
+  logs:      ['System Logs',    'Live pipeline logs'],
 };
-async function fetchStats(days = 7) {
-  try {
-    const data = await fetch('/api/stats?days='+days).then(r=>r.json());
-    const titleEl = document.getElementById('stats-totals-title');
-    if (titleEl) titleEl.textContent = 'Post Totals ('+days+' days)';
-    const chartEl = document.getElementById('stats-chart');
-    const totalsEl = document.getElementById('stats-totals');
-    if (!chartEl || !totalsEl) return;
+function nav(p) {
+  document.querySelectorAll('.nav-item').forEach(e=>e.classList.remove('active'));
+  document.querySelectorAll('.page').forEach(e=>e.classList.remove('active'));
+  document.getElementById('nav-'+p)?.classList.add('active');
+  document.getElementById('page-'+p)?.classList.add('active');
+  const m = PAGE_META[p]||['',''];
+  document.getElementById('pg-title').textContent = m[0];
+  document.getElementById('pg-sub').textContent   = m[1];
+  currentPage = p;
+  if (p==='logs')     loadLogs();
+  if (p==='settings') loadSettingsForm();
+}
 
-    // Gather all networks present
-    const allNets = [...new Set(data.flatMap(d => Object.keys(d.byNetwork)))].sort();
-    const maxVal = Math.max(1, ...data.map(d => d.total));
+// ── API ────────────────────────────────────────────────────────
+async function api(path) {
+  try { const r=await fetch(path); return r.ok ? r.json() : null; } catch { return null; }
+}
 
-    // Build SVG bar chart
-    const barW = 40, gap = 12, padL = 32, padB = 30, padT = 10, h = 180;
-    const totalW = padL + data.length * (barW + gap);
-    let svg = `<svg viewBox="0 0 ${totalW} ${h+padB+padT}" style="width:100%;max-width:700px;display:block">`;
-    // Grid lines
-    for (let v of [0, Math.ceil(maxVal/2), maxVal]) {
-      const y = padT + h - Math.round(v / maxVal * h);
-      svg += `<line x1="${padL}" y1="${y}" x2="${totalW}" y2="${y}" stroke="#1e293b" stroke-width="1"/>`;
-      svg += `<text x="${padL-4}" y="${y+4}" text-anchor="end" font-size="10" fill="#64748b">${v}</text>`;
-    }
-    data.forEach((day, i) => {
-      const x = padL + i * (barW + gap);
-      let yOff = h;
-      allNets.forEach(net => {
-        const cnt = day.byNetwork[net] || 0;
-        if (!cnt) return;
-        const barH = Math.round(cnt / maxVal * h);
-        yOff -= barH;
-        svg += `<rect x="${x}" y="${padT+yOff}" width="${barW}" height="${barH}" fill="${NET_COLORS[net]||'#64748b'}" rx="2"><title>${net}: ${cnt}</title></rect>`;
-      });
-      // X label
-      svg += `<text x="${x+barW/2}" y="${padT+h+16}" text-anchor="middle" font-size="10" fill="#94a3b8">${day.date.slice(5)}</text>`;
-      // Total on top
-      if (day.total > 0)
-        svg += `<text x="${x+barW/2}" y="${padT+h-yOff-4}" text-anchor="middle" font-size="10" fill="#e2e8f0">${day.total}</text>`;
-    });
-    svg += '</svg>';
-    // Legend
-    svg += '<div style="display:flex;gap:.75rem;flex-wrap:wrap;margin-top:.5rem">' +
-      allNets.map(n => `<span style="display:flex;align-items:center;gap:.3rem;font-size:.8rem"><span style="width:10px;height:10px;border-radius:2px;background:${NET_COLORS[n]||'#64748b'};display:inline-block"></span>${n}</span>`).join('') +
-      '</div>';
-    chartEl.innerHTML = svg;
+// ── LOAD ALL ───────────────────────────────────────────────────
+async function loadAll() {
+  await Promise.all([loadStatus(), loadClicks(), loadHistory(), loadNetworks(), loadInsights(), loadAccounts()]);
+  renderOverview(); renderAnalytics(); renderPosts(); renderSEO(); renderAI(); renderNetworks(); renderAccounts();
+  document.getElementById('topbar-ts').textContent = 'Updated ' + new Date().toLocaleTimeString();
+}
 
-    // Totals chips
-    const grandTotals = {};
-    data.forEach(d => { Object.entries(d.byNetwork).forEach(([k,v]) => { grandTotals[k] = (grandTotals[k]||0)+v; }); });
-    totalsEl.innerHTML = Object.entries(grandTotals).sort((a,b)=>b[1]-a[1])
-      .map(([k,v]) => `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:.5rem 1rem;text-align:center"><div style="font-size:.75rem;color:var(--muted)">${k}</div><div style="font-size:1.5rem;font-weight:700;color:${NET_COLORS[k]||'#94a3b8'}">${v}</div></div>`).join('');
+async function loadStatus() {
+  const d = await api('/api/status');
+  if (!d) return;
+  S.status = d;
+  const running = d.pipeline?.running;
+  const dot = document.getElementById('status-dot');
+  dot.className = 'status-dot ' + (running ? 'running' : 'ok');
+  document.getElementById('status-text').innerHTML = running ? 'Bot <strong>Running</strong>' : 'Bot <strong>Idle</strong>';
+  document.getElementById('status-next').textContent = d.pipeline?.nextRun
+    ? 'Next: '+new Date(d.pipeline.nextRun).toLocaleTimeString()
+    : d.pipeline?.schedule || '';
+  document.getElementById('btn-run').disabled  = !!running;
+  document.getElementById('btn-run2')?.disabled && (document.getElementById('btn-run2').disabled = !!running);
+  const pb = document.getElementById('btn-pause');
+  if (pb) pb.textContent = d.pipeline?.paused ? '▶ Resume' : '⏸ Pause';
+  if (d.missingVars?.length) {
+    document.getElementById('setup-banner').style.display='';
+    document.getElementById('missing-vars').innerHTML = d.missingVars.map(v=>`<div>• ${esc(v)}</div>`).join('');
+  } else document.getElementById('setup-banner').style.display='none';
+}
+async function loadClicks() {
+  const d = await api('/api/clicks?days=30');
+  S.clicks = d?.daily||[];
+  S.totalClicks = d?.total||0;
+}
+async function loadHistory() {
+  const d = await api('/api/history?n=200');
+  S.history = Array.isArray(d) ? d : [];
+}
+async function loadNetworks() {
+  const d = await api('/api/networks');
+  S.networks = Array.isArray(d) ? d : [];
+}
+async function loadInsights() {
+  const d = await api('/api/insights');
+  S.insights = d||{};
+}
+async function loadAccounts() {
+  const d = await api('/api/accounts');
+  S.accounts = d||{};
+}
+async function loadLogs() {
+  const d = await api('/api/logs?limit=150');
+  S.allLogs = Array.isArray(d) ? d : [];
+  filterLogs();
+}
 
-    // Network health
-    const healthEl = document.getElementById('network-health');
-    if (healthEl && statusData.networkHealth) {
-      const health = statusData.networkHealth;
-      const entries = Object.entries(health).sort((a,b) => b[1].attempts - a[1].attempts);
-      if (entries.length === 0) {
-        healthEl.textContent = 'No data yet.';
-      } else {
-        healthEl.innerHTML = entries.map(([net, h]) => {
-          const pct = Math.round(h.rate * 100);
-          const color = pct >= 80 ? 'var(--green)' : pct >= 50 ? 'var(--yellow)' : 'var(--red)';
-          return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:.6rem 1rem;min-width:130px">` +
-            `<div style="font-size:.75rem;color:var(--muted);margin-bottom:.25rem">${esc(net)}</div>` +
-            `<div style="font-size:1.4rem;font-weight:700;color:${color}">${pct}%</div>` +
-            `<div style="font-size:.72rem;color:var(--muted)">${h.successes}/${h.attempts} runs</div>` +
-            `</div>`;
-        }).join('');
-      }
-    }
+// ── RENDER OVERVIEW ────────────────────────────────────────────
+function renderOverview() {
+  const st = S.status;
+  if (!st) return;
+  const postsToday = st.stats?.postsToday||0, maxP = st.stats?.maxPostsPerDay||24;
+  document.getElementById('kpi-posts').textContent = postsToday;
+  document.getElementById('kpi-posts-sub').textContent = 'of '+maxP+' target';
+  document.getElementById('kpi-posts-bar').style.width = Math.min(postsToday/maxP*100,100)+'%';
+  const sr = st.stats?.successRate;
+  document.getElementById('kpi-sr').textContent = sr!=null ? sr+'%' : '—';
+  document.getElementById('kpi-sr-sub').textContent = 'of '+(st.stats?.totalRuns||0)+' runs';
+  document.getElementById('kpi-sr-bar').style.width = (sr||0)+'%';
+  document.getElementById('kpi-sr-bar').style.background = sr>=80?'var(--green)':sr>=50?'var(--yellow)':'var(--red)';
+  document.getElementById('kpi-clicks').textContent = fmt(S.totalClicks);
+  document.getElementById('kpi-clicks-sub').textContent = (S.clicks.at(-1)?.clicks||0)+' today';
+  const spend=st.budget?.spent||0, cap=st.budget?.cap||2, pct=spend/cap;
+  document.getElementById('kpi-spend').textContent = '$'+spend.toFixed(4);
+  document.getElementById('kpi-spend-sub').textContent = 'of $'+cap.toFixed(2)+' cap';
+  const sb=document.getElementById('kpi-spend-bar');
+  sb.style.width=Math.min(pct*100,100)+'%';
+  sb.style.background=pct>=1?'var(--red)':pct>=.75?'var(--yellow)':'var(--green)';
+  const lr = st.lastRun;
+  if (lr) {
+    document.getElementById('lr-badge').innerHTML = lr.success ? '<span class="badge badge-ok">✓ OK</span>' : '<span class="badge badge-fail">✗ Fail</span>';
+    document.getElementById('lr-product').textContent = lr.product||'—';
+    document.getElementById('lr-source').textContent  = lr.productSource||'—';
+    document.getElementById('lr-time').textContent    = lr.timestamp ? new Date(lr.timestamp).toLocaleString() : '—';
+    document.getElementById('lr-dur').textContent     = lr.durationMs ? (lr.durationMs/1000).toFixed(1)+'s' : '—';
+    document.getElementById('lr-img').textContent     = lr.imageSource||'—';
+    const seo=document.getElementById('lr-seo');
+    seo.innerHTML = lr.seoGrade ? gradeHtml(lr.seoScore, lr.seoGrade) : '—';
+    const uri=document.getElementById('lr-uri');
+    if (lr.postUri) { uri.href=lr.postUri; uri.textContent=lr.postUri.slice(0,50)+'…'; }
+    else uri.textContent='—';
+  }
+  document.getElementById('p-sched').textContent = st.pipeline?.schedule||'—';
+  document.getElementById('p-next').textContent  = st.pipeline?.nextRun ? new Date(st.pipeline.nextRun).toLocaleTimeString() : '—';
+  document.getElementById('p-total').textContent = fmt(st.stats?.totalRuns||0);
+  document.getElementById('p-nets').textContent  = S.networks.filter(n=>n.enabled).length||'—';
+  // bar chart
+  const days = S.clicks.slice(-7);
+  const chart = document.getElementById('posts-chart');
+  if (!days.length) { chart.innerHTML='<div class="empty"><div class="empty-txt">No data yet</div></div>'; return; }
+  const maxB = Math.max(...days.map(d=>d.posts),1);
+  chart.innerHTML = days.map(d=>`<div class="bar-col"><div class="bar-fill" style="height:${Math.max((d.posts/maxB)*100,2)}%;background:var(--accent)" title="${d.posts} posts on ${d.date}"></div><div class="bar-lbl">${d.date.slice(5)}</div></div>`).join('');
+  document.getElementById('chart-total').textContent = days.reduce((s,d)=>s+d.posts,0)+' posts this week';
+}
 
-    // Top posts
-    const topEl = document.getElementById('top-posts');
-    if (topEl) {
-      try {
-        const top = await fetch('/api/engagement/top').then(r => r.json());
-        if (top.length === 0) {
-          topEl.textContent = 'No engagement data yet — likes/reposts tracked 30min after each post.';
-        } else {
-          topEl.innerHTML = '<table style="width:100%;border-collapse:collapse">' +
-            '<thead><tr><th style="text-align:left;padding:.3rem .5rem;color:var(--muted);font-weight:400">Product</th><th style="text-align:left;padding:.3rem .5rem;color:var(--muted);font-weight:400">Network</th><th style="padding:.3rem .5rem;color:var(--muted);font-weight:400">❤️</th><th style="padding:.3rem .5rem;color:var(--muted);font-weight:400">🔁</th><th style="padding:.3rem .5rem;color:var(--muted);font-weight:400">Link</th></tr></thead>' +
-            '<tbody>' + top.map(r =>
-              `<tr style="border-top:1px solid var(--border)">` +
-              `<td style="padding:.3rem .5rem">${esc(r.product||'—')}</td>` +
-              `<td style="padding:.3rem .5rem"><span class="badge img">${esc(r.productSource||'—')}</span></td>` +
-              `<td style="padding:.3rem .5rem;text-align:center;font-weight:700">${r.likes||0}</td>` +
-              `<td style="padding:.3rem .5rem;text-align:center">${r.reposts||0}</td>` +
-              `<td style="padding:.3rem .5rem">${r.postUri?'<a href="https://bsky.app/profile/post/'+esc(r.postUri.split('/').at(-1))+'" target="_blank" style="color:var(--accent)">view</a>':'—'}</td>` +
-              `</tr>`
-            ).join('') + '</tbody></table>';
-        }
-      } catch { topEl.textContent = 'Engagement data unavailable.'; }
-    }
-  } catch(e) {
-    const el = document.getElementById('stats-chart');
-    if (el) el.textContent = 'Failed to load stats.';
+// ── RENDER ANALYTICS ──────────────────────────────────────────
+function renderAnalytics() {
+  document.getElementById('a-clicks').textContent = fmt(S.totalClicks);
+  const withP = S.clicks.filter(d=>d.posts>0);
+  const avgCtr = withP.length ? (withP.reduce((s,d)=>s+d.ctr,0)/withP.length).toFixed(2) : '0';
+  document.getElementById('a-ctr').textContent = avgCtr;
+  const best = [...S.clicks].sort((a,b)=>b.clicks-a.clicks)[0];
+  document.getElementById('a-best').textContent = best ? fmt(best.clicks) : '0';
+  document.getElementById('a-best-sub').textContent = best ? 'on '+best.date : 'no clicks yet';
+  const withSeo = S.history.filter(r=>r.seoScore!=null);
+  const avgSeo = withSeo.length ? Math.round(withSeo.reduce((s,r)=>s+(r.seoScore||0),0)/withSeo.length) : null;
+  document.getElementById('a-seo').textContent = avgSeo!=null ? avgSeo : '—';
+  // clicks chart
+  const cc=document.getElementById('clicks-chart');
+  if (S.clicks.length) {
+    const mx=Math.max(...S.clicks.map(d=>d.clicks),1);
+    cc.innerHTML=S.clicks.slice(-30).map(d=>`<div class="bar-col"><div class="bar-fill" style="height:${Math.max((d.clicks/mx)*100,2)}%;background:var(--cyan)" title="${d.clicks} clicks on ${d.date}"></div><div class="bar-lbl">${d.date.slice(5)}</div></div>`).join('');
+  }
+  // top posts
+  const top = [...S.history].filter(r=>r.success).sort((a,b)=>(b.clicks||0)-(a.clicks||0)).slice(0,10);
+  const tb=document.getElementById('top-posts-body');
+  if (!top.length) { tb.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--dim);padding:32px">No data yet</td></tr>'; return; }
+  tb.innerHTML=top.map(r=>`<tr>
+    <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.product||'')}">${esc((r.product||'—').slice(0,30))}</td>
+    <td><span class="badge badge-info">${esc(r.productSource||'—')}</span></td>
+    <td><strong>${r.clicks||0}</strong></td>
+    <td>${gradeHtml(r.seoScore,r.seoGrade)}</td>
+    <td style="color:var(--muted);font-size:12px">${r.timestamp?new Date(r.timestamp).toLocaleDateString():'—'}</td>
+    <td>${r.postUri?`<a href="${esc(r.postUri)}" target="_blank" style="color:var(--accent)">↗</a>`:'—'}</td>
+  </tr>`).join('');
+}
+
+// ── RENDER POSTS ──────────────────────────────────────────────
+function renderPosts() { filterPosts(); }
+function filterPosts() {
+  const f = document.getElementById('posts-filter')?.value||'all';
+  const runs = f==='success' ? S.history.filter(r=>r.success)
+             : f==='failed'  ? S.history.filter(r=>!r.success) : S.history;
+  document.getElementById('posts-count').textContent = runs.length+' records';
+  const tb=document.getElementById('posts-body');
+  if (!runs.length) { tb.innerHTML='<tr><td colspan="10" style="text-align:center;color:var(--dim);padding:32px">No posts yet</td></tr>'; return; }
+  tb.innerHTML=runs.slice(0,150).map((r,i)=>`<tr>
+    <td style="color:var(--dim);font-size:11px">${runs.length-i}</td>
+    <td>${r.success?'<span class="badge badge-ok">✓</span>':'<span class="badge badge-fail">✗</span>'}</td>
+    <td style="font-family:monospace;font-size:11px;color:var(--muted)">${(r.timestamp||'').replace('T',' ').slice(0,16)}</td>
+    <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.product||'')}">${esc((r.product||'—').slice(0,30))}</td>
+    <td><span class="badge badge-info" style="font-size:10px">${esc(r.productSource||'—')}</span></td>
+    <td>${gradeHtml(r.seoScore,r.seoGrade)}</td>
+    <td><strong>${r.clicks||0}</strong></td>
+    <td>${r.imageSource&&r.imageSource!=='none'?'<span class="badge badge-purple">🖼</span>':'<span style="color:var(--dim)">—</span>'}</td>
+    <td style="color:var(--muted)">${r.durationMs?(r.durationMs/1000).toFixed(1)+'s':'—'}</td>
+    <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--red)" title="${esc(r.error||'')}">${esc((r.error||'').slice(0,40))}</td>
+  </tr>`).join('');
+}
+
+// ── RENDER SEO ────────────────────────────────────────────────
+function renderSEO() {
+  const runs   = S.history.filter(r=>r.seoScore!=null);
+  const gf     = s=>s>=80?'A':s>=65?'B':s>=50?'C':s>=35?'D':'F';
+  const avgSeo = runs.length ? Math.round(runs.reduce((s,r)=>s+(r.seoScore||0),0)/runs.length) : null;
+  const ge=document.getElementById('seo-grade-big'), se=document.getElementById('seo-score-big');
+  if (avgSeo!=null) { const g=gf(avgSeo); ge.textContent=g; ge.className='grade grade-'+g; se.textContent=avgSeo; }
+  const dist={A:0,B:0,C:0,D:0,F:0};
+  runs.forEach(r=>{ dist[gf(r.seoScore||0)]++; });
+  const mx=Math.max(...Object.values(dist),1);
+  const gc={A:'var(--green)',B:'#84cc16',C:'var(--yellow)',D:'#f97316',F:'var(--red)'};
+  document.getElementById('seo-dist').innerHTML=Object.entries(dist).map(([g,c])=>`<div class="bar-col"><div class="bar-fill" style="height:${Math.max((c/mx)*100,2)}%;background:${gc[g]}" title="${c} posts grade ${g}"></div><div class="bar-lbl">${c}</div></div>`).join('');
+  // keywords
+  const kw={};
+  S.history.forEach(r=>(r.seoKeywords||[]).forEach(k=>{ kw[k]=(kw[k]||0)+1; }));
+  const topKw=Object.entries(kw).sort((a,b)=>b[1]-a[1]).slice(0,12);
+  const ke=document.getElementById('seo-kw-list');
+  if (topKw.length) ke.innerHTML=topKw.map(([k,c])=>`<span class="badge badge-info" style="margin:3px">${esc(k)} <strong>${c}</strong></span>`).join('');
+  // stats
+  document.getElementById('seo-stats').innerHTML = runs.length
+    ? `<div style="display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Posts analysed</span><strong>${runs.length}</strong></div>
+        <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Avg score</span><strong>${avgSeo||'—'}</strong></div>
+        <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">A-grade posts</span><strong style="color:var(--green)">${dist.A}</strong></div>
+        <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">F-grade posts</span><strong style="color:var(--red)">${dist.F}</strong></div>
+      </div>`
+    : '<div class="empty"><div class="empty-txt">No SEO data yet</div></div>';
+}
+
+// ── RENDER AI ─────────────────────────────────────────────────
+function renderAI() {
+  const ins=S.insights;
+  document.getElementById('insights-ts').textContent = ins.updatedAt ? 'Updated '+new Date(ins.updatedAt).toLocaleString() : '';
+  document.getElementById('insights-summary').textContent = ins.summary||'';
+  const icons=['💡','🎯','🔥','⚡','📈','✨'];
+  const list=document.getElementById('insights-list');
+  if (ins.insights?.length) {
+    list.innerHTML=ins.insights.map((t,i)=>`<div class="insight-card"><div class="insight-icon">${icons[i%icons.length]}</div><div class="insight-text">${esc(t)}</div></div>`).join('');
+  }
+  const cr=document.getElementById('cat-row');
+  if (ins.bestCategories?.length||ins.worstCategories?.length) {
+    cr.style.display='flex';
+    cr.innerHTML=(ins.bestCategories?.length?'<span style="font-size:12px;color:var(--muted)">Best:</span>'+ins.bestCategories.map(c=>`<span class="badge badge-ok">${esc(c)}</span>`).join(''):'')
+      +(ins.worstCategories?.length?'<span style="font-size:12px;color:var(--muted);margin-left:8px">Worst:</span>'+ins.worstCategories.map(c=>`<span class="badge badge-fail">${esc(c)}</span>`).join(''):'');
   }
 }
 
-// ── Click chart ──
-async function fetchClickChart(days = 7) {
-  const el = document.getElementById('click-chart');
-  if (!el) return;
-  try {
-    const data = await fetch('/api/clicks?days='+days).then(r=>r.json());
-    const daily = data.daily || [];
-    const maxClicks = Math.max(1, ...daily.map(d => d.clicks));
-    const barW = 40, gap = 12, padL = 32, padB = 30, padT = 10, h = 140;
-    const totalW = padL + daily.length * (barW + gap);
-    let svg = `<svg viewBox="0 0 ${totalW} ${h+padB+padT}" style="width:100%;max-width:700px;display:block">`;
-    for (let v of [0, Math.ceil(maxClicks/2), maxClicks]) {
-      const y = padT + h - Math.round(v / maxClicks * h);
-      svg += `<line x1="${padL}" y1="${y}" x2="${totalW}" y2="${y}" stroke="#1e293b" stroke-width="1"/>`;
-      svg += `<text x="${padL-4}" y="${y+4}" text-anchor="end" font-size="10" fill="#64748b">${v}</text>`;
-    }
-    daily.forEach((d, i) => {
-      const x = padL + i * (barW + gap);
-      const barH = Math.round(d.clicks / maxClicks * h);
-      if (barH > 0) {
-        svg += `<rect x="${x}" y="${padT+h-barH}" width="${barW}" height="${barH}" fill="#22c55e" rx="2"><title>${d.date}: ${d.clicks} clicks (${d.posts} posts, CTR ${d.ctr})</title></rect>`;
-        svg += `<text x="${x+barW/2}" y="${padT+h-barH-4}" text-anchor="middle" font-size="10" fill="#22c55e">${d.clicks}</text>`;
-      } else {
-        svg += `<rect x="${x}" y="${padT+h-2}" width="${barW}" height="2" fill="#1e293b" rx="1"/>`;
-      }
-      svg += `<text x="${x+barW/2}" y="${padT+h+16}" text-anchor="middle" font-size="10" fill="#94a3b8">${d.date.slice(5)}</text>`;
-    });
-    svg += '</svg>';
-    const totalClicks = daily.reduce((s,d)=>s+d.clicks,0);
-    const avgCtr = daily.filter(d=>d.posts>0).reduce((s,d)=>s+d.ctr,0) / Math.max(1, daily.filter(d=>d.posts>0).length);
-    svg += `<div style="font-size:.8rem;color:var(--muted);margin-top:.5rem">${days}d total: <strong style="color:#22c55e">${totalClicks} clicks</strong> · avg CTR: <strong>${avgCtr.toFixed(2)} clicks/post</strong></div>`;
-    el.innerHTML = svg;
-  } catch { el.textContent = 'Click data unavailable.'; }
+// ── RENDER NETWORKS ───────────────────────────────────────────
+function renderNetworks() {
+  const nets=S.networks;
+  const NC={'admitad-feed':'#f59e0b','admitad-api':'#f59e0b','admitad-catalog':'#f59e0b','temu':'#ef4444','cj':'#10b981','shareasale':'#ec4899','impact':'#3b82f6','takeads':'#f97316','travelpayouts':'#06b6d4'};
+  const NE={'admitad-feed':'🛒','admitad-api':'🛒','admitad-catalog':'🛒','temu':'🛍️','cj':'🏷️','shareasale':'🎁','impact':'⭐','takeads':'💼','travelpayouts':'✈️'};
+  const act=nets.filter(n=>n.enabled).length;
+  document.getElementById('nets-summary').innerHTML=`<span class="badge badge-ok">${act} active</span> <span class="badge badge-warn">${nets.length-act} off</span>`;
+  const nl=document.getElementById('nets-list');
+  if (!nets.length) { nl.innerHTML='<div class="empty"><div class="empty-icon">🌐</div><div class="empty-txt">Configure affiliate network credentials in HF Space secrets</div></div>'; }
+  else {
+    nl.innerHTML='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px">'
+      +nets.map(n=>`<div class="net-pill"><div class="net-dot" style="background:${NC[n.key||n.id]||'#64748b'}"></div><span>${NE[n.key||n.id]||'🔗'}</span><span style="font-size:13px;font-weight:600;flex:1">${esc(n.label||n.key||'?')}</span><span>${n.enabled?'<span class="badge badge-ok">On</span>':'<span class="badge badge-warn">Off</span>'}</span></div>`).join('')+'</div>';
+  }
+  const th=document.getElementById('nets-health');
+  if (!nets.length) { th.innerHTML='<tr><td colspan="4" style="text-align:center;color:var(--dim);padding:32px">No data</td></tr>'; return; }
+  th.innerHTML=nets.map(n=>`<tr>
+    <td>${esc(n.label||n.key||'—')}</td>
+    <td>${n.enabled?'<span class="badge badge-ok">Active</span>':'<span class="badge badge-warn">Disabled</span>'}</td>
+    <td>${n.selectCount||0}</td>
+    <td><div class="prog"><div class="prog-bar"><div class="prog-fill" style="width:${n.successRate||0}%;background:${(n.successRate||0)>=80?'var(--green)':(n.successRate||0)>=50?'var(--yellow)':'var(--red)'}"></div></div><span style="font-size:12px;color:var(--muted)">${n.successRate||0}%</span></div></td>
+  </tr>`).join('');
 }
 
-// ── AI Insights ──
-async function fetchInsights() {
-  try {
-    const data = await fetch('/api/insights').then(r=>r.json());
-    if (!data.insights?.length) return;
-    const section = document.getElementById('insights-section');
-    if (section) section.style.display = '';
-    const sum = document.getElementById('insights-summary');
-    if (sum && data.summary) sum.textContent = '💡 ' + data.summary;
-    const list = document.getElementById('insights-list');
-    if (list) {
-      list.innerHTML = data.insights.map(ins =>
-        `<div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:.5rem .75rem;font-size:.85rem">✓ ${esc(ins)}</div>`
-      ).join('');
-    }
-    const upd = document.getElementById('insights-updated');
-    if (upd && data.updatedAt) upd.textContent = 'Last analyzed: ' + data.updatedAt.replace('T',' ').slice(0,16) + ' UTC';
-    if (data.bestCategories?.length) {
-      const el = document.getElementById('insights-updated');
-      if (el) el.textContent += ' · Best: ' + data.bestCategories.join(', ');
-    }
-  } catch {}
+// ── RENDER ACCOUNTS ───────────────────────────────────────────
+function renderAccounts() {
+  const d=S.accounts, list=document.getElementById('accounts-list');
+  const rows=[];
+  if (d?.bluesky?.connected) {
+    rows.push(`<div class="acct-row"><div class="acct-av" style="background:#0085ff;color:#fff">🦋</div><div class="acct-info"><div class="acct-name">Bluesky</div><div class="acct-handle">${esc(d.bluesky.did||'Connected')}</div></div><span class="badge badge-ok">✓ Connected</span></div>`);
+  } else {
+    rows.push(`<div class="acct-row"><div class="acct-av" style="background:var(--dim);color:#fff">🦋</div><div class="acct-info"><div class="acct-name">Bluesky</div><div class="acct-handle">Not connected</div></div><span class="badge badge-fail">✗ Disconnected</span></div>`);
+  }
+  list.innerHTML = rows.join('') || '<div class="empty"><div class="empty-txt">No accounts</div></div>';
 }
+
+// ── FILTER LOGS ───────────────────────────────────────────────
+function filterLogs() {
+  const lv=document.getElementById('log-filter')?.value||'all';
+  const LVL={all:0,debug:1,info:2,warn:3,error:4};
+  const min=LVL[lv]||0;
+  const logs=S.allLogs.filter(l=>(LVL[l.level]||2)>=min);
+  document.getElementById('logs-count').textContent=logs.length+' entries';
+  const el=document.getElementById('logs-wrap');
+  if (!logs.length) { el.innerHTML='<div class="empty"><div class="empty-txt">No log entries</div></div>'; return; }
+  el.innerHTML=logs.map(l=>`<div class="log-row"><span class="log-ts">${(l.ts||l.timestamp||'').replace('T',' ').slice(0,19)}</span><span class="log-lvl ${l.level||'info'}">${(l.level||'info').toUpperCase()}</span><span class="log-msg">${esc(l.msg||l.message||'')}</span></div>`).join('');
+  const errs=S.allLogs.filter(l=>l.level==='error').length;
+  const badge=document.getElementById('log-badge');
+  badge.textContent=errs||''; badge.style.display=errs?'':'none';
+}
+
+// ── SETTINGS ──────────────────────────────────────────────────
+async function loadSettingsForm() {
+  const d=await api('/api/settings');
+  if (!d) return;
+  document.getElementById('s-cron').value    = d.cronSchedule||'0 * * * *';
+  document.getElementById('s-hours').value   = d.postingHours||'0-23';
+  document.getElementById('s-maxlen').value  = d.maxPostLength||280;
+  document.getElementById('s-cap').value     = d.dailyCostCap||2;
+  document.getElementById('s-alert').value   = d.alertThreshold||1.5;
+  document.getElementById('s-sysprompt').value = d.postSystemPrompt||'';
+  document.getElementById('s-template').value  = d.postUserTemplate||'';
+  document.getElementById('s-seo').value     = d.seoMinScore||50;
+}
+async function saveSettings() {
+  const p={cronSchedule:document.getElementById('s-cron').value,postingHours:document.getElementById('s-hours').value,maxPostLength:parseInt(document.getElementById('s-maxlen').value)||280,dailyCostCap:parseFloat(document.getElementById('s-cap').value)||2,alertThreshold:parseFloat(document.getElementById('s-alert').value)||1.5,postSystemPrompt:document.getElementById('s-sysprompt').value,postUserTemplate:document.getElementById('s-template').value,seoMinScore:parseInt(document.getElementById('s-seo').value)||50};
+  const d=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)}).then(r=>r.json()).catch(()=>null);
+  const msg=document.getElementById('s-msg');
+  if (d?.ok) { msg.style.color='var(--green)'; msg.textContent='✓ Saved'; toast('Settings saved','ok'); }
+  else { msg.style.color='var(--red)'; msg.textContent=d?.error||'Save failed'; }
+}
+
+// ── ACTIONS ───────────────────────────────────────────────────
+async function triggerRun() {
+  document.getElementById('btn-run').disabled=true;
+  document.getElementById('btn-run2')&&(document.getElementById('btn-run2').disabled=true);
+  const d=await fetch('/api/run',{method:'POST'}).then(r=>r.json()).catch(()=>null);
+  if (d?.ok) { toast('Run triggered!','ok'); setTimeout(refresh,2000); }
+  else { toast(d?.error||'Failed','err'); document.getElementById('btn-run').disabled=false; }
+}
+async function triggerDryRun() {
+  const d=await fetch('/api/dry-run',{method:'POST'}).then(r=>r.json()).catch(()=>null);
+  toast(d?.message||'Dry run N/A', d?.ok?'ok':'err');
+}
+async function togglePause() {
+  const d=await fetch('/api/pause',{method:'POST'}).then(r=>r.json()).catch(()=>null);
+  toast(d?.message||'Done', d?.ok?'ok':'err');
+  await loadStatus();
+}
+async function generateCaption() {
+  const btn=document.getElementById('btn-gen');
+  btn.disabled=true; btn.textContent='⏳ Generating…';
+  const d=await fetch('/api/ai/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({productName:document.getElementById('gen-name').value,category:document.getElementById('gen-cat').value,description:document.getElementById('gen-desc').value})}).then(r=>r.json()).catch(()=>null);
+  btn.disabled=false; btn.textContent='✨ Generate Caption';
+  if (d?.text) {
+    document.getElementById('gen-out').style.display='';
+    document.getElementById('gen-text').textContent=d.text;
+    document.getElementById('gen-score').innerHTML = d.seoScore!=null ? `<span class="grade grade-${d.seoGrade||''}">${d.seoGrade||''}</span> ${d.seoScore}/100` : '';
+    document.getElementById('gen-chars').textContent=d.text.length+' chars';
+  } else toast(d?.error||'Generation failed','err');
+}
+function startOAuth() {
+  const h=document.getElementById('bsky-handle').value.trim();
+  if (!h) { toast('Enter a Bluesky handle','err'); return; }
+  window.location.href='/oauth/start?handle='+encodeURIComponent(h);
+}
+async function refresh() {
+  const b=document.getElementById('btn-refresh');
+  if(b)b.textContent='⏳';
+  await loadAll();
+  if(currentPage==='logs') loadLogs();
+  if(b)b.textContent='↻ Refresh';
+}
+
+// ── HELPERS ────────────────────────────────────────────────────
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function fmt(n){return Number(n).toLocaleString();}
+function gradeHtml(score, grade) {
+  if (score==null) return '<span style="color:var(--dim)">—</span>';
+  const cls=grade==='A'?'badge-ok':grade==='B'?'badge-cyan':grade==='C'?'badge-warn':grade==='D'?'badge-purple':'badge-fail';
+  return `<span class="badge ${cls}">${grade||'?'} ${score||''}</span>`;
+}
+function toast(msg,type='ok'){const e=document.getElementById('toast');e.textContent=msg;e.className='show '+type;clearTimeout(e._t);e._t=setTimeout(()=>e.className='',3500);}
+
+// ── INIT ───────────────────────────────────────────────────────
+loadAll();
+setInterval(()=>{ loadStatus(); if(currentPage==='analytics'){loadClicks().then(renderAnalytics);} if(currentPage==='logs')loadLogs(); }, 20000);
 </script>
 </body>
 </html>
