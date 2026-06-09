@@ -23,7 +23,13 @@ function buildAltText(product) {
   return parts.join(' · ').slice(0, 999) || 'Product image';
 }
 
+const BSKY_IMAGE_MAX_BYTES = 1_000_000; // 1 MB Bluesky image limit
+
 async function uploadImageBlob(agentRef, imageBuffer, altText) {
+  if (imageBuffer && imageBuffer.length > BSKY_IMAGE_MAX_BYTES) {
+    logger.warn(`Image too large for Bluesky (${imageBuffer.length} bytes > 1 MB limit) — skipping image`);
+    return null;
+  }
   try {
     const upload = await agentRef.uploadBlob(imageBuffer, { encoding: 'image/jpeg' });
     logger.info(`Image blob uploaded: ${upload.data.blob.ref}`);
@@ -45,6 +51,24 @@ async function uploadImageBlob(agentRef, imageBuffer, altText) {
       return null;
     }
   }
+}
+
+/**
+ * Truncates a string to at most `maxGraphemes` Unicode grapheme clusters.
+ * Bluesky enforces a 300-grapheme limit on post text.
+ * Falls back to character-based slicing if Intl.Segmenter is unavailable.
+ */
+function truncateToGraphemes(str, maxGraphemes) {
+  if (!str) return str;
+  if (typeof Intl !== 'undefined' && Intl.Segmenter) {
+    const segmenter = new Intl.Segmenter();
+    const segments = [...segmenter.segment(str)];
+    if (segments.length <= maxGraphemes) return str;
+    return segments.slice(0, maxGraphemes).map(s => s.segment).join('');
+  }
+  // Fallback: use [...str] to split on code points (handles surrogate pairs)
+  const codePoints = [...str];
+  return codePoints.length <= maxGraphemes ? str : codePoints.slice(0, maxGraphemes).join('');
 }
 
 function safeByteSlice(str, maxBytes) {
@@ -93,7 +117,8 @@ function buildPostRecord(text, deeplink, maxLen) {
   // The facet makes the label a clickable hyperlink pointing to the real URL.
   const ctaLabel  = '🔗 Shop now →';
   const combined  = `${text}\n\n${ctaLabel}`;
-  const truncated = safeByteSlice(combined, maxLen);
+  // Bluesky enforces 300 graphemes; treat maxLen as grapheme limit
+  const truncated = truncateToGraphemes(combined, maxLen);
 
   const prefixBytes = Buffer.byteLength(text + '\n\n', 'utf8');
   const ctaBytes    = Buffer.byteLength(ctaLabel, 'utf8');
