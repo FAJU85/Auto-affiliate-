@@ -419,15 +419,6 @@ export function startServer(getIsRunning, triggerRun, getMissingVars = () => [])
   return server;
 }
 
-function readBody(req) {
-  return new Promise((resolve, reject) => {
-    let data = '';
-    req.on('data', c => { data += c; if (data.length > 1e5) reject(new Error('Body too large')); });
-    req.on('end', () => resolve(data));
-    req.on('error', reject);
-  });
-}
-
 // ─── Keep-alive ──────────────────────────────────────────────────────────────
 
 function startKeepAlive(port) {
