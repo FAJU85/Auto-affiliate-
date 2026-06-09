@@ -207,7 +207,10 @@ async function routeRequest(req, res, url, getIsRunning, triggerRunFn, getMissin
     res.writeHead(200, { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename="pipeline-history.csv"' });
     return res.end(header + rows);
   }
-  if (path === '/api/logs' && req.method === 'GET') return json(res, 200, getRecentLogs(100));
+  if (path === '/api/logs' && req.method === 'GET') {
+    const n = Math.min(parseInt(url.searchParams.get('n') || '100', 10), 500);
+    return json(res, 200, { logs: getRecentLogs(n), logFile: '/data/app.log' });
+  }
   if (path === '/api/stats' && req.method === 'GET') {
     const days = Math.min(parseInt(url.searchParams.get('days') || '7', 10), 90);
     return json(res, 200, getDailyNetworkStats(days));
