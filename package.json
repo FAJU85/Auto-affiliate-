@@ -11,6 +11,9 @@
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
     "test": "node --test $(find src -name '*.test.js' | tr '\\n' ' ')",
+    "test:e2e": "node --test tests/e2e/schedule-manager.test.js tests/e2e/api.test.js",
+    "test:ui": "node --test tests/e2e/dashboard.test.js",
+    "test:all": "npm test && npm run test:e2e",
     "status": "node src/cli/status.js"
   },
   "dependencies": {

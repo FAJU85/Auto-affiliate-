@@ -303,6 +303,7 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
 
   <div class="sb-section">
     <div class="sb-section-label">Management</div>
+    <div class="nav-item" onclick="nav('schedule')" id="nav-schedule"><span class="nav-icon">🗓️</span><span class="nav-label">Schedule</span></div>
     <div class="nav-item" onclick="nav('accounts')" id="nav-accounts"><span class="nav-icon">👤</span><span class="nav-label">Accounts</span></div>
     <div class="nav-item" onclick="nav('settings')" id="nav-settings"><span class="nav-icon">⚙️</span><span class="nav-label">Settings</span></div>
     <div class="nav-item" onclick="nav('logs')" id="nav-logs">
@@ -559,6 +560,91 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
       </div>
     </div>
 
+    <!-- ══ SCHEDULE ══ -->
+    <div class="page" id="page-schedule">
+      <div class="g2" style="align-items:start">
+
+        <!-- Left: config card + next runs -->
+        <div style="display:flex;flex-direction:column;gap:16px">
+          <div class="card">
+            <div class="card-hdr">
+              <div class="card-title">🗓️ Posting Schedule</div>
+              <div id="sched-status-badge"></div>
+            </div>
+
+            <div class="f-group">
+              <label class="f-label">Automated posting</label>
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px">
+                <input type="checkbox" id="sched-enabled" onchange="schedToggle()" style="width:16px;height:16px;accent-color:var(--accent)">
+                <span>Enable scheduler — post automatically on a cron schedule</span>
+              </label>
+            </div>
+
+            <div class="f-group">
+              <label class="f-label">Posts per day — <span id="ppd-val" style="color:var(--accent);font-weight:800">1</span></label>
+              <input type="range" id="sched-ppd" min="1" max="24" value="1"
+                oninput="document.getElementById('ppd-val').textContent=this.value;schedPreview()"
+                style="width:100%;accent-color:var(--accent);cursor:pointer;margin:4px 0 2px">
+              <div class="f-hint" style="display:flex;justify-content:space-between"><span>1 post/day</span><span>24 posts/day</span></div>
+            </div>
+
+            <div class="f-group">
+              <label class="f-label">Posting window (UTC, e.g. 8-22)</label>
+              <input class="f-input" type="text" id="sched-hours" value="8-22" oninput="schedPreview()" placeholder="8-22">
+              <div class="f-hint">Format: start-end in 24h UTC. Example: 9-21 posts between 9 AM–9 PM UTC.</div>
+            </div>
+
+            <div class="f-group">
+              <div class="f-label" style="margin-bottom:8px">Scheduled slots (preview)</div>
+              <div id="sched-slots" style="display:flex;flex-wrap:wrap;gap:6px;min-height:28px"></div>
+            </div>
+
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding-top:4px">
+              <button class="btn btn-primary" onclick="schedSave()">💾 Save Schedule</button>
+              <button class="btn btn-secondary" id="sched-pause-btn" onclick="schedPause()">⏸ Pause</button>
+              <span id="sched-msg" style="font-size:12px;color:var(--muted)"></span>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-hdr"><div class="card-title">⏱️ Next Scheduled Runs</div></div>
+            <div id="sched-next-runs"><div class="empty"><div class="empty-txt">Load schedule to see next runs</div></div></div>
+          </div>
+        </div>
+
+        <!-- Right: AI suggestion + engagement heatmap -->
+        <div style="display:flex;flex-direction:column;gap:16px">
+          <div class="card">
+            <div class="card-hdr">
+              <div class="card-title">🤖 AI Best-Time Suggestion</div>
+              <button class="btn btn-secondary" style="font-size:11px;padding:4px 10px" onclick="loadAISuggest()">✨ Analyse</button>
+            </div>
+            <div id="ai-suggest-out">
+              <div class="empty">
+                <div class="empty-icon">🧠</div>
+                <div class="empty-txt">Click Analyse — AI will study your engagement history and recommend optimal posting times for your audience.</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-hdr"><div class="card-title">📊 Engagement Heatmap (UTC hours)</div></div>
+            <div id="heatmap-wrap" style="display:grid;grid-template-columns:repeat(24,1fr);gap:3px;margin-bottom:6px">
+              <!-- filled by renderHeatmap() -->
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--dim);margin-bottom:6px">
+              <span>12am</span><span>6am</span><span>12pm</span><span>6pm</span><span>11pm</span>
+            </div>
+            <div style="display:flex;gap:12px;font-size:11px;color:var(--dim)">
+              <span style="display:flex;align-items:center;gap:4px"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:rgba(34,197,94,.7)"></span>Engagement</span>
+              <span style="display:flex;align-items:center;gap:4px"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:rgba(59,130,246,.8)"></span>AI-suggested</span>
+            </div>
+            <div style="font-size:11px;color:var(--dim);margin-top:8px" id="heatmap-note">Run the pipeline to collect engagement data.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- ══ SETTINGS ══ -->
     <div class="page" id="page-settings">
       <div class="g2">
@@ -631,6 +717,7 @@ const PAGE_META = {
   seo:       ['SEO',            'Search optimisation & keywords'],
   ai:        ['AI Studio',      'Insights & caption generator'],
   networks:  ['Networks',       'Affiliate network health'],
+  schedule:  ['Schedule',       'Automated posting schedule & AI time suggestions'],
   accounts:  ['Accounts',       'Connected social accounts'],
   settings:  ['Settings',       'Pipeline configuration'],
   logs:      ['System Logs',    'Live pipeline logs'],
@@ -646,6 +733,7 @@ function nav(p) {
   currentPage = p;
   if (p==='logs')     loadLogs();
   if (p==='settings') loadSettingsForm();
+  if (p==='schedule') loadSchedule();
 }
 
 // ── API ────────────────────────────────────────────────────────
@@ -979,6 +1067,160 @@ function gradeHtml(score, grade) {
   return `<span class="badge ${cls}">${grade||'?'} ${score||''}</span>`;
 }
 function toast(msg,type='ok'){const e=document.getElementById('toast');e.textContent=msg;e.className='show '+type;clearTimeout(e._t);e._t=setTimeout(()=>e.className='',3500);}
+
+// ── SCHEDULE ──────────────────────────────────────────────────
+let _schedData = null;
+
+async function loadSchedule() {
+  const d = await api('/api/schedule/config');
+  if (!d) return;
+  _schedData = d;
+  document.getElementById('sched-enabled').checked   = d.schedulerEnabled !== false;
+  document.getElementById('sched-ppd').value          = d.postsPerDay || 1;
+  document.getElementById('ppd-val').textContent      = d.postsPerDay || 1;
+  document.getElementById('sched-hours').value        = d.postingHours || '8-22';
+  const pauseBtn = document.getElementById('sched-pause-btn');
+  if (pauseBtn) pauseBtn.textContent = d.paused ? '▶ Resume' : '⏸ Pause';
+  const badge = document.getElementById('sched-status-badge');
+  if (badge) badge.innerHTML = d.schedulerEnabled !== false
+    ? (d.paused ? '<span class="badge badge-warn">⏸ Paused</span>' : '<span class="badge badge-ok">● Active</span>')
+    : '<span class="badge badge-fail">● Disabled</span>';
+  schedPreview();
+  renderNextRuns(d.cronExpressions || []);
+}
+
+function schedPreview() {
+  const ppd   = parseInt(document.getElementById('sched-ppd').value, 10) || 1;
+  const hours = document.getElementById('sched-hours').value || '8-22';
+  const slots = buildSlotPreviews(ppd, hours);
+  document.getElementById('sched-slots').innerHTML = slots.map(t =>
+    `<span class="badge badge-info" style="font-size:12px;padding:4px 12px">${t}</span>`
+  ).join('');
+}
+
+function buildSlotPreviews(n, postingHours) {
+  const [s, e] = String(postingHours).split('-').map(Number);
+  if (isNaN(s) || isNaN(e)) return ['—'];
+  const winMins = ((e > s ? e : e + 24) - s) * 60;
+  const step    = Math.floor(winMins / Math.max(n, 1));
+  return Array.from({ length: n }, (_, i) => {
+    const tot = s * 60 + step * i;
+    return `${String(Math.floor(tot/60)%24).padStart(2,'0')}:${String(tot%60).padStart(2,'0')} UTC`;
+  });
+}
+
+function renderNextRuns(cronExprs) {
+  const el = document.getElementById('sched-next-runs');
+  if (!el || !cronExprs.length) {
+    if (el) el.innerHTML = '<div class="empty"><div class="empty-txt">No schedule configured</div></div>';
+    return;
+  }
+  el.innerHTML = cronExprs.map(expr => {
+    const next = nextFromCron(expr);
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border)">
+      <code style="font-size:12px;color:var(--muted)">${esc(expr)}</code>
+      <span style="font-size:12px;color:var(--text)">${next ? next.toLocaleString() : '—'}</span>
+    </div>`;
+  }).join('').replace(/border-bottom[^"]*"([^"]*)"([^>]*>)(?=[^<]*<\/div>\s*$)/, '"$1"$2');
+}
+
+function nextFromCron(expr) {
+  try {
+    const [min, hour] = expr.split(' ').map(Number);
+    const now  = new Date();
+    const next = new Date(now);
+    next.setUTCHours(hour, min, 0, 0);
+    if (next <= now) next.setUTCDate(next.getUTCDate() + 1);
+    return next;
+  } catch { return null; }
+}
+
+async function schedSave() {
+  const ppd  = parseInt(document.getElementById('sched-ppd').value, 10) || 1;
+  const hrs  = document.getElementById('sched-hours').value.trim();
+  const enab = document.getElementById('sched-enabled').checked;
+  const msg  = document.getElementById('sched-msg');
+  const r = await fetch('/api/schedule/config', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ postsPerDay: ppd, postingHours: hrs, schedulerEnabled: enab }),
+  }).then(x => x.json()).catch(() => null);
+  if (r?.ok) {
+    msg.style.color = 'var(--green)'; msg.textContent = '✓ Saved';
+    toast('Schedule saved', 'ok');
+    await loadSchedule();
+  } else {
+    msg.style.color = 'var(--red)'; msg.textContent = r?.error || 'Save failed';
+    toast(r?.error || 'Save failed', 'err');
+  }
+}
+
+function schedToggle() {
+  const enab  = document.getElementById('sched-enabled').checked;
+  const badge = document.getElementById('sched-status-badge');
+  if (badge) badge.innerHTML = enab
+    ? '<span class="badge badge-ok">● Active</span>'
+    : '<span class="badge badge-fail">● Disabled</span>';
+}
+
+async function schedPause() {
+  const paused = _schedData?.paused;
+  await fetch(paused ? '/api/schedule/resume' : '/api/schedule/pause', { method: 'POST' });
+  toast(paused ? 'Scheduler resumed' : 'Scheduler paused', 'ok');
+  await loadSchedule();
+}
+
+async function loadAISuggest() {
+  const ppd = parseInt(document.getElementById('sched-ppd').value, 10) || 1;
+  const out  = document.getElementById('ai-suggest-out');
+  out.innerHTML = '<div class="empty"><div class="empty-txt">⏳ Analysing engagement data…</div></div>';
+  const d = await api(`/api/schedule/suggest?n=${ppd}`);
+  if (!d) { out.innerHTML = '<div class="empty"><div class="empty-txt">Analysis failed — try again</div></div>'; return; }
+
+  const badges = (d.suggestedTimes || []).map(t =>
+    `<span class="badge badge-info" style="font-size:13px;padding:5px 14px">${esc(t.label)}</span>`
+  ).join('');
+
+  out.innerHTML = `
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">${esc(d.message || '')}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">${badges}</div>
+    <div style="font-size:11px;color:var(--dim);margin-bottom:12px">
+      ${d.basedOn === 'engagement-analysis'
+        ? '✅ Personalised from your post engagement data'
+        : '💡 Industry defaults — post more to unlock personalised analysis'}
+    </div>
+    <button class="btn btn-secondary" style="font-size:12px" onclick='applyAISuggest(${JSON.stringify(d.suggestedTimes||[])})'>⬆ Apply to Schedule</button>
+  `;
+  renderHeatmap(d.hourlyData || [], d.suggestedTimes || []);
+}
+
+function applyAISuggest(times) {
+  if (!times.length) return;
+  document.getElementById('sched-ppd').value     = times.length;
+  document.getElementById('ppd-val').textContent = times.length;
+  const sorted = [...times].sort((a, b) => a.hour - b.hour);
+  document.getElementById('sched-hours').value   = `${sorted[0].hour}-${Math.min(sorted.at(-1).hour + 2, 23)}`;
+  schedPreview();
+  toast('Times applied — click Save to confirm', 'ok');
+}
+
+function renderHeatmap(hourly, suggested) {
+  const wrap = document.getElementById('heatmap-wrap');
+  if (!wrap || !hourly.length) return;
+  const sugSet = new Set((suggested || []).map(t => t.hour));
+  const max    = Math.max(...hourly.map(h => h.avgScore), 1);
+  wrap.innerHTML = hourly.map(h => {
+    const α = 0.08 + (h.avgScore / max) * 0.92;
+    const bg = sugSet.has(h.hour) ? `rgba(59,130,246,${α})` : `rgba(34,197,94,${α})`;
+    return `<div title="${String(h.hour).padStart(2,'0')}:00 — avg ${h.avgScore} pts (${h.count} posts)"
+      style="height:36px;border-radius:3px;background:${bg};cursor:help"></div>`;
+  }).join('');
+  const note  = document.getElementById('heatmap-note');
+  const total = hourly.reduce((s, h) => s + h.count, 0);
+  if (note) note.textContent = total
+    ? `${total} posts analysed. Brighter = more engagement. Blue = AI-suggested slots.`
+    : 'No engagement data yet — the heatmap fills as you post.';
+}
 
 // ── SIDEBAR RESPONSIVE ────────────────────────────────────────
 function toggleSidebar() {
