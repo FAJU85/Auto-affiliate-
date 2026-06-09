@@ -137,7 +137,7 @@ function buildPostRecord(text, deeplink, maxLen) {
 
   return {
     $type: 'app.bsky.feed.post',
-    text: truncated,
+    text: combined,
     createdAt: new Date().toISOString(),
     facets,
   };
