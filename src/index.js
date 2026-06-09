@@ -52,8 +52,8 @@ export function rebuildSchedule() {
 }
 
 async function safePipelineRun(trigger) {
-  if (!configured) {
-    logger.warn(`[${trigger}] Skipped — Bluesky not connected`);
+  if (!configured && trigger !== 'manual') {
+    logger.warn(`[${trigger}] Skipped — pipeline not configured`);
     return;
   }
   if (pipelineRunning) {

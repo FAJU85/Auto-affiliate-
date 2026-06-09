@@ -760,7 +760,7 @@ async function loadStatus() {
     ? 'Next: '+new Date(d.pipeline.nextRun).toLocaleTimeString()
     : d.pipeline?.schedule || '';
   document.getElementById('btn-run').disabled  = !!running;
-  document.getElementById('btn-run2')?.disabled && (document.getElementById('btn-run2').disabled = !!running);
+  if (document.getElementById('btn-run2')) document.getElementById('btn-run2').disabled = !!running;
   const pb = document.getElementById('btn-pause');
   if (pb) pb.textContent = d.pipeline?.paused ? '▶ Resume' : '⏸ Pause';
   if (d.missingVars?.length) {
@@ -1029,7 +1029,7 @@ async function triggerDryRun() {
   toast(d?.message||'Dry run N/A', d?.ok?'ok':'err');
 }
 async function togglePause() {
-  const d=await fetch('/api/pause',{method:'POST'}).then(r=>r.json()).catch(()=>null);
+  const d=await fetch('/api/schedule/pause',{method:'POST'}).then(r=>r.json()).catch(()=>null);
   toast(d?.message||'Done', d?.ok?'ok':'err');
   await loadStatus();
 }
