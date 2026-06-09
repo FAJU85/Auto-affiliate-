@@ -95,6 +95,15 @@ export function scoreProductKeywords(product, keywords) {
 /**
  * Returns top-N keywords from Google Trends + Bing Trends, deduplicated.
  */
+// Static fallback keywords used when both live trend sources fail
+const STATIC_FALLBACK_KEYWORDS = [
+  'best deals', 'sale', 'discount', 'free shipping', 'limited offer',
+  'new arrivals', 'top rated', 'must have', 'affordable', 'buy now',
+  'fashion', 'tech', 'beauty', 'home decor', 'fitness', 'travel deals',
+  'electronics', 'skincare', 'shoes', 'accessories', 'gadgets',
+  'workout gear', 'kitchen essentials', 'gift ideas', 'back to school',
+].map(keyword => ({ keyword, traffic: 1000, source: 'static-fallback' }));
+
 export async function getTrendingKeywords(limit = 30) {
   const [google, bing] = await Promise.all([
     fetchGoogleTrends(process.env.TRENDS_GEO || 'US'),
@@ -113,7 +122,13 @@ export async function getTrendingKeywords(limit = 30) {
 
   // Sort by traffic descending
   unique.sort((a, b) => b.traffic - a.traffic);
-  logger.info(`SEO keywords: ${unique.slice(0, 5).map(k => k.keyword).join(', ')} (+${unique.length - 5} more)`);
+
+  if (unique.length === 0) {
+    logger.warn('SEO: no live trending keywords — using static fallback list');
+    return STATIC_FALLBACK_KEYWORDS.slice(0, limit);
+  }
+
+  logger.info(`SEO keywords: ${unique.slice(0, 5).map(k => k.keyword).join(', ')} (+${Math.max(unique.length - 5, 0)} more)`);
   return unique.slice(0, limit);
 }
 
