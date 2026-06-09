@@ -13,6 +13,7 @@ import { getDailySpend } from '../utils/budget.js';
 import { getSpaceHost } from '../config/settings.js';
 import { logger } from '../utils/logger.js';
 import { scoreCaption, getMinScore } from '../seo/scorer.js';
+import { getTrendingKeywords } from '../seo/keywords.js';
 
 async function downloadImage(url) {
   try {
@@ -85,7 +86,11 @@ function computeQualityScore(runMeta) {
 }
 
 async function executePost(runMeta) {
-  const [product, trends] = await Promise.all([getProduct(wasRecentlyPosted), getTopTrends(5)]);
+  const [product, trends, seoKeywords] = await Promise.all([
+    getProduct(wasRecentlyPosted),
+    getTopTrends(5),
+    getTrendingKeywords(30).catch(() => []),
+  ]);
   // Normalise description length — long descriptions waste AI context window
   const safeDescription = (product.description || product.name || '').slice(0, 300);
   const trackingId  = generateTrackingId();
@@ -104,7 +109,7 @@ async function executePost(runMeta) {
   // The caption is written purely from product data provided by the affiliate network.
 
   let caption = await generatePostText(payload, trends);
-  const seoResult = scoreCaption(caption, []);
+  const seoResult = scoreCaption(caption, seoKeywords.map(k => k.keyword));
   const minScore  = getMinScore();
   logger.info(`Caption SEO score: ${seoResult.score}/100 (grade ${seoResult.grade}) — min ${minScore}`);
   if (seoResult.issues.length) logger.info(`SEO issues: ${seoResult.issues.join('; ')}`);
