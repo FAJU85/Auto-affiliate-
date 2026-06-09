@@ -120,10 +120,14 @@ function buildPostRecord(text, deeplink, maxLen) {
   // Bluesky enforces 300 graphemes; treat maxLen as grapheme limit
   const truncated = truncateToGraphemes(combined, maxLen);
 
-  const prefixBytes = Buffer.byteLength(text + '\n\n', 'utf8');
-  const ctaBytes    = Buffer.byteLength(ctaLabel, 'utf8');
-  const linkStart   = prefixBytes;
-  const linkEnd     = Math.min(prefixBytes + ctaBytes, Buffer.byteLength(truncated, 'utf8'));
+  // Compute byte offsets from the truncated text (not original) to handle edge cases
+  // where grapheme truncation may cut into the CTA suffix.
+  const truncatedBuf  = Buffer.byteLength(truncated, 'utf8');
+  const prefixStr     = text + '\n\n';
+  const prefixBytes   = Math.min(Buffer.byteLength(prefixStr, 'utf8'), truncatedBuf);
+  const ctaBytes      = Buffer.byteLength(ctaLabel, 'utf8');
+  const linkStart     = prefixBytes;
+  const linkEnd       = Math.min(prefixBytes + ctaBytes, truncatedBuf);
 
   const facets = [];
   if (linkStart < linkEnd) {
