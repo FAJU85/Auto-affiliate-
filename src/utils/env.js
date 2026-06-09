@@ -30,6 +30,7 @@ export const OPTIONAL_LABELS = {
   MISTRAL_API_KEY:         'Mistral text generation — mistral-small-latest fallback',
   EXA_API_KEY:             'Exa web search — enriches AI captions with real product highlights',
   HF_TOKEN:                'HuggingFace token (image upscaling + secret persistence)',
+  SOVRN_API_KEY:           'SOVRN Commerce (VigLink) publisher key — monetizes any merchant URL',
 };
 
 export async function validateEnv() {

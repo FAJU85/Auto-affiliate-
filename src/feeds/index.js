@@ -7,6 +7,7 @@ import { getTravelpayoutsProduct } from './travelpayouts.js';
 import { getImpactProduct } from './impact.js';
 import { getCJProduct } from './cj.js';
 import { getShareASaleProduct } from './shareasale.js';
+import { getSovrnProduct } from './sovrn.js';
 import { logger } from '../utils/logger.js';
 import { getLastPostedSource, getRecentPostedSources, wasAdvertiserRecentlyPosted } from '../utils/metrics.js';
 
@@ -20,6 +21,7 @@ export const TASKS = [
   { key: 'impact',          fn: getImpactProduct,          env: () => !!(process.env.IMPACT_ACCOUNT_SID && process.env.IMPACT_AUTH_TOKEN) },
   { key: 'cj',              fn: getCJProduct,              env: () => !!(process.env.CJ_API_KEY && process.env.CJ_WEBSITE_ID) },
   { key: 'shareasale',      fn: getShareASaleProduct,      env: () => !!(process.env.SHAREASALE_TOKEN && process.env.SHAREASALE_SECRET && process.env.SHAREASALE_AFFILIATE_ID) },
+  { key: 'sovrn',           fn: getSovrnProduct,           env: () => !!process.env.SOVRN_API_KEY },
 ];
 
 const CATEGORY_PATTERNS = [
