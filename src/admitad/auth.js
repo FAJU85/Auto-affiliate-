@@ -26,41 +26,46 @@ async function _fetchToken() {
     throw new Error('Missing ADMITAD_CLIENT_ID or ADMITAD_CLIENT_SECRET');
   }
 
-  // admitad-python-api sends client_id + client_secret in the POST body, not Basic Auth
-  const scope = process.env.ADMITAD_SCOPE || 'public_data advcampaigns deeplink_generator';
-  const body = new URLSearchParams({
-    grant_type: 'client_credentials',
-    client_id: ADMITAD_CLIENT_ID,
-    client_secret: ADMITAD_CLIENT_SECRET,
-    scope,
-  });
-
-  logger.info(`Admitad OAuth: requesting token with scope="${scope}"`);
+  // Admitad OAuth2 requires client_id:client_secret as Basic Auth header.
+  // deeplink_generator scope needs explicit approval — fall back to core scopes if denied.
+  const basicAuth = 'Basic ' + Buffer.from(`${ADMITAD_CLIENT_ID}:${ADMITAD_CLIENT_SECRET}`).toString('base64');
+  const scopes = [
+    process.env.ADMITAD_SCOPE || 'public_data advcampaigns deeplink_generator',
+    'public_data advcampaigns',
+  ];
 
   let lastError;
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      const res = await fetch(TOKEN_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body,
-      });
+  for (const scope of scopes) {
+    const body = new URLSearchParams({ grant_type: 'client_credentials', client_id: ADMITAD_CLIENT_ID, scope });
+    logger.info(`Admitad OAuth: requesting token with scope="${scope}"`);
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const res = await fetch(TOKEN_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Authorization': basicAuth,
+          },
+          body,
+        });
 
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`Admitad auth failed ${res.status}: ${text}`);
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(`Admitad auth failed ${res.status}: ${text}`);
+        }
+
+        const data = await res.json();
+        cachedToken = data.access_token;
+        tokenExpiry  = Date.now() + (parseInt(data.expires_in, 10) || 3600) * 1000;
+        logger.info(`Admitad OAuth token obtained (scope="${scope}"), expires in ${data.expires_in}s`);
+        return cachedToken;
+      } catch (err) {
+        lastError = err;
+        logger.warn(`Admitad OAuth attempt ${attempt} (scope=${scope}) failed: ${err.message}`);
+        if (attempt < 3) await sleep(attempt * 2000);
       }
-
-      const data = await res.json();
-      cachedToken = data.access_token;
-      tokenExpiry  = Date.now() + (parseInt(data.expires_in, 10) || 3600) * 1000;
-      logger.info(`Admitad OAuth token obtained, expires in ${data.expires_in}s`);
-      return cachedToken;
-    } catch (err) {
-      lastError = err;
-      logger.warn(`Admitad OAuth attempt ${attempt} failed: ${err.message}`);
-      if (attempt < 3) await sleep(attempt * 2000);
     }
+    logger.warn(`Admitad OAuth: scope "${scope}" failed, trying fallback scope`);
   }
   throw lastError;
 }
