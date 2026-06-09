@@ -740,36 +740,28 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
       <div class="g2">
         <div>
           <div class="card" style="margin-bottom:16px">
-            <div class="card-hdr"><div class="card-title">⏰ Scheduling</div></div>
-            <div class="f-group"><label class="f-label">Cron Schedule</label><input class="f-input" id="s-cron" placeholder="0 * * * *" /><div class="f-hint">Default: every hour</div></div>
-            <div class="f-group"><label class="f-label">Posting Hours</label><input class="f-input" id="s-hours" placeholder="8-22" /><div class="f-hint">Only post during these UTC hours</div></div>
-            <div class="f-group"><label class="f-label">Max Post Length</label><input class="f-input" id="s-maxlen" type="number" placeholder="280" /></div>
-          </div>
-          <div class="card">
             <div class="card-hdr"><div class="card-title">💸 Budget</div></div>
             <div class="f-group"><label class="f-label">Daily Cost Cap (USD)</label><input class="f-input" id="s-cap" type="number" step="0.01" placeholder="2.00" /></div>
             <div class="f-group"><label class="f-label">Alert Threshold (USD)</label><input class="f-input" id="s-alert" type="number" step="0.01" placeholder="1.50" /></div>
           </div>
+          <div class="card">
+            <div class="card-hdr"><div class="card-title">🔑 Environment Variables</div><button class="btn btn-secondary" style="font-size:11px;padding:4px 10px" onclick="loadEnvStatus()">↻ Refresh</button></div>
+            <div id="env-status-list" style="font-size:12px"><div class="empty"><div class="empty-txt">Click Refresh to load</div></div></div>
+          </div>
         </div>
         <div>
           <div class="card" style="margin-bottom:16px">
-            <div class="card-hdr"><div class="card-title">🤖 AI Prompts</div></div>
+            <div class="card-hdr"><div class="card-title">🤖 AI &amp; Content</div></div>
+            <div class="f-group"><label class="f-label">Max Post Length (chars)</label><input class="f-input" id="s-maxlen" type="number" placeholder="280" /><div class="f-hint">Bluesky grapheme limit is 300. Recommended: 280.</div></div>
+            <div class="f-group"><label class="f-label">SEO Min Score (0-100)</label><input class="f-input" id="s-seo" type="number" placeholder="50" /><div class="f-hint">Captions below this score are regenerated once</div></div>
             <div class="f-group"><label class="f-label">System Prompt</label><textarea class="f-textarea" id="s-sysprompt" rows="5"></textarea></div>
             <div class="f-group"><label class="f-label">User Template</label><textarea class="f-textarea" id="s-template" rows="4" placeholder="Product: {name} ({category})…"></textarea><div class="f-hint">Variables: {name} {category} {description} {trend} {price}</div></div>
-            <div class="f-group"><label class="f-label">SEO Min Score (0-100)</label><input class="f-input" id="s-seo" type="number" placeholder="50" /><div class="f-hint">Captions below this score are retried</div></div>
           </div>
           <div style="display:flex;gap:8px;margin-bottom:10px">
             <button class="btn btn-primary" onclick="saveSettings()">💾 Save</button>
             <button class="btn btn-secondary" onclick="loadSettingsForm()">↺ Reset</button>
           </div>
           <div id="s-msg" style="font-size:13px"></div>
-          <div class="card" style="margin-top:16px">
-            <div class="card-hdr">
-              <div class="card-title">🔑 Environment Variables</div>
-              <button class="btn btn-secondary" style="font-size:11px;padding:4px 10px" onclick="loadEnvStatus()">↻ Refresh</button>
-            </div>
-            <div id="env-status-list" style="font-size:12px"><div class="empty"><div class="empty-txt">Click Refresh to load</div></div></div>
-          </div>
         </div>
       </div>
     </div>
@@ -1255,16 +1247,14 @@ function filterLogs() {
 
 // ── SETTINGS ──────────────────────────────────────────────────
 async function loadSettingsForm() {
-  const d=await api('/api/settings');
+  const d = await api('/api/settings');
   if (!d) return;
-  document.getElementById('s-cron').value    = d.cronSchedule||'0 * * * *';
-  document.getElementById('s-hours').value   = d.postingHours||'0-23';
-  document.getElementById('s-maxlen').value  = d.maxPostLength||280;
-  document.getElementById('s-cap').value     = d.dailyCostCap||2;
-  document.getElementById('s-alert').value   = d.alertThreshold||1.5;
-  document.getElementById('s-sysprompt').value = d.postSystemPrompt||'';
-  document.getElementById('s-template').value  = d.postUserTemplate||'';
-  document.getElementById('s-seo').value     = d.seoMinScore||50;
+  document.getElementById('s-maxlen').value    = d.maxPostLength    || 280;
+  document.getElementById('s-cap').value       = d.dailyCostCap     || 2;
+  document.getElementById('s-alert').value     = d.alertThreshold   || 1.5;
+  document.getElementById('s-sysprompt').value = d.postSystemPrompt || '';
+  document.getElementById('s-template').value  = d.postUserTemplate || '';
+  document.getElementById('s-seo').value       = d.seoMinScore      || 50;
 }
 async function loadEnvStatus() {
   const el=document.getElementById('env-status-list');
@@ -1281,28 +1271,68 @@ async function loadEnvStatus() {
 }
 
 async function saveSettings() {
-  const p={cronSchedule:document.getElementById('s-cron').value,postingHours:document.getElementById('s-hours').value,maxPostLength:parseInt(document.getElementById('s-maxlen').value)||280,dailyCostCap:parseFloat(document.getElementById('s-cap').value)||2,alertThreshold:parseFloat(document.getElementById('s-alert').value)||1.5,postSystemPrompt:document.getElementById('s-sysprompt').value,postUserTemplate:document.getElementById('s-template').value,seoMinScore:parseInt(document.getElementById('s-seo').value)||50};
-  const d=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)}).then(r=>r.json()).catch(()=>null);
-  const msg=document.getElementById('s-msg');
+  const p = {
+    maxPostLength:    parseInt(document.getElementById('s-maxlen').value)    || 280,
+    dailyCostCap:     parseFloat(document.getElementById('s-cap').value)     || 2,
+    alertThreshold:   parseFloat(document.getElementById('s-alert').value)   || 1.5,
+    postSystemPrompt: document.getElementById('s-sysprompt').value,
+    postUserTemplate: document.getElementById('s-template').value,
+    seoMinScore:      parseInt(document.getElementById('s-seo').value)       || 50,
+  };
+  const d = await fetch('/api/settings', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(p)}).then(r=>r.json()).catch(()=>null);
+  const msg = document.getElementById('s-msg');
   if (d?.ok) { msg.style.color='var(--green)'; msg.textContent='✓ Saved'; toast('Settings saved','ok'); }
   else { msg.style.color='var(--red)'; msg.textContent=d?.error||'Save failed'; }
 }
 
 // ── ACTIONS ───────────────────────────────────────────────────
 async function triggerRun() {
-  document.getElementById('btn-run').disabled=true;
-  document.getElementById('btn-run2')&&(document.getElementById('btn-run2').disabled=true);
-  const d=await fetch('/api/run',{method:'POST'}).then(r=>r.json()).catch(()=>null);
-  if (d?.ok) { toast('Run triggered!','ok'); setTimeout(refresh,2000); }
-  else { toast(d?.error||'Failed','err'); document.getElementById('btn-run').disabled=false; }
+  const btns = [document.getElementById('btn-run'), document.getElementById('btn-run2')].filter(Boolean);
+  btns.forEach(b => b.disabled = true);
+
+  const triggerTs = Date.now();
+  const d = await fetch('/api/run', {method:'POST'}).then(r=>r.json()).catch(()=>null);
+
+  if (!d?.ok) {
+    toast(d?.error || 'Run failed — check Logs tab for details', 'err');
+    btns.forEach(b => b.disabled = false);
+    return;
+  }
+
+  toast('⏳ Running pipeline…', 'ok');
+
+  // Poll status every 3s until pipeline stops, then show result
+  let polls = 0;
+  const interval = setInterval(async () => {
+    polls++;
+    if (polls > 60) { clearInterval(interval); btns.forEach(b => b.disabled = false); return; }
+    const st = await fetch('/api/status').then(r=>r.json()).catch(()=>null);
+    if (!st) return;
+    S.status = st;
+    renderOverview();
+    if (st.pipeline?.running) return;
+    clearInterval(interval);
+    btns.forEach(b => b.disabled = false);
+    // Find the run triggered after we clicked
+    const run = (st.runs || []).find(r => new Date(r.timestamp).getTime() >= triggerTs - 500);
+    if (run?.success) toast(`✓ Posted: ${run.product || 'done'} via ${run.productSource || ''}`, 'ok');
+    else if (run?.error) toast(`✗ Run failed: ${run.error}`, 'err');
+    else toast('Run complete', 'ok');
+  }, 3000);
 }
+
 async function triggerDryRun() {
-  const d=await fetch('/api/dry-run',{method:'POST'}).then(r=>r.json()).catch(()=>null);
-  toast(d?.message||'Dry run N/A', d?.ok?'ok':'err');
+  const d = await fetch('/api/dry-run', {method:'POST'}).then(r=>r.json()).catch(()=>null);
+  if (d?.ok) toast(`Dry run: ${d.product?.name || 'product'} via ${d.product?.source || '?'}`, 'ok');
+  else toast(d?.error || 'Dry run failed', 'err');
 }
+
 async function togglePause() {
-  const d=await fetch('/api/schedule/pause',{method:'POST'}).then(r=>r.json()).catch(()=>null);
-  toast(d?.message||'Done', d?.ok?'ok':'err');
+  const paused = S.status?.pipeline?.paused;
+  const endpoint = paused ? '/api/schedule/resume' : '/api/schedule/pause';
+  const d = await fetch(endpoint, {method:'POST'}).then(r=>r.json()).catch(()=>null);
+  if (d?.ok) toast(paused ? 'Scheduler resumed ▶' : 'Scheduler paused ⏸', 'ok');
+  else toast(d?.error || 'Action failed', 'err');
   await loadStatus();
 }
 async function generateCaption() {
