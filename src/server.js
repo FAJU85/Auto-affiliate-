@@ -176,12 +176,18 @@ async function routeRequest(req, res, url, getIsRunning, triggerRunFn, getMissin
     const { getNetworkErrors, getNetworkSelectCounts } = await import('./feeds/index.js');
     const errors = getNetworkErrors();
     const counts = getNetworkSelectCounts();
-    const networks = getNetworkStatus().map(n => ({
-      ...n,
-      lastError: errors[n.key]?.error || null,
-      lastErrorAt: errors[n.key]?.at || null,
-      selectCount: counts[n.key] || 0,
-    }));
+    const health = getNetworkHealth(100);
+    const networks = getNetworkStatus().map(n => {
+      const h = health[n.key] || null;
+      return {
+        ...n,
+        lastError:    errors[n.key]?.error || null,
+        lastErrorAt:  errors[n.key]?.at    || null,
+        selectCount:  counts[n.key] || 0,
+        successRate:  h ? Math.round(h.rate * 100) : null,
+        totalAttempts: h?.attempts || 0,
+      };
+    });
     return json(res, 200, networks);
   }
   if (path === '/api/history' && req.method === 'GET') {
