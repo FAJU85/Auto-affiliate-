@@ -268,6 +268,49 @@ async function routeRequest(req, res, url, getIsRunning, triggerRunFn, getMissin
     }
   }
 
+  if (path === '/api/schedule/config' && req.method === 'GET') {
+    try {
+      const { getScheduleInfo } = await import('./index.js');
+      return json(res, 200, getScheduleInfo());
+    } catch {
+      const s = getSettings();
+      const { buildCronExpressions } = await import('./utils/schedule-manager.js');
+      return json(res, 200, {
+        postsPerDay:      s.postsPerDay ?? 1,
+        schedulerEnabled: s.schedulerEnabled !== false,
+        postingHours:     s.postingHours || '8-22',
+        cronExpressions:  buildCronExpressions(s.postsPerDay ?? 1, s.postingHours || '8-22'),
+        paused:           false,
+      });
+    }
+  }
+
+  if (path === '/api/schedule/config' && req.method === 'POST') {
+    try {
+      const body    = JSON.parse(await readBody(req));
+      const updates = {};
+      if (body.postsPerDay      != null) updates.postsPerDay      = Math.max(1, Math.min(24, parseInt(body.postsPerDay, 10)));
+      if (body.postingHours     != null) updates.postingHours     = String(body.postingHours);
+      if (body.schedulerEnabled != null) updates.schedulerEnabled = !!body.schedulerEnabled;
+      saveSettings(updates);
+      try { const { rebuildSchedule } = await import('./index.js'); rebuildSchedule(); } catch {}
+      logger.info(`Schedule updated: ${JSON.stringify(updates)}`);
+      return json(res, 200, { ok: true, ...updates });
+    } catch (err) {
+      return json(res, 400, { ok: false, error: err.message });
+    }
+  }
+
+  if (path === '/api/schedule/suggest' && req.method === 'GET') {
+    try {
+      const n = Math.max(1, Math.min(24, parseInt(url.searchParams.get('n') || '1', 10)));
+      const { suggestBestTimes } = await import('./utils/schedule-manager.js');
+      return json(res, 200, suggestBestTimes(n));
+    } catch (err) {
+      return json(res, 500, { ok: false, error: err.message });
+    }
+  }
+
   if (path === '/api/network/test' && req.method === 'POST') {
     try {
       const body = await readBody(req);
