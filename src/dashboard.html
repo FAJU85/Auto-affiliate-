@@ -673,6 +673,13 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
             <button class="btn btn-secondary" onclick="loadSettingsForm()">↺ Reset</button>
           </div>
           <div id="s-msg" style="font-size:13px"></div>
+          <div class="card" style="margin-top:16px">
+            <div class="card-hdr">
+              <div class="card-title">🔑 Environment Variables</div>
+              <button class="btn btn-secondary" style="font-size:11px;padding:4px 10px" onclick="loadEnvStatus()">↻ Refresh</button>
+            </div>
+            <div id="env-status-list" style="font-size:12px"><div class="empty"><div class="empty-txt">Click Refresh to load</div></div></div>
+          </div>
         </div>
       </div>
     </div>
@@ -1043,6 +1050,20 @@ async function loadSettingsForm() {
   document.getElementById('s-template').value  = d.postUserTemplate||'';
   document.getElementById('s-seo').value     = d.seoMinScore||50;
 }
+async function loadEnvStatus() {
+  const el=document.getElementById('env-status-list');
+  if (!el) return;
+  el.innerHTML='<div class="empty"><div class="empty-txt">Loading…</div></div>';
+  const d=await api('/api/env-status');
+  if (!d) { el.innerHTML='<div class="empty"><div class="empty-txt">Failed to load</div></div>'; return; }
+  const entries=Object.entries(d);
+  const set=entries.filter(([,v])=>v);
+  const unset=entries.filter(([,v])=>!v);
+  el.innerHTML='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:4px 16px;padding:4px 0">'
+    +entries.map(([k,v])=>`<div style="display:flex;align-items:center;gap:6px;padding:3px 0;border-bottom:1px solid var(--border)"><span style="font-size:10px;color:${v?'var(--green)':'var(--dim)'}">${v?'●':'○'}</span><code style="font-size:11px;flex:1;word-break:break-all">${esc(k)}</code><span style="font-size:10px;color:${v?'var(--green)':'var(--dim)'}">${v?'set':'—'}</span></div>`).join('')
+    +'</div><div style="font-size:11px;color:var(--muted);margin-top:6px">'+set.length+' set · '+unset.length+' unset</div>';
+}
+
 async function saveSettings() {
   const p={cronSchedule:document.getElementById('s-cron').value,postingHours:document.getElementById('s-hours').value,maxPostLength:parseInt(document.getElementById('s-maxlen').value)||280,dailyCostCap:parseFloat(document.getElementById('s-cap').value)||2,alertThreshold:parseFloat(document.getElementById('s-alert').value)||1.5,postSystemPrompt:document.getElementById('s-sysprompt').value,postUserTemplate:document.getElementById('s-template').value,seoMinScore:parseInt(document.getElementById('s-seo').value)||50};
   const d=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)}).then(r=>r.json()).catch(()=>null);
