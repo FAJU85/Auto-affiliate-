@@ -16,8 +16,8 @@ const DEFAULTS = {
   postingHours:     '8-22',
   postsPerDay:      1,
   schedulerEnabled: true,
-  postSystemPrompt: 'Write short affiliate posts for social media. Max 280 chars. Include 2-3 relevant hashtags. Natural tone.',
-  postUserTemplate: 'Product: "{name}" ({category}). {description}. Price: {price}. Trending: {trend}. Extra context: {highlights}. Write a post with CTA, no URL.',
+  postSystemPrompt: 'Write a short, persuasive affiliate post for social media. Max 200 chars. Use power words (deal, save, exclusive, limited). Natural, conversational tone. Do not include URLs or hashtags — those are added automatically.',
+  postUserTemplate: 'Product: "{name}" ({category}). Description: {description}. Price: {price}. Trending topic: {trend}. Extra context: {highlights}. Write a punchy post with a clear CTA. No URLs, no hashtags.',
 };
 
 let _cache = null;
