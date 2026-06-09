@@ -1,6 +1,6 @@
 import { getConnectedDid } from '../auth/bluesky-oauth.js';
 
-const OPTIONAL_LABELS = {
+export const OPTIONAL_LABELS = {
   ADMITAD_FEED_URL:        'Admitad XML product feed URL (no OAuth needed)',
   ADMITAD_CLIENT_ID:       'Admitad OAuth2 client ID (for API campaigns + deeplinks)',
   ADMITAD_CLIENT_SECRET:   'Admitad OAuth2 client secret',

@@ -166,6 +166,12 @@ async function routeRequest(req, res, url, getIsRunning, triggerRunFn, getMissin
     await disconnectBluesky();
     return json(res, 200, { ok: true });
   }
+  if (path === '/api/env-status' && req.method === 'GET') {
+    const { OPTIONAL_LABELS } = await import('./utils/env.js');
+    const vars = [...Object.keys(OPTIONAL_LABELS), 'BSKY_HANDLE', 'BSKY_APP_PASSWORD'];
+    const status = Object.fromEntries(vars.map(k => [k, !!process.env[k]]));
+    return json(res, 200, status);
+  }
   if (path === '/api/networks' && req.method === 'GET') {
     const { getNetworkErrors, getNetworkSelectCounts } = await import('./feeds/index.js');
     const errors = getNetworkErrors();
