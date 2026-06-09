@@ -12,9 +12,33 @@ const PORT = parseInt(process.env.PORT || '7860', 10);
 const DASHBOARD_PATH = new URL('./dashboard.html', import.meta.url).pathname;
 
 function json(res, status, data) {
-  res.writeHead(status, { 'Content-Type': 'application/json' });
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.writeHead(status);
   res.end(JSON.stringify(data));
 }
+
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.on('data', c => { body += c; if (body.length > 1e6) reject(new Error('body too large')); });
+    req.on('end', () => resolve(body));
+    req.on('error', reject);
+  });
+}
+
+// In-memory log ring (last 500 lines)
+const LOG_RING = [];
+const _origLog = console.log.bind(console);
+const _origErr = console.error.bind(console);
+function ring(level, ...args) {
+  const line = `[${new Date().toISOString()}] [${level}] ${args.join(' ')}`;
+  LOG_RING.push(line);
+  if (LOG_RING.length > 500) LOG_RING.shift();
+}
+console.log   = (...a) => { ring('INFO',  ...a); _origLog(...a); };
+console.error = (...a) => { ring('ERROR', ...a); _origErr(...a); };
+console.warn  = (...a) => { ring('WARN',  ...a); _origLog(...a); };
 
 function getStatusPayload(isRunning) {
   const settings = getSettings();
@@ -393,15 +417,6 @@ export function startServer(getIsRunning, triggerRun, getMissingVars = () => [])
     startKeepAlive(PORT);
   });
   return server;
-}
-
-function readBody(req) {
-  return new Promise((resolve, reject) => {
-    let data = '';
-    req.on('data', c => { data += c; if (data.length > 1e5) reject(new Error('Body too large')); });
-    req.on('end', () => resolve(data));
-    req.on('error', reject);
-  });
 }
 
 // ─── Keep-alive ──────────────────────────────────────────────────────────────
