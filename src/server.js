@@ -93,6 +93,7 @@ function getNetworkStatus() {
     { key: 'impact',          label: 'Impact.com',           enabled: !!(e.IMPACT_ACCOUNT_SID && e.IMPACT_AUTH_TOKEN) },
     { key: 'cj',              label: 'CJ Affiliate',         enabled: !!(e.CJ_API_KEY && e.CJ_WEBSITE_ID) },
     { key: 'shareasale',      label: 'ShareASale',           enabled: !!(e.SHAREASALE_TOKEN && e.SHAREASALE_SECRET && e.SHAREASALE_AFFILIATE_ID) },
+    { key: 'sovrn',           label: 'SOVRN Commerce',       enabled: !!e.SOVRN_API_KEY },
   ];
   return networks;
 }
