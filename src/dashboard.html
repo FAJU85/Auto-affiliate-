@@ -379,6 +379,7 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
             <div><div style="font-size:11px;color:var(--muted);margin-bottom:2px">SEO Grade</div><div id="lr-seo">—</div></div>
             <div><div style="font-size:11px;color:var(--muted);margin-bottom:2px">Image</div><div style="font-size:13px" id="lr-img">—</div></div>
             <div style="grid-column:1/-1"><div style="font-size:11px;color:var(--muted);margin-bottom:2px">Post URL</div><a id="lr-uri" href="#" target="_blank" style="color:var(--accent);font-size:12px;word-break:break-all">—</a></div>
+            <div id="lr-error-wrap" style="grid-column:1/-1;display:none"><div style="font-size:11px;color:var(--muted);margin-bottom:2px">Error</div><div id="lr-error" style="font-size:12px;color:var(--red);word-break:break-all;padding:8px;background:rgba(239,68,68,.08);border-radius:6px;border:1px solid rgba(239,68,68,.25)"></div></div>
           </div>
         </div>
 
@@ -777,7 +778,8 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
             <option value="warn">Warnings+</option>
             <option value="info">Info+</option>
           </select>
-          <button class="btn btn-secondary" style="font-size:12px;padding:5px 12px" onclick="loadLogs()">↻</button>
+          <button class="btn btn-secondary" style="font-size:12px;padding:5px 12px" onclick="loadLogs()">↻ Refresh</button>
+          <button class="btn btn-secondary" style="font-size:12px;padding:5px 12px" onclick="showDebug()">🔍 Debug Info</button>
         </div>
       </div>
       <div class="card">
@@ -889,6 +891,29 @@ async function loadLogs() {
   S.allLogs = Array.isArray(d) ? d : (Array.isArray(d?.logs) ? d.logs : []);
   filterLogs();
 }
+async function showDebug() {
+  const d = await api('/api/debug');
+  if (!d) { toast('Failed to load debug info', 'err'); return; }
+  const lines = [
+    '=== ENV ===',
+    ...Object.entries(d.env||{}).map(([k,v])=>`${k}: ${v}`),
+    '',
+    '=== NETWORKS ===',
+    ...(d.networks||[]).map(n=>`${n.key}: ${n.enabled?'✓ enabled':'✗ disabled'}`),
+    '',
+    `=== SPACE HOST ===`,
+    d.spaceHost || '(not set)',
+    '',
+    '=== LAST RUN ===',
+    d.lastRun ? JSON.stringify(d.lastRun, null, 2) : '(no runs yet)',
+    '',
+    '=== RECENT ERRORS ===',
+    ...(d.recentErrors||[]).map(e=>`[${e.ts}] ${e.error}`),
+  ].join('\n');
+  const wrap = document.getElementById('logs-wrap');
+  wrap.innerHTML = `<pre style="font-size:11px;white-space:pre-wrap;word-break:break-all;padding:12px;color:var(--text);line-height:1.6">${esc(lines)}</pre>`;
+  document.getElementById('logs-count').textContent = 'Debug info';
+}
 
 // ── RENDER OVERVIEW ────────────────────────────────────────────
 function renderOverview() {
@@ -924,6 +949,14 @@ function renderOverview() {
     const uri=document.getElementById('lr-uri');
     if (lr.postUri) { uri.href=lr.postUri; uri.textContent=lr.postUri.slice(0,50)+'…'; }
     else uri.textContent='—';
+    const errWrap=document.getElementById('lr-error-wrap');
+    const errEl=document.getElementById('lr-error');
+    if (!lr.success && lr.error) {
+      errWrap.style.display='';
+      errEl.textContent=lr.error;
+    } else {
+      errWrap.style.display='none';
+    }
   }
   document.getElementById('p-sched').textContent = st.pipeline?.schedule||'—';
   document.getElementById('p-next').textContent  = st.pipeline?.nextRun ? new Date(st.pipeline.nextRun).toLocaleTimeString() : '—';

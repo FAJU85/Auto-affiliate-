@@ -235,6 +235,37 @@ async function routeRequest(req, res, url, getIsRunning, triggerRunFn, getMissin
     const n = Math.min(parseInt(url.searchParams.get('n') || '100', 10), 500);
     return json(res, 200, { logs: getRecentLogs(n), logFile: '/data/app.log' });
   }
+  if (path === '/api/debug' && req.method === 'GET') {
+    const e = process.env;
+    const allRuns = getRecentRuns(10);
+    const lastRun = allRuns.at(-1) ?? null;
+    return json(res, 200, {
+      env: {
+        BSKY_HANDLE:         e.BSKY_HANDLE ? `set (${e.BSKY_HANDLE})` : 'NOT SET',
+        BSKY_APP_PASSWORD:   e.BSKY_APP_PASSWORD ? `set (length=${e.BSKY_APP_PASSWORD.length})` : 'NOT SET',
+        SOVRN_API_KEY:       e.SOVRN_API_KEY ? `set (length=${e.SOVRN_API_KEY.length})` : 'NOT SET',
+        GROQ_API_KEY:        e.GROQ_API_KEY ? `set (length=${e.GROQ_API_KEY.length})` : 'NOT SET',
+        ADMITAD_FEED_URL:    e.ADMITAD_FEED_URL ? `set` : 'NOT SET',
+        SPACE_ID:            e.SPACE_ID || 'NOT SET',
+        SPACE_HOST:          e.SPACE_HOST || 'NOT SET',
+      },
+      networks: getNetworkStatus(),
+      lastRun: lastRun ? {
+        success:    lastRun.success,
+        error:      lastRun.error,
+        errorStack: lastRun.errorStack,
+        product:    lastRun.product,
+        source:     lastRun.productSource,
+        postUri:    lastRun.postUri,
+        timestamp:  lastRun.timestamp,
+        durationMs: lastRun.durationMs,
+      } : null,
+      recentErrors: allRuns.filter(r => !r.success).slice(-5).map(r => ({
+        ts: r.timestamp, error: r.error, product: r.product,
+      })),
+      spaceHost: getSpaceHost(),
+    });
+  }
   if (path === '/api/stats' && req.method === 'GET') {
     const days = Math.min(parseInt(url.searchParams.get('days') || '7', 10), 90);
     return json(res, 200, getDailyNetworkStats(days));
