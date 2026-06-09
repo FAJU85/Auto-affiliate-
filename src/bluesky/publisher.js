@@ -71,14 +71,6 @@ function truncateToGraphemes(str, maxGraphemes) {
   return codePoints.length <= maxGraphemes ? str : codePoints.slice(0, maxGraphemes).join('');
 }
 
-function safeByteSlice(str, maxBytes) {
-  const buf = Buffer.from(str, 'utf8');
-  if (buf.length <= maxBytes) return str;
-  // Walk back from maxBytes until we land on a valid UTF-8 sequence boundary
-  let end = maxBytes;
-  while (end > 0 && (buf[end] & 0xc0) === 0x80) end--;
-  return buf.slice(0, end).toString('utf8');
-}
 
 const SOURCE_EMOJI = {
   travelpayouts:    '✈️',
@@ -113,31 +105,27 @@ function buildHashtagFacets(text) {
 }
 
 function buildPostRecord(text, deeplink, maxLen) {
-  // Show a clean "Shop now →" CTA label instead of the raw tracking/affiliate URL.
-  // The facet makes the label a clickable hyperlink pointing to the real URL.
-  const ctaLabel  = '🔗 Shop now →';
-  const combined  = `${text}\n\n${ctaLabel}`;
-  // Bluesky enforces 300 graphemes; treat maxLen as grapheme limit
+  const ctaLabel = '🔗 Shop now →';
+  const combined = `${text}\n\n${ctaLabel}`;
   const truncated = truncateToGraphemes(combined, maxLen);
 
-  // Compute byte offsets from the truncated text (not original) to handle edge cases
-  // where grapheme truncation may cut into the CTA suffix.
-  const truncatedBuf  = Buffer.byteLength(truncated, 'utf8');
-  const prefixStr     = text + '\n\n';
-  const prefixBytes   = Math.min(Buffer.byteLength(prefixStr, 'utf8'), truncatedBuf);
-  const ctaBytes      = Buffer.byteLength(ctaLabel, 'utf8');
-  const linkStart     = prefixBytes;
-  const linkEnd       = Math.min(prefixBytes + ctaBytes, truncatedBuf);
-
+  // Find CTA position in the final (possibly-truncated) string and compute
+  // byte offsets from that — not from the original untruncated text.
   const facets = [];
-  if (linkStart < linkEnd) {
-    facets.push({ index: { byteStart: linkStart, byteEnd: linkEnd }, features: [{ $type: 'app.bsky.richtext.facet#link', uri: deeplink }] });
+  const ctaPos = truncated.lastIndexOf(ctaLabel);
+  if (ctaPos !== -1) {
+    const linkStart = Buffer.byteLength(truncated.slice(0, ctaPos), 'utf8');
+    const linkEnd   = linkStart + Buffer.byteLength(ctaLabel, 'utf8');
+    facets.push({
+      index: { byteStart: linkStart, byteEnd: linkEnd },
+      features: [{ $type: 'app.bsky.richtext.facet#link', uri: deeplink }],
+    });
   }
   facets.push(...buildHashtagFacets(truncated));
 
   return {
     $type: 'app.bsky.feed.post',
-    text: combined,
+    text: truncated,
     createdAt: new Date().toISOString(),
     facets,
   };
