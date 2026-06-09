@@ -1,29 +1,18 @@
-FROM node:22-alpine
-
-# Install Python + pip for FastAPI social OAuth backend
-RUN apk add --no-cache python3 py3-pip py3-virtualenv
+FROM python:3.12-slim
 
 WORKDIR /app
 
-# Node dependencies
-COPY package*.json ./
-RUN npm ci --omit=dev
-
-# Python dependencies (isolated venv to avoid distutils conflicts)
-COPY api/requirements.txt ./api/requirements.txt
-RUN python3 -m venv /opt/venv && \
-    /opt/venv/bin/pip install --no-cache-dir -r api/requirements.txt
-
-ENV PATH="/opt/venv/bin:$PATH"
+# Python dependencies
+COPY api/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Application code
-COPY src ./src
 COPY api ./api
-COPY start.sh ./start.sh
-RUN chmod +x start.sh
+COPY src/dashboard.html ./src/dashboard.html
 
-# /data is the HF Spaces persistent storage mount point (enable in Space Settings)
-RUN mkdir -p /data /app/data
+# /data is the HF Spaces persistent storage mount point
+RUN mkdir -p /data
+VOLUME ["/data"]
 
 ENV NODE_ENV=production
 ENV DATA_DIR=/data
@@ -31,6 +20,6 @@ ENV DATA_DIR=/data
 EXPOSE 7860
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
-  CMD wget -qO- http://localhost:7860/health || exit 1
+  CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:7860/health').status==200 else 1)" || exit 1
 
-CMD ["./start.sh"]
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "7860", "--workers", "1"]

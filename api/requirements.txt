@@ -1,6 +1,10 @@
 fastapi==0.115.5
 uvicorn[standard]==0.32.1
-httpx==0.28.1
+httpx>=0.27,<0.28
+atproto==0.0.55
+apscheduler==3.10.4
 python-multipart==0.0.18
 requests-oauthlib==2.0.0
 cryptography==43.0.3
+feedparser==6.0.11
+Pillow==11.0.0
