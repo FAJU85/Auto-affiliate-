@@ -2,7 +2,7 @@ import fetch from 'node-fetch';
 import { randomBytes } from 'crypto';
 import { getProduct } from '../feeds/index.js';
 import { getTopTrends } from '../admitad/trends.js';
-import { generatePostText } from '../ai/text.js';
+import { generatePostText, clearCaptionCache } from '../ai/text.js';
 import { findProductImage } from '../ai/imagesearch.js';
 import { upscaleImage } from '../ai/upscale.js';
 import { optimiseImage } from '../ai/imageoptim.js';
@@ -12,6 +12,7 @@ import { recordRun, wasRecentlyPosted, recordEngagement, getRecentRuns } from '.
 import { getDailySpend } from '../utils/budget.js';
 import { getSpaceHost } from '../config/settings.js';
 import { logger } from '../utils/logger.js';
+import { scoreCaption, getMinScore } from '../seo/scorer.js';
 
 async function downloadImage(url) {
   try {
@@ -73,11 +74,13 @@ function initRunMeta() {
 
 function computeQualityScore(runMeta) {
   if (!runMeta.success) return 0;
-  let score = 40; // base score for a successful post
-  if (runMeta.imageGenerated) score += 30;         // +30 for having an image
-  if (runMeta.captionChars > 100) score += 15;     // +15 for substantial caption
-  if (runMeta.imageSource === 'feed') score += 10; // +10 for direct feed image (higher quality)
+  let score = 30; // base score for a successful post
+  if (runMeta.imageGenerated) score += 25;         // +25 for having an image
+  if (runMeta.captionChars > 100) score += 10;     // +10 for substantial caption
+  if (runMeta.imageSource === 'feed') score += 5;  // +5 for direct feed image (higher quality)
   if (runMeta.trend) score += 5;                   // +5 for trend context
+  // +25 for SEO caption quality (scaled from 0-100 → 0-25)
+  if (runMeta.seoScore != null) score += Math.round((runMeta.seoScore / 100) * 25);
   return Math.min(score, 100);
 }
 
@@ -100,10 +103,23 @@ async function executePost(runMeta) {
   // Exa is used only for image search (in imagesearch.js) — not for text enrichment.
   // The caption is written purely from product data provided by the affiliate network.
 
-  const caption = await generatePostText(payload, trends);
+  let caption = await generatePostText(payload, trends);
+  const seoResult = scoreCaption(caption, []);
+  const minScore  = getMinScore();
+  logger.info(`Caption SEO score: ${seoResult.score}/100 (grade ${seoResult.grade}) — min ${minScore}`);
+  if (seoResult.issues.length) logger.info(`SEO issues: ${seoResult.issues.join('; ')}`);
+  if (seoResult.score < minScore) {
+    // Clear cache and try once more with a fresh generation
+    clearCaptionCache(payload.id);
+    logger.warn(`Caption below min SEO score (${seoResult.score} < ${minScore}) — regenerating`);
+    caption = await generatePostText(payload, trends);
+    const retry = scoreCaption(caption, []);
+    logger.info(`Retry caption SEO score: ${retry.score}/100 (grade ${retry.grade})`);
+  }
   payload = { ...payload, caption };
   runMeta.caption      = caption;
   runMeta.captionChars = caption.length;
+  runMeta.seoScore     = seoResult.score;
   logger.info(`Caption (${caption.length} chars): ${caption.slice(0, 100)}${caption.length > 100 ? '…' : ''}`);
 
   const { imageBuffer: rawImage, imageSource } = await acquireImage(payload);
