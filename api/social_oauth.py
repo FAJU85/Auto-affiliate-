@@ -11,10 +11,10 @@ from pathlib import Path
 from typing import Optional
 
 import httpx
-from fastapi import FastAPI, HTTPException, Request, Query
+from fastapi import APIRouter, HTTPException, Request, Query
 from fastapi.responses import JSONResponse, RedirectResponse
 
-app = FastAPI(title="Social OAuth API", docs_url=None, redoc_url=None)
+router = APIRouter()
 
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data"))
 CONNECTIONS_FILE = DATA_DIR / "social-connections.json"
@@ -73,7 +73,7 @@ PLATFORMS = {
 
 # ── Status ─────────────────────────────────────────────────────────────────────
 
-@app.get("/social/status")
+@router.get("/social/status")
 async def status():
     conns = load_connections()
     result = {}
@@ -90,7 +90,7 @@ async def status():
         }
     return result
 
-@app.delete("/social/{platform}/disconnect")
+@router.delete("/social/{platform}/disconnect")
 async def disconnect(platform: str):
     if platform not in PLATFORMS:
         raise HTTPException(404, "Unknown platform")
@@ -101,7 +101,7 @@ async def disconnect(platform: str):
 
 # ── Mastodon-compatible OAuth2 (Mastodon, Truth Social, CounterSocial) ─────────
 
-@app.post("/social/mastodon/register")
+@router.post("/social/mastodon/register")
 async def mastodon_register(request: Request):
     """Register an OAuth app on the Mastodon instance and return auth URL."""
     body = await request.json()
@@ -151,7 +151,7 @@ async def mastodon_register(request: Request):
 
 # ── Threads (Meta) OAuth2 ──────────────────────────────────────────────────────
 
-@app.get("/social/threads/auth")
+@router.get("/social/threads/auth")
 async def threads_auth():
     client_id = os.environ.get("THREADS_APP_ID", "")
     if not client_id:
@@ -176,7 +176,7 @@ async def threads_auth():
     )
     return {"url": auth_url}
 
-@app.post("/social/threads/callback")
+@router.post("/social/threads/callback")
 async def threads_callback(code: str, state: str):
     client_id = os.environ.get("THREADS_APP_ID", "")
     client_secret = os.environ.get("THREADS_APP_SECRET", "")
@@ -216,7 +216,7 @@ async def threads_callback(code: str, state: str):
 
 # ── Tumblr OAuth2 ──────────────────────────────────────────────────────────────
 
-@app.get("/social/tumblr/auth")
+@router.get("/social/tumblr/auth")
 async def tumblr_auth():
     client_id = os.environ.get("TUMBLR_CLIENT_ID", "")
     if not client_id:
@@ -238,7 +238,7 @@ async def tumblr_auth():
     )
     return {"url": auth_url}
 
-@app.post("/social/tumblr/callback")
+@router.post("/social/tumblr/callback")
 async def tumblr_callback(code: str, state: str):
     client_id     = os.environ.get("TUMBLR_CLIENT_ID", "")
     client_secret = os.environ.get("TUMBLR_CLIENT_SECRET", "")
@@ -279,7 +279,7 @@ async def tumblr_callback(code: str, state: str):
 
 # ── Nostr (keypair) ────────────────────────────────────────────────────────────
 
-@app.post("/social/nostr/connect")
+@router.post("/social/nostr/connect")
 async def nostr_connect(request: Request):
     body = await request.json()
     nsec = body.get("nsec", "").strip()
@@ -299,7 +299,7 @@ async def nostr_connect(request: Request):
 
 # ── Credentials store (Pillowfort, Squabblr, Spill, Substack, Semble) ─────────
 
-@app.post("/social/{platform}/credentials")
+@router.post("/social/{platform}/credentials")
 async def store_credentials(platform: str, request: Request):
     if platform not in PLATFORMS:
         raise HTTPException(404, "Unknown platform")
@@ -324,7 +324,7 @@ async def store_credentials(platform: str, request: Request):
 
 # ── Unified OAuth callback (called from Node.js /oauth/social/callback) ────────
 
-@app.get("/social/callback")
+@router.get("/social/callback")
 async def oauth_callback(
     platform: str,
     code: Optional[str] = Query(None),
@@ -393,7 +393,7 @@ async def _mastodon_complete(platform: str, code: str, state_data: dict):
 
 # ── Plurk OAuth1 ───────────────────────────────────────────────────────────────
 
-@app.get("/social/plurk/auth")
+@router.get("/social/plurk/auth")
 async def plurk_auth():
     consumer_key    = os.environ.get("PLURK_CONSUMER_KEY", "")
     consumer_secret = os.environ.get("PLURK_CONSUMER_SECRET", "")
@@ -422,7 +422,7 @@ async def plurk_auth():
     auth_url = f"https://www.plurk.com/OAuth/authorize?oauth_token={resource_owner_key}"
     return {"url": auth_url}
 
-@app.post("/social/plurk/callback")
+@router.post("/social/plurk/callback")
 async def plurk_callback(oauth_token: str, oauth_verifier: str):
     consumer_key    = os.environ.get("PLURK_CONSUMER_KEY", "")
     consumer_secret = os.environ.get("PLURK_CONSUMER_SECRET", "")
@@ -463,6 +463,6 @@ async def plurk_callback(oauth_token: str, oauth_verifier: str):
 
 # ── Health ─────────────────────────────────────────────────────────────────────
 
-@app.get("/health")
+@router.get("/health")
 async def health():
     return {"ok": True}
