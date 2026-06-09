@@ -69,7 +69,11 @@ function _writeFile(data) {
 export function getSpaceHost() {
   const s = getSettings();
   if (s.spaceHost) return s.spaceHost.replace(/\/$/, '');
-  const host = process.env.SPACE_HOST || process.env.SPACE_ID;
-  if (host) return `https://${host.replace('/', '-').replace(/^https?:\/\//, '')}`;
+  if (process.env.SPACE_HOST) return process.env.SPACE_HOST.replace(/\/$/, '');
+  // SPACE_ID is "owner/space-name" — HF Spaces URL is https://owner-space-name.hf.space
+  if (process.env.SPACE_ID) {
+    const slug = process.env.SPACE_ID.replace('/', '-');
+    return `https://${slug}.hf.space`;
+  }
   return '';
 }
