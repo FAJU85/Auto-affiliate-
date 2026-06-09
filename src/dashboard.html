@@ -996,7 +996,8 @@ async function testNetwork(key, btn) {
   btn.disabled=true; btn.textContent='⏳ Testing…';
   out.textContent=''; out.style.color='var(--muted)';
   try {
-    const d=await api('/api/network/test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({network:key})});
+    const r=await fetch('/api/network/test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({network:key})});
+    const d=r.ok||r.status===200?await r.json():null;
     if (d?.ok) {
       out.style.color='var(--green)';
       out.textContent='✓ OK — '+esc(d.product?.name||'product received');
