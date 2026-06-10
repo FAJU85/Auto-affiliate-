@@ -39,9 +39,9 @@ async def post_to_mastodon(caption: str, deeplink: str) -> str:
             json={"status": text, "visibility": "public"},
         )
     if r.status_code not in (200, 201):
-        raise RuntimeError(f"Mastodon post failed HTTP {r.status_code}: {r.text[:200]}")
+        raise RuntimeError(f"HTTP {r.status_code}: {r.text[:300]}")
     uri = r.json().get("url", "")
-    logger.info(f"Mastodon: posted {uri}")
+    logger.info(f"Posted {uri}", "mastodon")
     return uri
 
 
@@ -99,11 +99,11 @@ async def post_to_x(caption: str, deeplink: str) -> str:
             json={"text": text},
         )
     if r.status_code not in (200, 201):
-        raise RuntimeError(f"X post failed HTTP {r.status_code}: {r.text[:200]}")
+        raise RuntimeError(f"HTTP {r.status_code}: {r.text[:300]}")
     tweet_id = r.json().get("data", {}).get("id", "")
     handle   = c.get("handle", "").lstrip("@")
     uri = f"https://twitter.com/{handle}/status/{tweet_id}" if tweet_id else "https://twitter.com"
-    logger.info(f"X: posted {uri}")
+    logger.info(f"Posted {uri}", "x")
     return uri
 
 
@@ -144,7 +144,7 @@ async def post_to_threads(caption: str, deeplink: str) -> str:
 
     handle = c.get("handle", "")
     uri = f"https://www.threads.net/@{handle}/post/{post_id}" if post_id and handle else "https://www.threads.net"
-    logger.info(f"Threads: posted {uri}")
+    logger.info(f"Posted {uri}", "threads")
     return uri
 
 
@@ -171,7 +171,7 @@ async def post_to_tumblr(caption: str, deeplink: str) -> str:
         raise RuntimeError(f"Tumblr post failed HTTP {r.status_code}: {r.text[:200]}")
     post_id = r.json().get("response", {}).get("id", "")
     uri = f"https://{blog_name}.tumblr.com/post/{post_id}" if post_id else f"https://{blog_name}.tumblr.com"
-    logger.info(f"Tumblr: posted {uri}")
+    logger.info(f"Posted {uri}", "tumblr")
     return uri
 
 
@@ -187,10 +187,10 @@ async def post_to_platform(platform: str, caption: str, deeplink: str) -> str | 
         if platform == "tumblr":
             return await post_to_tumblr(caption, deeplink)
         if platform in ("facebook", "instagram"):
-            logger.warn(f"{platform}: Meta Business API requires app review — posting not supported")
+            logger.warn("Meta Business API requires app review — posting not supported", platform)
             return None
-        logger.warn(f"{platform}: unknown platform — skipping")
+        logger.warn(f"Unknown platform — skipping", platform)
         return None
     except Exception as err:
-        logger.warn(f"{platform} post failed (non-fatal): {err}")
+        logger.error(f"Post failed: {err}", platform)
         return None

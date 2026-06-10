@@ -280,8 +280,25 @@ async def api_slo():
 
 
 @app.get("/api/logs")
-async def logs(n: int = 100):
-    return metrics_logs(n)
+async def logs(n: int = 200, level: str = "", component: str = ""):
+    entries = logger.get_recent_logs(n)
+    if level:
+        entries = [e for e in entries if e.get("level") == level.lower()]
+    if component:
+        entries = [e for e in entries if e.get("component") == component.lower()]
+    return entries
+
+
+@app.post("/api/logs/clear")
+async def clear_logs():
+    n = logger.clear_logs()
+    logger.info("Logs cleared by user", "system")
+    return {"ok": True, "cleared": n}
+
+
+@app.get("/api/logs/summary")
+async def logs_summary():
+    return logger.error_summary()
 
 
 def metrics_logs(n: int) -> list:

@@ -53,7 +53,7 @@ async def _try_sovrn() -> dict | None:
         with Timer("sovrn_fetch"):
             return await get_sovrn_product()
     except Exception as err:  # noqa: BLE001
-        logger.warn(f"SOVRN fetch failed: {err}")
+        logger.warn(f"SOVRN fetch failed: {err}", "sovrn")
         return None
 
 
@@ -64,7 +64,7 @@ async def _get_product() -> dict | None:
     if product:
         return product
 
-    logger.warn("All product networks failed or unconfigured — no product available")
+    logger.warn("All product networks failed or unconfigured — no product available", "pipeline")
     return None
 
 
@@ -157,11 +157,11 @@ async def run_pipeline() -> dict:
         )
     except asyncio.TimeoutError:
         err = f"Pipeline timed out after {PIPELINE_TIMEOUT}s"
-        logger.error(err)
+        logger.error(err, "pipeline")
         return _record({"success": False, "error": err,
                         "durationMs": int((time.time() - started) * 1000)})
     except Exception as err:  # noqa: BLE001
-        logger.error(f"Pipeline uncaught error: {err}")
+        logger.error(f"Pipeline uncaught error: {err}", "pipeline")
         return _record({"success": False, "error": str(err),
                         "durationMs": int((time.time() - started) * 1000)})
     finally:
@@ -185,19 +185,22 @@ async def _execute(started: float) -> dict:
     if "bluesky" in platforms:
         if not s.get("bskyEnabled", True):
             platforms = [p for p in platforms if p != "bluesky"]
-            logger.warn("Bluesky disabled — skipping Bluesky, continuing with other platforms")
+            logger.warn("Bluesky disabled — skipping, continuing with other platforms", "bluesky")
         elif not os.environ.get("BSKY_HANDLE") or not os.environ.get("BSKY_APP_PASSWORD"):
             platforms = [p for p in platforms if p != "bluesky"]
-            logger.warn("Bluesky credentials missing — skipping Bluesky, continuing with other platforms")
+            logger.warn("Bluesky credentials missing — skipping, continuing with other platforms", "bluesky")
 
     if not platforms:
         return _record({"success": False, "error": "No platforms available to post to"})
+
+    logger.info(f"Pipeline starting — platforms: {platforms}", "pipeline")
 
     # ── Phase 1: Product ──
     with Timer("product_fetch"):
         product = await _get_product()
     if not product:
         return _record({"success": False, "error": "No product available from any network"})
+    logger.info(f"Product: {product.get('name', '?')!r} via {product.get('source', '?')}", "pipeline")
 
     # ── Guard: dedup ──
     if metrics.was_recently_posted(product.get("siteUrl"), product.get("name")):
@@ -210,7 +213,7 @@ async def _execute(started: float) -> dict:
     trends = await get_trends()
     with Timer("caption_gen"):
         caption = await ai_text.generate_post_text(product, trends)
-    logger.info(f"Caption ({len(caption)} chars): {caption[:80]}…")
+    logger.info(f"Caption ({len(caption)} chars): {caption[:80]}…", "ai")
 
     # ── Phase 3: Image (non-blocking — failure is fine) ──
     image = await _find_image(product)
@@ -234,18 +237,23 @@ async def _execute(started: float) -> dict:
                 uris["bluesky"] = uri
                 primary_uri = primary_uri or uri
                 any_success = True
+                logger.info(f"Posted OK → {uri}", "bluesky")
             except RuntimeError as _err:
                 _msg = str(_err)
                 if "rate" in _msg.lower() or "429" in _msg.lower():
                     STATE["paused"] = True
-                    logger.warn(f"Bluesky rate-limited — scheduler auto-paused: {_msg}")
-                logger.warn(f"Bluesky failed: {_msg}")
+                    logger.warn(f"Rate-limited — scheduler auto-paused: {_msg}", "bluesky")
+                logger.error(f"Post failed: {_msg}", "bluesky")
         else:
+            logger.info(f"Attempting post…", platform)
             uri = await post_to_platform(platform, caption, redirect)
             if uri:
                 uris[platform] = uri
                 primary_uri = primary_uri or uri
                 any_success = True
+                logger.info(f"Posted OK → {uri}", platform)
+            else:
+                logger.error(f"Post returned no URI — check connection in Accounts", platform)
 
     if not any_success:
         return _record({"success": False, "error": f"All platforms failed: {list(platforms)}"})
@@ -254,7 +262,7 @@ async def _execute(started: float) -> dict:
     metrics.mark_posted(product.get("siteUrl"), product.get("name"), product.get("source"))
 
     duration_ms = int((time.time() - started) * 1000)
-    logger.info(f"Pipeline complete in {duration_ms}ms — posted to {list(uris.keys())}")
+    logger.info(f"Pipeline complete in {duration_ms}ms — posted to {list(uris.keys())}", "pipeline")
 
     return _record({
         "success": True,

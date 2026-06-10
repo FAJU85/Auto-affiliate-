@@ -830,20 +830,69 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
     <!-- ══ LOGS ══ -->
     <div class="page" id="page-logs">
       <div class="sec-hdr">
-        <div><div class="sec-title">System Logs</div><div class="sec-sub" id="logs-count"></div></div>
+        <div><div class="sec-title">Performance Monitor</div><div class="sec-sub" id="logs-count">Loading…</div></div>
         <div class="sec-ctrl">
+          <button class="btn btn-secondary" style="font-size:12px;padding:5px 12px" id="btn-log-live" onclick="toggleLiveLog()">⏸ Pause</button>
+          <button class="btn btn-secondary" style="font-size:12px;padding:5px 12px" onclick="loadLogs()">↻ Refresh</button>
+          <button class="btn btn-secondary" style="font-size:12px;padding:5px 12px" onclick="clearLogs()" style="color:var(--red)">🗑 Clear</button>
+        </div>
+      </div>
+
+      <!-- Health cards row -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:16px" id="log-health-row">
+        <div class="card" style="padding:14px;text-align:center">
+          <div style="font-size:22px;font-weight:700;color:var(--red)" id="lh-errors">—</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">Errors</div>
+        </div>
+        <div class="card" style="padding:14px;text-align:center">
+          <div style="font-size:22px;font-weight:700;color:#f59e0b" id="lh-warns">—</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">Warnings</div>
+        </div>
+        <div class="card" style="padding:14px;text-align:center">
+          <div style="font-size:22px;font-weight:700;color:var(--green)" id="lh-total">—</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">Total Entries</div>
+        </div>
+        <div class="card" style="padding:14px;text-align:center;grid-column:span 1">
+          <div style="font-size:12px;font-weight:600;color:var(--red);word-break:break-word;min-height:32px" id="lh-last-err">—</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">Last Error</div>
+        </div>
+      </div>
+
+      <!-- Component health badges -->
+      <div class="card" style="margin-bottom:16px;padding:14px">
+        <div style="font-size:12px;font-weight:600;margin-bottom:10px;color:var(--muted)">COMPONENT STATUS</div>
+        <div id="log-components" style="display:flex;flex-wrap:wrap;gap:8px">
+          <span style="font-size:12px;color:var(--muted)">Loading…</span>
+        </div>
+      </div>
+
+      <!-- Filters + log stream -->
+      <div class="card">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
           <select class="f-select" style="width:auto;font-size:12px" id="log-filter" onchange="filterLogs()">
             <option value="all">All levels</option>
-            <option value="error">Errors</option>
+            <option value="error">Errors only</option>
             <option value="warn">Warnings+</option>
             <option value="info">Info+</option>
           </select>
-          <button class="btn btn-secondary" style="font-size:12px;padding:5px 12px" onclick="loadLogs()">↻ Refresh</button>
-          <button class="btn btn-secondary" style="font-size:12px;padding:5px 12px" onclick="showDebug()">🔍 Debug Info</button>
+          <select class="f-select" style="width:auto;font-size:12px" id="log-comp-filter" onchange="filterLogs()">
+            <option value="all">All components</option>
+            <option value="pipeline">Pipeline</option>
+            <option value="bluesky">Bluesky</option>
+            <option value="mastodon">Mastodon</option>
+            <option value="x">X (Twitter)</option>
+            <option value="threads">Threads</option>
+            <option value="tumblr">Tumblr</option>
+            <option value="ai">AI</option>
+            <option value="sovrn">SOVRN</option>
+            <option value="oauth">OAuth</option>
+            <option value="scheduler">Scheduler</option>
+            <option value="system">System</option>
+          </select>
+          <input class="f-input" style="flex:1;min-width:160px;font-size:12px" id="log-search" placeholder="Search logs…" oninput="filterLogs()">
+          <span style="font-size:11px;color:var(--muted)" id="log-filtered-count"></span>
         </div>
-      </div>
-      <div class="card">
-        <div id="logs-wrap" style="max-height:600px;overflow-y:auto">
+        <div id="logs-wrap" style="max-height:520px;overflow-y:auto;font-family:monospace;font-size:12px">
           <div class="empty"><div class="empty-txt">Loading…</div></div>
         </div>
       </div>
@@ -962,38 +1011,58 @@ async function loadNetworkStats() {
   S.networkStats = Array.isArray(d) ? d : [];
 }
 // loadAccounts is defined further down (after renderSocialPlatforms)
+let _logLive = true;
+function toggleLiveLog() {
+  _logLive = !_logLive;
+  document.getElementById('btn-log-live').textContent = _logLive ? '⏸ Pause' : '▶ Live';
+}
+async function clearLogs() {
+  if (!confirm('Clear all log entries?')) return;
+  await api('/api/logs/clear', 'POST');
+  S.allLogs = [];
+  filterLogs();
+  await loadLogSummary();
+  toast('Logs cleared', 'ok');
+}
+async function loadLogSummary() {
+  const s = await api('/api/logs/summary');
+  if (!s) return;
+  document.getElementById('lh-errors').textContent = s.totalErrors ?? '—';
+  document.getElementById('lh-warns').textContent  = s.totalWarns  ?? '—';
+  const lastErr = s.lastError;
+  document.getElementById('lh-last-err').textContent = lastErr
+    ? `[${(lastErr.component||'?').toUpperCase()}] ${(lastErr.msg||'').slice(0,80)}`
+    : 'None';
+  // Component badges
+  const COMP_ICONS = {pipeline:'⚙️',bluesky:'🦋',mastodon:'🐘',x:'𝕏',threads:'🧵',tumblr:'📝',ai:'🤖',sovrn:'🛒',oauth:'🔑',scheduler:'⏱',system:'🖥'};
+  const comps = s.byComponent || {};
+  const el = document.getElementById('log-components');
+  const keys = Object.keys(comps);
+  if (!keys.length) { el.innerHTML = '<span style="font-size:12px;color:var(--muted)">No issues detected</span>'; return; }
+  el.innerHTML = keys.map(k => {
+    const c = comps[k];
+    const hasErr = c.errors > 0;
+    const color = hasErr ? 'var(--red)' : c.warns > 0 ? '#f59e0b' : 'var(--green)';
+    return `<span style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:20px;border:1px solid ${color};font-size:12px;cursor:pointer;color:${color}" onclick="filterByComponent('${k}')">
+      ${COMP_ICONS[k]||'●'} ${k} ${hasErr?`<strong>${c.errors}e</strong>`:''} ${c.warns?`<span style="opacity:.7">${c.warns}w</span>`:''}
+    </span>`;
+  }).join('');
+}
+function filterByComponent(comp) {
+  document.getElementById('log-comp-filter').value = comp;
+  filterLogs();
+}
 async function loadLogs() {
-  const d = await api('/api/logs?n=150');
+  if (!_logLive) return;
+  const d = await api('/api/logs?n=300');
   if (!d) {
-    const el = document.getElementById('logs-list');
-    if (el) el.innerHTML = '<div class="empty"><div class="empty-txt" style="color:var(--red)">⚠ Failed to load logs — API unreachable</div></div>';
+    document.getElementById('logs-wrap').innerHTML = '<div class="empty"><div class="empty-txt" style="color:var(--red)">⚠ Failed to load logs — API unreachable</div></div>';
     return;
   }
   S.allLogs = Array.isArray(d) ? d : (Array.isArray(d?.logs) ? d.logs : []);
+  document.getElementById('lh-total').textContent = S.allLogs.length;
+  await loadLogSummary();
   filterLogs();
-}
-async function showDebug() {
-  const d = await api('/api/debug');
-  if (!d) { toast('Failed to load debug info', 'err'); return; }
-  const lines = [
-    '=== ENV ===',
-    ...Object.entries(d.env||{}).map(([k,v])=>`${k}: ${v}`),
-    '',
-    '=== NETWORKS ===',
-    ...(d.networks||[]).map(n=>`${n.key}: ${n.enabled?'✓ enabled':'✗ disabled'}`),
-    '',
-    `=== SPACE HOST ===`,
-    d.spaceHost || '(not set)',
-    '',
-    '=== LAST RUN ===',
-    d.lastRun ? JSON.stringify(d.lastRun, null, 2) : '(no runs yet)',
-    '',
-    '=== RECENT ERRORS ===',
-    ...(d.recentErrors||[]).map(e=>`[${e.ts}] ${e.error}`),
-  ].join('\n');
-  const wrap = document.getElementById('logs-wrap');
-  wrap.innerHTML = `<pre style="font-size:11px;white-space:pre-wrap;word-break:break-all;padding:12px;color:var(--text);line-height:1.6">${esc(lines)}</pre>`;
-  document.getElementById('logs-count').textContent = 'Debug info';
 }
 
 // ── RENDER OVERVIEW ────────────────────────────────────────────
@@ -1358,18 +1427,41 @@ function renderSocialPlatforms(social) {
 }
 
 // ── FILTER LOGS ───────────────────────────────────────────────
+const COMP_COLORS = {pipeline:'#8b5cf6',bluesky:'#0ea5e9',mastodon:'#6d28d9',x:'#e2e8f0',threads:'#ec4899',tumblr:'#60a5fa',ai:'#10b981',sovrn:'#f59e0b',oauth:'#6366f1',scheduler:'#94a3b8',system:'#64748b'};
 function filterLogs() {
-  const lv=document.getElementById('log-filter')?.value||'all';
-  const LVL={all:0,debug:1,info:2,warn:3,error:4};
-  const min=LVL[lv]||0;
-  const logs=S.allLogs.filter(l=>(LVL[l.level]||2)>=min);
-  document.getElementById('logs-count').textContent=logs.length+' entries';
-  const el=document.getElementById('logs-wrap');
-  if (!logs.length) { el.innerHTML='<div class="empty"><div class="empty-txt">No log entries</div></div>'; return; }
-  el.innerHTML=logs.map(l=>`<div class="log-row"><span class="log-ts">${(l.ts||l.timestamp||'').replace('T',' ').slice(0,19)}</span><span class="log-lvl ${l.level||'info'}">${(l.level||'info').toUpperCase()}</span><span class="log-msg">${esc(l.msg||l.message||'')}</span></div>`).join('');
-  const errs=S.allLogs.filter(l=>l.level==='error').length;
-  const badge=document.getElementById('log-badge');
-  badge.textContent=errs||''; badge.style.display=errs?'':'none';
+  const lv   = document.getElementById('log-filter')?.value || 'all';
+  const comp = document.getElementById('log-comp-filter')?.value || 'all';
+  const q    = (document.getElementById('log-search')?.value || '').toLowerCase();
+  const LVL  = {all:0,debug:1,info:2,warn:3,error:4};
+  const min  = LVL[lv] || 0;
+  let logs = S.allLogs.filter(l => {
+    if ((LVL[l.level] || 2) < min) return false;
+    if (comp !== 'all' && l.component !== comp) return false;
+    if (q && !(l.msg||'').toLowerCase().includes(q) && !(l.component||'').includes(q)) return false;
+    return true;
+  });
+  document.getElementById('log-filtered-count').textContent = logs.length + ' / ' + S.allLogs.length;
+  document.getElementById('logs-count').textContent = S.allLogs.length + ' total entries · ' + S.allLogs.filter(l=>l.level==='error').length + ' errors';
+  const el = document.getElementById('logs-wrap');
+  if (!logs.length) { el.innerHTML='<div class="empty"><div class="empty-txt">No matching log entries</div></div>'; return; }
+  // Show newest first
+  const reversed = [...logs].reverse();
+  el.innerHTML = reversed.map(l => {
+    const lvl   = l.level || 'info';
+    const clr   = lvl==='error'?'var(--red)':lvl==='warn'?'#f59e0b':'var(--muted)';
+    const ccomp = l.component || 'system';
+    const cclr  = COMP_COLORS[ccomp] || '#94a3b8';
+    const ts    = (l.ts||'').replace('T',' ').slice(0,19);
+    return `<div style="display:flex;gap:8px;align-items:baseline;padding:5px 0;border-bottom:1px solid var(--border);line-height:1.4">
+      <span style="color:var(--dim);flex-shrink:0;width:142px;font-size:11px">${ts}</span>
+      <span style="color:${clr};font-weight:700;flex-shrink:0;width:44px;font-size:11px">${lvl.toUpperCase()}</span>
+      <span style="color:${cclr};flex-shrink:0;width:80px;font-size:11px;font-weight:600">[${ccomp}]</span>
+      <span style="color:var(--text);word-break:break-word;flex:1">${esc(l.msg||l.message||'')}</span>
+    </div>`;
+  }).join('');
+  const errs = S.allLogs.filter(l=>l.level==='error').length;
+  const badge = document.getElementById('log-badge');
+  if (badge) { badge.textContent=errs||''; badge.style.display=errs?'':'none'; }
 }
 
 // ── SETTINGS ──────────────────────────────────────────────────
@@ -1889,6 +1981,7 @@ window.addEventListener('resize', () => {
 })();
 loadAll();
 setInterval(()=>{ loadStatus(); if(currentPage==='analytics'){loadClicks().then(renderAnalytics);} if(currentPage==='logs')loadLogs(); }, 20000);
+setInterval(()=>{ if(currentPage==='logs' && _logLive) loadLogs(); }, 5000);
 </script>
 <!-- SOVRN Commerce (VigLink) — monetizes outbound product links on this page -->
 <script type="text/javascript">
