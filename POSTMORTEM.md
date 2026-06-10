@@ -78,7 +78,7 @@ The auto-affiliate pipeline ran on schedule but produced zero Bluesky posts. Use
 
 | # | Action | Owner | Status | Deadline |
 |---|---|---|---|---|
-| 1 | Add grapheme-count unit tests to publisher | Engineering | Open | 2026-06-17 |
+| 1 | Add grapheme-count unit tests to publisher | Engineering | Done | 2026-06-10 |
 | 2 | Add E2E smoke test: post a real draft post | Engineering | Open | 2026-06-17 |
 | 3 | Set up external uptime monitor (UptimeRobot / BetterStack) on `/health` | Ops | Open | 2026-06-14 |
 | 4 | Add Bluesky credential validation on startup with clear error log | Engineering | Done | 2026-06-10 |
@@ -123,6 +123,26 @@ The auto-affiliate pipeline ran on schedule but produced zero Bluesky posts. Use
 **File:** `api/social_oauth.py` — `get_base_url()` missing `.hf.space` suffix  
 **Impact:** All OAuth callbacks (Mastodon, Threads, Tumblr) sent to `https://vooom-fast-growth` instead of `https://vooom-fast-growth.hf.space` → OAuth flows fail immediately  
 **Fix:** Added `.hf.space` suffix; matches fix already applied to JS `getSpaceHost()`
+
+---
+
+## Cycle 3 Findings (2026-06-10 SRE Cycle 3)
+
+### RC-13: JS test suite had 2 failing tests — stale import reference and wrong count
+**Files:** `src/ai/exa.test.js`, `src/feeds/index.test.js`  
+**Code:** `exa.test.js` imported `getProductHighlights` (renamed to `searchProductUrls` in a prior refactor); `index.test.js` asserted `TASKS.length === 9` after sovrn was added as the 10th network  
+**Impact:** CI test step would fail on every push; blockers for confident deployment  
+**Fix:** `exa.test.js` rewritten to use `searchProductUrls` with correct return type (`[]`); `index.test.js` count updated to 10 with `sovrn` added to expectedKeys
+
+### RC-14: No Python unit tests existed — grapheme truncation untested
+**Files:** `api/bluesky_client.py` — `_grapheme_len`, `_truncate_graphemes`, `_build_post_text`  
+**Impact:** RC-1/RC-4 were fixed but the fix had zero test coverage; regression risk on any refactor  
+**Fix:** `api/tests/test_grapheme.py` — 24 tests covering ASCII, emoji, CJK, combining chars, deeplink preservation, byte-vs-grapheme distinction, edge cases (empty input, zero limit)
+
+### RC-15: pytest not in requirements — tests couldn't run in CI
+**File:** `api/requirements.txt` — pytest absent  
+**Impact:** Even after test file was created, CI `validate` job would not run Python tests  
+**Fix:** Added `pytest>=8.0,<9.1` to requirements; added `python -m pytest api/tests/ -v` step to CI validate job
 
 ---
 
