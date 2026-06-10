@@ -36,7 +36,7 @@ ENV_KEYS = [
     "MISTRAL_API_KEY", "ADMITAD_CLIENT_ID", "TAKEADS_API_KEY",
     "TRAVELPAYOUTS_TOKEN", "SPACE_HOST", "CRON_SCHEDULE",
 ]
-REQUIRED_VARS = ["BSKY_HANDLE", "BSKY_APP_PASSWORD"]
+REQUIRED_VARS: list[str] = []  # Bluesky is optional when other platforms are selected
 
 NETWORKS = [
     {"key": "sovrn", "name": "SOVRN Commerce", "env": "SOVRN_API_KEY"},
@@ -214,11 +214,16 @@ async def run():
     cap = float(s.get("dailyCostCap", 2.0))
     if budget.get_daily_spend() >= cap:
         return {"ok": False, "error": f"Daily cost cap ${cap:.2f} reached"}
-    if not s.get("bskyEnabled", True):
-        return {"ok": False, "error": "Bluesky is disabled — re-enable it in Accounts"}
-    missing = _missing_vars()
-    if missing:
-        return {"ok": False, "error": f"Missing credentials: {', '.join(missing)}"}
+    platforms = s.get("publishPlatforms", ["bluesky"])
+    if not platforms:
+        return {"ok": False, "error": "No publishing platforms selected — enable at least one in Settings"}
+    # Only enforce Bluesky credential check when Bluesky is actually selected
+    if "bluesky" in platforms:
+        if not s.get("bskyEnabled", True):
+            return {"ok": False, "error": "Bluesky is disabled — re-enable it in Accounts or deselect it in Settings"}
+        missing = [v for v in ["BSKY_HANDLE", "BSKY_APP_PASSWORD"] if not os.environ.get(v)]
+        if missing:
+            return {"ok": False, "error": f"Bluesky credentials missing: {', '.join(missing)}"}
 
     import asyncio
     asyncio.create_task(pipeline.run_pipeline())
