@@ -42,18 +42,25 @@ def _build_prompts(product: dict, trends: list) -> tuple[str, str]:
     s = settings.get_settings()
     trend = (trends[0] if trends else product.get("category", "trending"))
 
-    # Inject CTA phrase list into the system prompt so the AI picks the best fit
-    # for the product type — not randomly, but based on category/product context.
-    cta_phrases: list[str] = s.get("ctaPhrases") or ["👉 Shop now"]
-    cta_list = "\n".join(f"  - {p}" for p in cta_phrases)
+    # Inject CTA instruction: AI generates or selects the best phrase for this product type.
+    # ctaPhrases from settings are offered as inspiration; AI can use one verbatim OR
+    # craft a better one following the same psychological angle.
+    cta_phrases: list[str] = s.get("ctaPhrases") or []
     base_system = s.get("postSystemPrompt", "Write a short affiliate post.")
-    system = (
-        f"{base_system}\n\n"
-        f"END your post with EXACTLY one of these CTA phrases — choose the one that best "
-        f"fits the product type and category (e.g. urgency for limited-time deals, "
-        f"lifestyle for fashion/beauty, value for tech/home):\n{cta_list}\n"
-        f"Do NOT invent a new phrase. Use one verbatim from the list above."
-    )
+    if cta_phrases:
+        cta_examples = "  " + "\n  ".join(cta_phrases[:6])
+        cta_instruction = (
+            f"\n\nCTA RULE: End your post with exactly ONE short, psychology-driven CTA phrase "
+            f"(max 6 words + optional emoji). Pick the angle that best fits this specific product — "
+            f"urgency for deals, aspiration for fashion/beauty, curiosity for tech, pain-relief for health. "
+            f"Use one of these examples verbatim, or craft a stronger one in the same style:\n{cta_examples}"
+        )
+    else:
+        cta_instruction = (
+            "\n\nEnd with exactly one short, punchy CTA phrase (max 6 words + emoji). "
+            "Match the psychological angle to the product type."
+        )
+    system = base_system + cta_instruction
 
     # Safely format user template — unknown keys fall back to empty string
     template = s.get("postUserTemplate", "{name}")

@@ -209,6 +209,40 @@ def _link_facets(full_text: str, deeplink: str) -> list:
     }]
 
 
+def _build_post_with_cta_link(caption: str, deeplink: str) -> tuple[str, list]:
+    """Build post text + facets for Bluesky.
+
+    If the caption contains a CTA phrase from settings, that phrase becomes the
+    clickable link (no raw URL shown in the post — URL is hidden behind the CTA text).
+    Falls back to appending the raw URL with a standard facet if no CTA phrase found.
+
+    This is the Bluesky-native way to do "End Hair Loss Today 🔗" as a hyperlink.
+    """
+    from .utils.settings import get_settings
+    cta_phrases: list[str] = get_settings().get("ctaPhrases") or []
+
+    if deeplink and cta_phrases:
+        text = _truncate_graphemes(caption.strip(), GRAPHEME_LIMIT)
+        raw = text.encode("utf-8")
+        for phrase in cta_phrases:
+            encoded = phrase.strip().encode("utf-8")
+            if not encoded:
+                continue
+            start = raw.find(encoded)
+            if start >= 0:
+                facet = [{
+                    "$type": "app.bsky.richtext.facet",
+                    "index": {"byteStart": start, "byteEnd": start + len(encoded)},
+                    "features": [{"$type": "app.bsky.richtext.facet#link", "uri": deeplink}],
+                }]
+                logger.info(f"Bluesky: CTA facet '{phrase.strip()}' → {deeplink[:50]}")
+                return text, facet
+
+    # No CTA phrase found in caption — fallback: append raw URL
+    full_text = _build_post_text(caption, deeplink)
+    return full_text, _link_facets(full_text, deeplink)
+
+
 # ── Image upload ─────────────────────────────────────────────────────────────
 
 async def _upload_image(access_jwt: str, image_bytes: bytes) -> dict | None:
@@ -248,8 +282,7 @@ async def _post_async(caption: str, deeplink: str, image_bytes: bytes | None, pr
 
     access_jwt, did = await _get_session(handle, password)
 
-    full_text = _build_post_text(caption, deeplink)
-    facets    = _link_facets(full_text, deeplink)
+    full_text, facets = _build_post_with_cta_link(caption, deeplink)
 
     embed = None
     if image_bytes:
