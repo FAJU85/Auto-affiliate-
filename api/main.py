@@ -428,6 +428,66 @@ async def insights():
     }
 
 
+# ── Diagnose ────────────────────────────────────────────────────────────────
+
+@app.get("/api/diagnose")
+async def diagnose():
+    """Full pre-flight diagnosis: checks every blocker that prevents a successful post."""
+    s = settings.get_settings()
+    cap = float(s.get("dailyCostCap", 2.0))
+    spend = round(budget.get_daily_spend(), 4)
+    missing = _missing_vars()
+    bsky_enabled = s.get("bskyEnabled", True)
+    sovrn_key = bool(os.environ.get("SOVRN_API_KEY"))
+
+    checks = [
+        {
+            "name": "Bluesky handle",
+            "ok": bool(os.environ.get("BSKY_HANDLE")),
+            "detail": os.environ.get("BSKY_HANDLE", "NOT SET — add BSKY_HANDLE to Space Secrets"),
+        },
+        {
+            "name": "Bluesky app password",
+            "ok": bool(os.environ.get("BSKY_APP_PASSWORD")),
+            "detail": "set" if os.environ.get("BSKY_APP_PASSWORD") else "NOT SET — add BSKY_APP_PASSWORD to Space Secrets",
+        },
+        {
+            "name": "Bluesky enabled",
+            "ok": bsky_enabled,
+            "detail": "enabled" if bsky_enabled else "DISABLED — click Re-enable in Accounts tab",
+        },
+        {
+            "name": "Pipeline not paused",
+            "ok": not pipeline.STATE["paused"],
+            "detail": "not paused" if not pipeline.STATE["paused"] else "PAUSED — click Resume",
+        },
+        {
+            "name": "Daily cost cap",
+            "ok": spend < cap,
+            "detail": f"${spend:.4f} spent of ${cap:.2f} cap",
+        },
+        {
+            "name": "SOVRN product network",
+            "ok": sovrn_key,
+            "detail": "SOVRN_API_KEY set" if sovrn_key else "NOT SET — no product source available (add SOVRN_API_KEY to Space Secrets)",
+        },
+    ]
+
+    last_run = pipeline.STATE["lastRun"]
+    last_error = pipeline.STATE["lastError"]
+    cb = cb_statuses()
+
+    all_ok = all(c["ok"] for c in checks)
+    return {
+        "ready": all_ok,
+        "checks": checks,
+        "lastRun": last_run,
+        "lastError": last_error,
+        "circuitBreakers": cb,
+        "pipelineRunning": pipeline.STATE["running"],
+    }
+
+
 # ── AI generation ───────────────────────────────────────────────────────────
 
 @app.post("/api/ai/generate")

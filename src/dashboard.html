@@ -332,6 +332,7 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
     <div class="topbar-spacer"></div>
     <span id="topbar-ts" style="font-size:11px;color:var(--dim);margin-right:10px"></span>
     <button class="btn btn-secondary" onclick="refresh()" id="btn-refresh">↻ Refresh</button>
+    <button class="btn btn-secondary" onclick="triggerDiagnose()" id="btn-diagnose" style="margin-left:8px">🩺 Diagnose</button>
     <button class="btn btn-primary" onclick="triggerRun()" id="btn-run" style="margin-left:8px">▶ Run Now</button>
   </div>
 
@@ -394,6 +395,7 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
               <button class="btn btn-primary" style="font-size:12px;padding:5px 12px" onclick="triggerRun()" id="btn-run2">▶ Run</button>
               <button class="btn btn-secondary" style="font-size:12px;padding:5px 12px" id="btn-pause" onclick="togglePause()">⏸ Pause</button>
               <button class="btn btn-secondary" style="font-size:12px;padding:5px 12px" onclick="triggerDryRun()">🔍 Dry Run</button>
+              <button class="btn btn-secondary" style="font-size:12px;padding:5px 12px" onclick="triggerDiagnose()">🩺 Diagnose</button>
             </div>
           </div>
         </div>
@@ -1391,25 +1393,49 @@ async function triggerRun() {
 
   toast('⏳ Running pipeline…', 'ok');
 
-  // Poll status every 3s until pipeline stops (max 5 min), then show result
+  // Poll at 500ms first (catches fast failures), then every 3s for up to 5 min
   let polls = 0;
-  const interval = setInterval(async () => {
+  const delays = [500, 1000, 2000, 3000];
+  const poll = async () => {
     polls++;
-    // Safety valve: re-enable after 5 min regardless
-    if (polls > 100) { clearInterval(interval); btns.forEach(b => b.disabled = false); return; }
+    if (polls > 105) { btns.forEach(b => b.disabled = false); return; }
     const st = await fetch('/api/status').then(r=>r.json()).catch(()=>null);
-    if (!st) return;
+    if (!st) { setTimeout(poll, 3000); return; }
     S.status = st;
     renderOverview();
-    if (st.pipeline?.running) return;
-    clearInterval(interval);
+    if (st.pipeline?.running) { setTimeout(poll, 3000); return; }
     btns.forEach(b => b.disabled = false);
     const run = (st.runs || []).find(r => new Date(r.timestamp).getTime() >= triggerTs - 500);
     if (run?.success) toast(`✓ Posted: ${run.product || 'done'} via ${run.productSource || ''}`, 'ok');
     else if (run?.error) toast(`✗ ${run.error}`, 'err');
     else if (st.lastRun?.error) toast(`✗ ${st.lastRun.error}`, 'err');
     else toast('Run complete', 'ok');
-  }, 3000);
+  };
+  setTimeout(poll, delays[0]);
+}
+
+async function triggerDiagnose() {
+  const btn = document.getElementById('btn-diagnose');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Diagnosing…'; }
+  const d = await fetch('/api/diagnose').then(r=>r.json()).catch(()=>null);
+  if (btn) { btn.disabled = false; btn.textContent = '🩺 Diagnose'; }
+  if (!d) { toast('⚠ Could not reach /api/diagnose', 'err'); return; }
+
+  const lines = d.checks.map(c => `${c.ok ? '✓' : '✗'} ${c.name}: ${c.detail}`);
+  if (d.lastError) lines.push(`Last error: ${d.lastError}`);
+  const cbIssues = Object.entries(d.circuitBreakers || {}).filter(([,v])=>v==='open').map(([k])=>k);
+  if (cbIssues.length) lines.push(`Circuit breakers OPEN: ${cbIssues.join(', ')}`);
+
+  const msg = lines.join('\n');
+  // Show in a modal-like alert with line breaks
+  const failed = d.checks.filter(c=>!c.ok);
+  if (d.ready) {
+    toast('✓ All checks passed — pipeline is ready to post', 'ok');
+  } else {
+    failed.forEach(c => toast(`✗ ${c.name}: ${c.detail}`, 'err'));
+  }
+  // Also log to console for full detail
+  console.log('[Diagnose]', d);
 }
 
 async function triggerDryRun() {
