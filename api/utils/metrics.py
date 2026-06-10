@@ -10,8 +10,10 @@ A "run" record looks like:
 
 import json
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
+
+DEDUP_TTL_HOURS = int(os.environ.get("DEDUP_TTL_HOURS", "168"))  # 7 days default
 
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data"))
 METRICS_FILE = DATA_DIR / "metrics.json"
@@ -81,7 +83,15 @@ def _dedup_key(url: str | None, name: str | None) -> str:
 
 
 def was_recently_posted(url: str | None, name: str | None) -> bool:
-    return _dedup_key(url, name) in _load().get("posted", {})
+    entry = _load().get("posted", {}).get(_dedup_key(url, name))
+    if entry is None:
+        return False
+    try:
+        posted_at = datetime.fromisoformat(entry.get("ts", ""))
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=DEDUP_TTL_HOURS)
+        return posted_at > cutoff
+    except Exception:
+        return False  # malformed ts → allow re-post
 
 
 def mark_posted(url: str | None, name: str | None, source: str | None) -> None:
@@ -96,7 +106,15 @@ def mark_posted(url: str | None, name: str | None, source: str | None) -> None:
 
 def get_dedup_status() -> dict:
     posted = _load().get("posted", {})
-    return {"count": len(posted)}
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=DEDUP_TTL_HOURS)
+    active = 0
+    for entry in posted.values():
+        try:
+            if datetime.fromisoformat(entry.get("ts", "")) > cutoff:
+                active += 1
+        except Exception:
+            pass
+    return {"count": len(posted), "activeCount": active, "ttlHours": DEDUP_TTL_HOURS}
 
 
 def get_dedup_by_source() -> dict:
