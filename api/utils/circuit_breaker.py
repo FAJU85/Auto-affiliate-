@@ -74,7 +74,7 @@ class CircuitBreaker:
 
 
 # Global circuit breakers for each external service
-bluesky_cb = CircuitBreaker("bluesky", failure_threshold=3, recovery_timeout=300)
+bluesky_cb = CircuitBreaker("bluesky", failure_threshold=3, recovery_timeout=60)
 groq_cb    = CircuitBreaker("groq",    failure_threshold=5, recovery_timeout=60)
 mistral_cb = CircuitBreaker("mistral", failure_threshold=5, recovery_timeout=60)
 sovrn_cb   = CircuitBreaker("sovrn",   failure_threshold=5, recovery_timeout=120)
