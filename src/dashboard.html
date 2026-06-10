@@ -1378,19 +1378,25 @@ async function triggerRun() {
   const triggerTs = Date.now();
   const d = await fetch('/api/run', {method:'POST'}).then(r=>r.json()).catch(()=>null);
 
-  if (!d?.ok) {
-    toast(d?.error || 'Run failed — check Logs tab for details', 'err');
+  if (!d) {
+    toast('⚠ Could not reach the API — is the Space running?', 'err');
+    btns.forEach(b => b.disabled = false);
+    return;
+  }
+  if (!d.ok) {
+    toast(`✗ ${d.error || 'Run failed — check Logs tab for details'}`, 'err');
     btns.forEach(b => b.disabled = false);
     return;
   }
 
   toast('⏳ Running pipeline…', 'ok');
 
-  // Poll status every 3s until pipeline stops, then show result
+  // Poll status every 3s until pipeline stops (max 5 min), then show result
   let polls = 0;
   const interval = setInterval(async () => {
     polls++;
-    if (polls > 60) { clearInterval(interval); btns.forEach(b => b.disabled = false); return; }
+    // Safety valve: re-enable after 5 min regardless
+    if (polls > 100) { clearInterval(interval); btns.forEach(b => b.disabled = false); return; }
     const st = await fetch('/api/status').then(r=>r.json()).catch(()=>null);
     if (!st) return;
     S.status = st;
@@ -1398,10 +1404,10 @@ async function triggerRun() {
     if (st.pipeline?.running) return;
     clearInterval(interval);
     btns.forEach(b => b.disabled = false);
-    // Find the run triggered after we clicked
     const run = (st.runs || []).find(r => new Date(r.timestamp).getTime() >= triggerTs - 500);
     if (run?.success) toast(`✓ Posted: ${run.product || 'done'} via ${run.productSource || ''}`, 'ok');
-    else if (run?.error) toast(`✗ Run failed: ${run.error}`, 'err');
+    else if (run?.error) toast(`✗ ${run.error}`, 'err');
+    else if (st.lastRun?.error) toast(`✗ ${st.lastRun.error}`, 'err');
     else toast('Run complete', 'ok');
   }, 3000);
 }

@@ -186,6 +186,20 @@ async def stats(days: int = 7):
 async def run():
     if pipeline.STATE["running"]:
         return {"ok": False, "error": "Pipeline already running"}
+    if pipeline.STATE["paused"]:
+        return {"ok": False, "error": "Pipeline is paused — click Resume first"}
+
+    # Pre-flight: check settings-level guards before firing the background task
+    s = settings.get_settings()
+    cap = float(s.get("dailyCostCap", 2.0))
+    if budget.get_daily_spend() >= cap:
+        return {"ok": False, "error": f"Daily cost cap ${cap:.2f} reached"}
+    if not s.get("bskyEnabled", True):
+        return {"ok": False, "error": "Bluesky is disabled — re-enable it in Accounts"}
+    missing = _missing_vars()
+    if missing:
+        return {"ok": False, "error": f"Missing credentials: {', '.join(missing)}"}
+
     import asyncio
     asyncio.create_task(pipeline.run_pipeline())
     return {"ok": True}
