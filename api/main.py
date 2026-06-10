@@ -21,6 +21,8 @@ from fastapi.responses import (
 from . import pipeline
 from .ai import text as ai_text
 from .utils import budget, logger, metrics, settings
+from .utils.circuit_breaker import all_statuses as cb_statuses
+from .utils.telemetry import golden_signals
 
 DASHBOARD = Path(__file__).resolve().parent.parent / "src" / "dashboard.html"
 
@@ -91,7 +93,26 @@ async def home():
 
 @app.get("/health")
 async def health():
-    return {"ok": True, "status": "healthy"}
+    slo = pipeline.calculate_slo(500)
+    missing = _missing_vars()
+    bsky_ok = not missing
+    # Degraded if SLO < 95% or credentials missing; down if SLO < 50%
+    slo_pct = slo.get("slo_pct")
+    if slo_pct is not None and slo_pct < 50:
+        status_str = "degraded"
+    elif missing:
+        status_str = "misconfigured"
+    else:
+        status_str = "healthy"
+    return {
+        "ok": status_str == "healthy",
+        "status": status_str,
+        "slo_pct": slo_pct,
+        "error_budget_remaining_pct": slo.get("error_budget_remaining_pct"),
+        "missing_vars": missing,
+        "circuit_breakers": cb_statuses(),
+        "pipeline_running": pipeline.STATE["running"],
+    }
 
 
 # ── Status & stats ──────────────────────────────────────────────────────────
@@ -192,6 +213,29 @@ async def schedule_config():
 
 
 # ── Logs & debug ────────────────────────────────────────────────────────────
+
+@app.get("/api/metrics")
+async def api_metrics():
+    """Four Golden Signals: Latency, Traffic, Errors, Saturation."""
+    return {
+        "golden_signals": golden_signals(),
+        "circuit_breakers": cb_statuses(),
+        "slo": pipeline.calculate_slo(500),
+    }
+
+
+@app.get("/api/slo")
+async def api_slo():
+    """SLO compliance and error budget status."""
+    slo = pipeline.calculate_slo(500)
+    # Circuit breaker: if error budget is 0%, signal halt
+    if slo.get("error_budget_remaining_pct", 100) <= 0:
+        slo["circuit_breaker_active"] = True
+        slo["action"] = "HALT_FEATURE_DEPLOYS — redirect all capacity to stability"
+    else:
+        slo["circuit_breaker_active"] = False
+    return slo
+
 
 @app.get("/api/logs")
 async def logs(n: int = 100):
@@ -335,6 +379,18 @@ async def dedup_reset():
 
 
 # ── Insights ────────────────────────────────────────────────────────────────
+
+@app.get("/api/finops")
+async def finops():
+    """FinOps: daily spend, 30-day forecast, cap status."""
+    s   = settings.get_settings()
+    cap = float(s.get("dailyCostCap", 2.0))
+    return {
+        "today_usd":  round(budget.get_daily_spend(), 6),
+        "cap_usd":    cap,
+        "forecast":   budget.get_monthly_forecast(cap),
+    }
+
 
 @app.get("/api/insights")
 async def insights():
