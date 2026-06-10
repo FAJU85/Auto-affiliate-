@@ -59,16 +59,31 @@ def _build_prompts(product: dict, trends: list) -> tuple[str, str]:
 
 def _looks_usable(text: str) -> bool:
     """Reject clearly broken AI output before returning it."""
-    import unicodedata
+    import re
     if not text or len(text) < 20:
         return False
-    # Count non-ASCII chars — if >40% of the text is non-ASCII, likely wrong language
+    # Reject non-English: >40% non-ASCII chars
     non_ascii = sum(1 for c in text if ord(c) > 127)
     if non_ascii / len(text) > 0.40:
         return False
-    # Reject if ratio of punctuation/symbols to letters is too high (spam/broken output)
+    # Reject if almost no actual letters (symbol/punctuation spam)
     letters = sum(1 for c in text if c.isalpha())
     if letters < 10:
+        return False
+    # Reject CamelCase keyword-list spam (e.g. "NorthFaceThermoball SummerDeals ClickNow")
+    # Real sentences have spaces between lower-case words; keyword dumps are CamelCase runs
+    words = text.split()
+    if len(words) >= 4:
+        camel_words = sum(1 for w in words if re.match(r'^[A-Z][a-z]+[A-Z]', w))
+        if camel_words / len(words) > 0.5:
+            return False
+    # Reject if the text has no verb-like words and no punctuation (likely a title/tag list)
+    has_verb = bool(re.search(
+        r'\b(get|buy|shop|save|grab|try|discover|find|enjoy|upgrade|love|perfect|great|best|top|now|today)\b',
+        text, re.I
+    ))
+    has_punctuation = bool(re.search(r'[.,!?—]', text))
+    if not has_verb and not has_punctuation and len(words) > 6:
         return False
     return True
 

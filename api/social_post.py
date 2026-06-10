@@ -96,6 +96,48 @@ def _pick_hashtags(product: dict) -> list[str]:
     return ["#deals", "#shopping"]
 
 
+async def _upload_mastodon_image(instance: str, auth_header: dict, image: bytes) -> str | None:
+    """Upload image to Mastodon and return media_id, or None on failure.
+
+    Uses /api/v2/media (async upload). Polls until processing completes (up to 15s).
+    Note: to change the app label shown on posts ("Auto Affiliate Bot"), rename the
+    OAuth app at {instance}/settings/applications in your Mastodon account settings.
+    """
+    import asyncio
+    upload_timeout = httpx.Timeout(connect=10, read=60, write=60, pool=5)
+    try:
+        async with httpx.AsyncClient(timeout=upload_timeout) as client:
+            r = await client.post(
+                f"{instance}/api/v2/media",
+                headers=auth_header,
+                files={"file": ("product.jpg", image, "image/jpeg")},
+                data={"description": "Product image"},
+            )
+        if r.status_code == 202:
+            # Async processing — poll /api/v1/media/:id until ready
+            media_id = r.json().get("id")
+            if not media_id:
+                return None
+            async with httpx.AsyncClient(timeout=POST_TIMEOUT) as client:
+                for _ in range(6):  # up to ~15s
+                    await asyncio.sleep(2.5)
+                    poll = await client.get(f"{instance}/api/v1/media/{media_id}", headers=auth_header)
+                    if poll.status_code == 200:
+                        logger.info(f"Mastodon image ready: {media_id}", "mastodon")
+                        return media_id
+            logger.warn("Mastodon image processing timed out — posting without image", "mastodon")
+            return None
+        if r.status_code in (200, 201):
+            media_id = r.json().get("id")
+            logger.info(f"Mastodon image uploaded: {media_id}", "mastodon")
+            return media_id
+        logger.warn(f"Mastodon image upload HTTP {r.status_code}: {r.text[:200]}", "mastodon")
+        return None
+    except Exception as err:
+        logger.warn(f"Mastodon image upload error (non-fatal): {err}", "mastodon")
+        return None
+
+
 async def _post_mastodon(caption: str, deeplink: str, image: bytes | None = None, product: dict | None = None) -> str:
     conns = _load_connections()
     c = conns.get("mastodon", {})
@@ -109,36 +151,36 @@ async def _post_mastodon(caption: str, deeplink: str, image: bytes | None = None
     # Build hashtags from product metadata
     hashtags = " ".join(_pick_hashtags(product or {}))
 
-    # Format: caption + hashtags + Shop Now link
-    link_line = f"Shop Now 🔗 {deeplink}" if deeplink else ""
-    parts = [p for p in [caption, hashtags, link_line] if p]
+    # CTA: hide the raw URL behind an HTML anchor — Mastodon renders HTML in status text.
+    # The link text shown to readers will be "Shop Now 🔗" with no raw URL visible.
+    if deeplink:
+        cta = f'<a href="{deeplink}">Shop Now 🔗</a>'
+    else:
+        cta = ""
+
+    # Build HTML status: caption + hashtags on a new line + CTA anchor
+    # Mastodon truncates at 500 chars (visible text, not HTML length)
+    caption_safe = caption.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    parts = [p for p in [caption_safe, hashtags, cta] if p]
     text = "\n\n".join(parts)
-    if len(text) > 500:
-        # Trim caption to fit, preserving hashtags and link
-        overhead = len("\n\n".join(["", hashtags, link_line])) + 1
-        caption = caption[:max(0, 497 - overhead)] + "…"
-        parts = [p for p in [caption, hashtags, link_line] if p]
+
+    # Trim caption if the full post would exceed 500 visible chars
+    # Visible length ≈ len(caption) + len(hashtags) + len("Shop Now 🔗") + separators
+    visible_len = len(caption) + len(hashtags) + 12 + 6  # 12 = "Shop Now 🔗", 6 = separators
+    if visible_len > 498:
+        trim_to = max(0, 498 - len(hashtags) - 18)
+        caption_safe = (caption[:trim_to] + "…").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        parts = [p for p in [caption_safe, hashtags, cta] if p]
         text = "\n\n".join(parts)
 
-    # Upload image if provided
+    # Upload image
     media_ids = []
     if image:
-        try:
-            async with httpx.AsyncClient(timeout=POST_TIMEOUT) as client:
-                r_img = await client.post(
-                    f"{instance}/api/v1/media",
-                    headers=auth_header,
-                    files={"file": ("product.jpg", image, "image/jpeg")},
-                )
-            if r_img.status_code in (200, 201, 202):
-                media_ids = [r_img.json().get("id")]
-                logger.info("Image uploaded to Mastodon", "mastodon")
-            else:
-                logger.warn(f"Mastodon image upload failed HTTP {r_img.status_code} — posting without image", "mastodon")
-        except Exception as err:
-            logger.warn(f"Mastodon image upload error (non-fatal): {err}", "mastodon")
+        mid = await _upload_mastodon_image(instance, auth_header, image)
+        if mid:
+            media_ids = [mid]
 
-    payload: dict = {"status": text, "visibility": "public"}
+    payload: dict = {"status": text, "visibility": "public", "content_type": "text/html"}
     if media_ids:
         payload["media_ids"] = media_ids
 
@@ -148,6 +190,15 @@ async def _post_mastodon(caption: str, deeplink: str, image: bytes | None = None
             headers=auth_header,
             json=payload,
         )
+    # Some instances don't support content_type — retry as plain text with HTML stripped
+    if r.status_code == 422:
+        import re as _re
+        plain_text = _re.sub(r"<[^>]+>", "", text).strip()
+        plain_text = plain_text.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+        payload["status"] = plain_text
+        del payload["content_type"]
+        async with httpx.AsyncClient(timeout=POST_TIMEOUT) as client:
+            r = await client.post(f"{instance}/api/v1/statuses", headers=auth_header, json=payload)
     if r.status_code not in (200, 201):
         raise RuntimeError(f"HTTP {r.status_code}: {r.text[:300]}")
     uri = r.json().get("url", "")
