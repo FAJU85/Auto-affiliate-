@@ -9,6 +9,7 @@ Reliability:
   - Template fallback always succeeds
 """
 
+import asyncio
 import os
 import random
 
@@ -101,21 +102,29 @@ async def _chat(url: str, key: str, model: str, system: str, user: str) -> str |
         "temperature": TEMPERATURE,
     }
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-    async with httpx.AsyncClient(timeout=API_TIMEOUT) as client:
-        r = await client.post(url, json=payload, headers=headers)
 
-    if r.status_code == 429:
-        record_saturation(model)
-        retry_after = int(r.headers.get("Retry-After", 5))
-        logger.warn(f"AI {model} rate-limited (429) — Retry-After: {retry_after}s")
-        raise RuntimeError(f"rate_limited:{retry_after}")
+    # Up to 3 attempts with exponential backoff on 429
+    for attempt in range(3):
+        async with httpx.AsyncClient(timeout=API_TIMEOUT) as client:
+            r = await client.post(url, json=payload, headers=headers)
 
-    if r.status_code != 200:
-        logger.warn(f"AI {model} HTTP {r.status_code}: {r.text[:120]}")
-        return None
+        if r.status_code == 429:
+            record_saturation(model)
+            retry_after = int(r.headers.get("Retry-After", 2 ** attempt * 5))
+            logger.warn(f"AI {model} rate-limited (429) — waiting {retry_after}s (attempt {attempt+1}/3)")
+            if attempt < 2:
+                await asyncio.sleep(min(retry_after, 30))
+                continue
+            raise RuntimeError(f"rate_limited:{retry_after}")
 
-    content = r.json().get("choices", [{}])[0].get("message", {}).get("content", "")
-    return content or None
+        if r.status_code != 200:
+            logger.warn(f"AI {model} HTTP {r.status_code}: {r.text[:120]}")
+            return None
+
+        content = r.json().get("choices", [{}])[0].get("message", {}).get("content", "")
+        return content or None
+
+    return None
 
 
 async def _try_groq(system: str, user: str) -> str | None:
@@ -165,12 +174,13 @@ def _template(product: dict, trends: list) -> str:
     price = _fmt_price(product)
     cat   = product.get("category", "")
     hooks = [
-        f"Great deal on {name}",
-        f"Check out {name}",
-        f"{name} is worth every penny",
-        f"Looking for {cat.lower() + ' gear' if cat else 'a great deal'}? Try {name}",
+        f"Upgrade your {cat.lower() if cat else 'life'} with {name}",
+        f"Save big on {name}",
+        f"{name} — top-rated and worth every penny",
+        f"Grab the {name} while it lasts",
+        f"Best value on {name} right now",
     ]
-    tail = f" — just {price}." if price else "."
+    tail = f" — just {price}. Get it now!" if price else ". Get it now!"
     return _clean(random.choice(hooks) + tail)
 
 

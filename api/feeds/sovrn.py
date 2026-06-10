@@ -121,7 +121,7 @@ async def monetize_url(merchant_url: str) -> str:
         return merchant_url
     try:
         encoded = quote(merchant_url, safe="")
-        api_url = f"{API_BASE}/link?key={key}&u={encoded}"
+        api_url = f"{API_BASE}/link?key={key}&out={encoded}"
         async with httpx.AsyncClient(timeout=8) as client:
             r = await client.get(api_url, headers={"Accept": "application/json"})
         if r.status_code != 200:

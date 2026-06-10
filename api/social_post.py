@@ -182,6 +182,12 @@ async def _post_x(caption: str, deeplink: str) -> str:
             headers={"Authorization": header, "Content-Type": "application/json"},
             json={"text": text},
         )
+    if r.status_code == 403:
+        raise RuntimeError(
+            "X post blocked (403) — app needs 'Read and Write' OAuth 1.0a permissions. "
+            "Fix: developer.twitter.com → your app → Settings → User authentication settings → "
+            "enable OAuth 1.0a with Read+Write → regenerate and re-enter your Access Token & Secret."
+        )
     if r.status_code not in (200, 201):
         raise RuntimeError(f"HTTP {r.status_code}: {r.text[:300]}")
     tweet_id = r.json().get("data", {}).get("id", "")
