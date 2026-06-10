@@ -20,10 +20,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: |
-          pip install -q fastapi uvicorn httpx atproto apscheduler \
-                        feedparser Pillow python-multipart
-        # Install without pinned versions to catch conflicts early
+        run: pip install -q -r api/requirements.txt
 
       - name: Import check (catches syntax + missing deps)
         run: |
