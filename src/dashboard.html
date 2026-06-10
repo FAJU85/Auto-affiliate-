@@ -333,6 +333,7 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
     <span id="topbar-ts" style="font-size:11px;color:var(--dim);margin-right:10px"></span>
     <button class="btn btn-secondary" onclick="refresh()" id="btn-refresh">↻ Refresh</button>
     <button class="btn btn-secondary" onclick="triggerDiagnose()" id="btn-diagnose" style="margin-left:8px">🩺 Diagnose</button>
+    <button class="btn btn-danger" onclick="resetCircuitBreakers()" id="btn-cb-reset" style="margin-left:8px;display:none">⚡ Reset CB</button>
     <button class="btn btn-primary" onclick="triggerRun()" id="btn-run" style="margin-left:8px">▶ Run Now</button>
   </div>
 
@@ -1029,6 +1030,14 @@ function renderOverview() {
     }
     document.getElementById('net-breakdown-sub').textContent = total+' total posts (7d)';
   }
+
+  // Show Reset CB button in topbar when any circuit breaker is open
+  const cbBtn = document.getElementById('btn-cb-reset');
+  if (cbBtn) {
+    const cbs = S.status?.circuit_breakers || [];
+    const anyOpen = Array.isArray(cbs) ? cbs.some(c=>c.state==='open') : Object.values(cbs||{}).some(v=>v==='open');
+    cbBtn.style.display = anyOpen ? '' : 'none';
+  }
 }
 
 // ── RENDER ANALYTICS ──────────────────────────────────────────
@@ -1434,8 +1443,32 @@ async function triggerDiagnose() {
   } else {
     failed.forEach(c => toast(`✗ ${c.name}: ${c.detail}`, 'err'));
   }
-  // Also log to console for full detail
+  // Show Reset CB button if any breaker is open
+  const cbBtn = document.getElementById('btn-cb-reset');
+  if (cbBtn && d.circuitBreakers) {
+    const anyOpen = Array.isArray(d.circuitBreakers)
+      ? d.circuitBreakers.some(c=>c.state==='open')
+      : Object.values(d.circuitBreakers).some(v=>v==='open');
+    cbBtn.style.display = anyOpen ? '' : 'none';
+  }
   console.log('[Diagnose]', d);
+}
+
+async function resetCircuitBreakers() {
+  const btn = document.getElementById('btn-cb-reset');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Resetting…'; }
+  const d = await fetch('/api/circuit-breaker/reset', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({name:'all'})
+  }).then(r=>r.json()).catch(()=>null);
+  if (btn) { btn.disabled = false; btn.textContent = '⚡ Reset CB'; }
+  if (d?.ok) {
+    toast('✓ Circuit breakers reset — pipeline will attempt Bluesky on next Run', 'ok');
+    if (btn) btn.style.display = 'none';
+  } else {
+    toast('⚠ Reset failed', 'err');
+  }
 }
 
 async function triggerDryRun() {

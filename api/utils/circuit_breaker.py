@@ -57,6 +57,12 @@ class CircuitBreaker:
             self.record_failure()
             raise
 
+    def reset(self) -> None:
+        """Manually close the circuit breaker (operator override)."""
+        self._failures = 0
+        self._state = "closed"
+        self._opened_at = 0.0
+
     def status(self) -> dict:
         return {
             "name": self.name,
@@ -73,6 +79,27 @@ groq_cb    = CircuitBreaker("groq",    failure_threshold=5, recovery_timeout=60)
 mistral_cb = CircuitBreaker("mistral", failure_threshold=5, recovery_timeout=60)
 sovrn_cb   = CircuitBreaker("sovrn",   failure_threshold=5, recovery_timeout=120)
 
+_ALL: dict[str, CircuitBreaker] = {
+    "bluesky": bluesky_cb,
+    "groq":    groq_cb,
+    "mistral": mistral_cb,
+    "sovrn":   sovrn_cb,
+}
+
 
 def all_statuses() -> list[dict]:
-    return [cb.status() for cb in [bluesky_cb, groq_cb, mistral_cb, sovrn_cb]]
+    return [cb.status() for cb in _ALL.values()]
+
+
+def reset_breaker(name: str) -> bool:
+    """Reset a named circuit breaker. Returns True if found."""
+    cb = _ALL.get(name)
+    if cb:
+        cb.reset()
+        return True
+    return False
+
+
+def reset_all() -> None:
+    for cb in _ALL.values():
+        cb.reset()

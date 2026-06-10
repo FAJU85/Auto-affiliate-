@@ -21,7 +21,7 @@ from fastapi.responses import (
 from . import pipeline
 from .ai import text as ai_text
 from .utils import budget, logger, metrics, settings
-from .utils.circuit_breaker import all_statuses as cb_statuses
+from .utils.circuit_breaker import all_statuses as cb_statuses, reset_breaker, reset_all as cb_reset_all
 from .utils.telemetry import golden_signals
 
 DASHBOARD = Path(__file__).resolve().parent.parent / "src" / "dashboard.html"
@@ -155,6 +155,7 @@ async def status():
         "stats": _stats(),
         "runs": metrics.get_recent_runs(20),
         "missingVars": _missing_vars(),
+        "circuit_breakers": cb_statuses(),
         # top-level lastRun for dashboard compatibility
         "lastRun": last_run,
     }
@@ -426,6 +427,23 @@ async def insights():
         "dedup": metrics.get_dedup_status(),
         "totalClicks": metrics.get_total_clicks(),
     }
+
+
+# ── Circuit breaker management ───────────────────────────────────────────────
+
+@app.post("/api/circuit-breaker/reset")
+async def circuit_breaker_reset(request: Request):
+    body = await request.json()
+    name = body.get("name", "").strip()
+    if name == "all":
+        cb_reset_all()
+        return {"ok": True, "reset": "all"}
+    if name:
+        ok = reset_breaker(name)
+        return {"ok": ok, "reset": name if ok else None,
+                "error": None if ok else f"Unknown circuit breaker: {name}"}
+    cb_reset_all()
+    return {"ok": True, "reset": "all"}
 
 
 # ── Diagnose ────────────────────────────────────────────────────────────────
