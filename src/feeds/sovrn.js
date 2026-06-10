@@ -1,4 +1,38 @@
 /**
+ * ============================================================
+ * BLAMELESS POST-MORTEM: SOVRN `out` parameter bug
+ * Date: 2026-06-10
+ * Severity: Medium — all SOVRN link monetization silently fell back to raw URLs
+ * Duration: Unknown (likely since SOVRN feed was first introduced)
+ * ============================================================
+ *
+ * WHAT HAPPENED
+ * The VigLink/SOVRN link API (`/api/link`) requires the destination URL to be
+ * passed as the `out` query parameter. The code was using `u=` instead, which
+ * is not a valid parameter. The API returned HTTP 200 with the original URL
+ * unchanged (or an error body), causing the `data?.url` fallback to silently
+ * return the un-monetized merchant URL. No affiliate commission was earned on
+ * any SOVRN-sourced post.
+ *
+ * ROOT CAUSE
+ * The parameter name was copied incorrectly during initial implementation.
+ * The VigLink API docs clearly specify `out=<encoded-url>`. No test existed
+ * to verify the monetized URL differed from the input URL.
+ *
+ * IMPACT
+ * - 0% affiliate commission on SOVRN products posted since feature launch
+ * - Posts were still published (fallback path worked correctly)
+ * - No user-visible errors (silent degradation)
+ *
+ * FIX
+ * Changed `u=${encoded}` → `out=${encoded}` in the API URL construction.
+ *
+ * ACTION ITEMS
+ * 1. [DONE] Fix parameter name: `u=` → `out=`
+ * 2. Add a test that asserts the monetized URL != the input URL (requires live key)
+ * 3. Add a log assertion: warn if monetized URL === original URL (already present)
+ * ============================================================
+ *
  * SOVRN Commerce (VigLink) feed + link monetizer.
  *
  * SOVRN Commerce wraps any merchant URL into a tracked affiliate link.
@@ -59,7 +93,8 @@ export async function monetizeUrl(merchantUrl) {
 
   try {
     const encoded = encodeURIComponent(merchantUrl);
-    const apiUrl  = `${API_BASE}/link?key=${key}&u=${encoded}&ref=https%3A%2F%2Fbluesky.app`;
+    // VigLink/SOVRN API uses `out` for the destination URL (not `u`)
+    const apiUrl  = `${API_BASE}/link?key=${key}&out=${encoded}&ref=https%3A%2F%2Fbluesky.app`;
     const res = await fetch(apiUrl, {
       headers: { Accept: 'application/json' },
       signal: AbortSignal.timeout(8_000),
