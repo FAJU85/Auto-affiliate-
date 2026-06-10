@@ -297,18 +297,22 @@ async def store_credentials(platform: str, request: Request):
         raise HTTPException(400, "This platform uses OAuth, not credentials")
 
     body = await request.json()
-    handle   = body.get("handle", "")
-    password = body.get("password", "")
+    handle = body.get("handle", "")
     if not handle:
         raise HTTPException(400, "handle required")
 
     conns = load_connections()
-    conns[platform] = {
-        "connected":   True,
-        "handle":      handle,
-        "password":    password,
-        "connectedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
-    }
+    entry: dict = {"connected": True, "handle": handle, "connectedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ")}
+
+    if platform == "x":
+        entry["consumer_key"]    = body.get("consumer_key", "")
+        entry["consumer_secret"] = body.get("consumer_secret", "")
+        entry["access_token"]    = body.get("access_token", "")
+        entry["access_secret"]   = body.get("access_secret", "")
+    else:
+        entry["password"] = body.get("password", "")
+
+    conns[platform] = entry
     save_connections(conns)
     return {"ok": True, "handle": handle}
 

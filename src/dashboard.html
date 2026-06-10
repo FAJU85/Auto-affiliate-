@@ -580,8 +580,11 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
               <span id="qc-x-badge" class="badge badge-fail" style="font-size:11px">✗</span>
             </div>
             <input class="f-input" id="qc-x-handle" placeholder="@username" style="margin-bottom:6px" />
-            <input class="f-input" id="qc-x-pass" type="password" placeholder="API Bearer Token" autocomplete="off" />
-            <div style="font-size:11px;color:var(--muted);margin-top:4px">Get token at developer.twitter.com</div>
+            <input class="f-input" id="qc-x-consumer-key" type="password" placeholder="Consumer Key (API Key)" autocomplete="off" style="margin-bottom:6px" />
+            <input class="f-input" id="qc-x-consumer-secret" type="password" placeholder="Consumer Secret (API Secret)" autocomplete="off" style="margin-bottom:6px" />
+            <input class="f-input" id="qc-x-access-token" type="password" placeholder="Access Token" autocomplete="off" style="margin-bottom:6px" />
+            <input class="f-input" id="qc-x-access-secret" type="password" placeholder="Access Token Secret" autocomplete="off" />
+            <div style="font-size:11px;color:var(--muted);margin-top:4px">developer.twitter.com → your app → Keys and tokens</div>
           </div>
           <!-- Facebook -->
           <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px">
@@ -1558,19 +1561,30 @@ async function quickSaveAll() {
   btn.disabled = true;
   msg.textContent = 'Saving…';
 
-  const platforms = [
-    { key: 'x',         handleId: 'qc-x-handle',        passId: 'qc-x-pass' },
-    { key: 'facebook',  handleId: 'qc-facebook-handle',  passId: 'qc-facebook-pass' },
-    { key: 'instagram', handleId: 'qc-instagram-handle', passId: 'qc-instagram-pass' },
-  ];
-
   const results = [];
-  for (const p of platforms) {
-    const handle   = document.getElementById(p.handleId)?.value.trim();
-    const password = document.getElementById(p.passId)?.value;
-    if (!handle) { results.push(`${p.key}: skipped (no username)`); continue; }
-    const d = await api(`/api/social/${p.key}/credentials`, 'POST', { handle, password });
-    results.push(d?.ok ? `${p.key}: ✓ saved` : `${p.key}: ✗ ${d?.error || 'failed'}`);
+
+  // X — needs 4 API keys
+  const xHandle = document.getElementById('qc-x-handle')?.value.trim();
+  if (xHandle) {
+    const d = await api('/api/social/x/credentials', 'POST', {
+      handle:          xHandle,
+      consumer_key:    document.getElementById('qc-x-consumer-key')?.value.trim(),
+      consumer_secret: document.getElementById('qc-x-consumer-secret')?.value.trim(),
+      access_token:    document.getElementById('qc-x-access-token')?.value.trim(),
+      access_secret:   document.getElementById('qc-x-access-secret')?.value.trim(),
+    });
+    results.push(d?.ok ? 'x: ✓ saved' : `x: ✗ ${d?.error || 'failed'}`);
+  } else {
+    results.push('x: skipped (no username)');
+  }
+
+  // Facebook & Instagram — handle + access token
+  for (const p of ['facebook', 'instagram']) {
+    const handle   = document.getElementById(`qc-${p}-handle`)?.value.trim();
+    const password = document.getElementById(`qc-${p}-pass`)?.value;
+    if (!handle) { results.push(`${p}: skipped (no username)`); continue; }
+    const d = await api(`/api/social/${p}/credentials`, 'POST', { handle, password });
+    results.push(d?.ok ? `${p}: ✓ saved` : `${p}: ✗ ${d?.error || 'failed'}`);
   }
 
   msg.textContent = results.join(' · ');
