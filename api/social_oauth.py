@@ -40,8 +40,13 @@ def load_states() -> dict:
     except Exception:
         return {}
 
+_OAUTH_STATE_TTL = 600  # 10 minutes — enough for any OAuth flow
+
 def save_states(data: dict):
     DATA_DIR.mkdir(parents=True, exist_ok=True)
+    # Prune expired states before saving
+    cutoff = time.time() - _OAUTH_STATE_TTL
+    data = {k: v for k, v in data.items() if float(v.get("ts", 0)) > cutoff}
     tmp = str(OAUTH_STATE_FILE) + ".tmp"
     Path(tmp).write_text(json.dumps(data, indent=2))
     Path(tmp).rename(OAUTH_STATE_FILE)
@@ -51,7 +56,10 @@ def get_base_url() -> str:
     if not host:
         space_id = os.environ.get("SPACE_ID", "")
         if space_id:
-            host = f"https://{space_id.replace('/', '-')}"
+            # SPACE_ID is "owner/space-name" → "owner-space-name.hf.space"
+            host = f"https://{space_id.replace('/', '-')}.hf.space"
+    if host and not host.startswith("http"):
+        host = "https://" + host
     return host.rstrip("/")
 
 # ── Platform registry ──────────────────────────────────────────────────────────
