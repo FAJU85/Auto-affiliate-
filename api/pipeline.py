@@ -202,8 +202,8 @@ async def _execute(started: float) -> dict:
         return _record({"success": False, "error": "No product available from any network"})
     logger.info(f"Product: {product.get('name', '?')!r} via {product.get('source', '?')}", "pipeline")
 
-    # ── Guard: dedup ──
-    if metrics.was_recently_posted(product.get("siteUrl"), product.get("name")):
+    # ── Guard: dedup (1h hard block — prevents exact repeat within same session) ──
+    if metrics.was_posted_within(product.get("siteUrl"), product.get("name"), hours=1):
         return _record({
             "success": False, "error": "Product already posted recently (dedup skip)",
             "product": product.get("name"), "productSource": product.get("source"),

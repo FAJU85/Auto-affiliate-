@@ -607,6 +607,14 @@ async def dedup_reset():
     return {"ok": True, "cleared": cleared}
 
 
+@app.post("/api/slo/reset")
+async def slo_reset():
+    """Purge run history to reset SLO baseline after fixing a systematic failure."""
+    cleared = metrics.clear_run_history()
+    logger.info(f"SLO run history cleared ({cleared} records) — baseline reset", "system")
+    return {"ok": True, "cleared": cleared}
+
+
 # ── Insights ────────────────────────────────────────────────────────────────
 
 @app.get("/api/finops")
