@@ -83,11 +83,17 @@ async def _get_session(handle: str, password: str) -> tuple[str, str]:
                 f"{BSKY_API}/com.atproto.server.createSession",
                 json={"identifier": handle, "password": password},
             )
+    if r.status_code == 429:
+        retry_after = int(r.headers.get("Retry-After", 60))
+        raise RuntimeError(
+            f"Bluesky createSession rate-limited (429) — "
+            f"too many login attempts. Wait {retry_after}s before retrying."
+        )
     if r.status_code != 200:
         body = r.text[:300]
         raise RuntimeError(
             f"Bluesky login failed HTTP {r.status_code} — "
-            f"check BSKY_HANDLE/BSKY_APP_PASSWORD. Response: {body}"
+            f"check BSKY_HANDLE and BSKY_APP_PASSWORD in Space Secrets. Response: {body}"
         )
     data = r.json()
     access_jwt = data["accessJwt"]
@@ -226,6 +232,9 @@ async def _post_async(caption: str, deeplink: str, image_bytes: bytes | None, pr
 
     if r.status_code != 200:
         body = r.text[:300]
+        if r.status_code == 429:
+            retry_after = int(r.headers.get("Retry-After", 60))
+            raise RuntimeError(f"Bluesky posting rate-limited (429) — wait {retry_after}s")
         if r.status_code in (401, 403):
             _clear_session()
         raise RuntimeError(f"Bluesky createRecord HTTP {r.status_code}: {body}")
@@ -259,6 +268,10 @@ async def post_to_bluesky(
                 raise
             last_err = e
             msg = str(e).lower()
+            if "rate-limited" in msg or "429" in msg:
+                # Don't keep retrying — we'll just deepen the rate limit hole
+                logger.warn(f"Bluesky rate-limited on attempt {attempt} — aborting retries: {e}")
+                raise
             if "401" in msg or "403" in msg or "unauthorized" in msg:
                 _clear_session()
             logger.warn(f"Bluesky attempt {attempt} failed: {e}")

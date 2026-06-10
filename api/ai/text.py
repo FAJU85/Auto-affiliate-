@@ -25,6 +25,7 @@ MISTRAL_MODEL = "mistral-small-latest"
 
 MAX_CHARS    = 200
 API_TIMEOUT  = 20   # seconds
+TEMPERATURE  = 0.55  # lower = more predictable English output
 
 
 def _fmt_price(product: dict) -> str:
@@ -55,11 +56,35 @@ def _build_prompts(product: dict, trends: list) -> tuple[str, str]:
     return s.get("postSystemPrompt", "Write a short affiliate post."), user
 
 
+def _looks_usable(text: str) -> bool:
+    """Reject clearly broken AI output before returning it."""
+    import unicodedata
+    if not text or len(text) < 20:
+        return False
+    # Count non-ASCII chars — if >40% of the text is non-ASCII, likely wrong language
+    non_ascii = sum(1 for c in text if ord(c) > 127)
+    if non_ascii / len(text) > 0.40:
+        return False
+    # Reject if ratio of punctuation/symbols to letters is too high (spam/broken output)
+    letters = sum(1 for c in text if c.isalpha())
+    if letters < 10:
+        return False
+    return True
+
+
 def _clean(text: str) -> str:
-    text = (text or "").strip().strip('"').strip()
-    # Strip any URLs the AI may have snuck in
     import re
+    text = (text or "").strip().strip('"').strip()
+    # Strip markdown bold/italic/headers
+    text = re.sub(r"\*{1,3}([^*]+)\*{1,3}", r"\1", text)
+    text = re.sub(r"#{1,6}\s*", "", text)
+    # Strip URLs
     text = re.sub(r"https?://\S+", "", text).strip()
+    # Strip hashtags (AI adds them despite instruction)
+    text = re.sub(r"#\w+", "", text).strip()
+    # Collapse multiple spaces/newlines
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    text = re.sub(r"\n+", " ", text).strip()
     if len(text) > MAX_CHARS:
         text = text[: MAX_CHARS - 1].rsplit(" ", 1)[0].rstrip() + "…"
     return text
@@ -72,8 +97,8 @@ async def _chat(url: str, key: str, model: str, system: str, user: str) -> str |
             {"role": "system", "content": system},
             {"role": "user",   "content": user},
         ],
-        "max_tokens": 60,
-        "temperature": 0.85,
+        "max_tokens": 80,
+        "temperature": TEMPERATURE,
     }
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
     async with httpx.AsyncClient(timeout=API_TIMEOUT) as client:
@@ -136,16 +161,17 @@ async def _try_mistral(system: str, user: str) -> str | None:
 
 
 def _template(product: dict, trends: list) -> str:
-    name  = product.get("name", "this find")
+    name  = product.get("name", "this product")
     price = _fmt_price(product)
+    cat   = product.get("category", "")
     hooks = [
-        f"✨ Spotted: {name}",
-        f"\U0001f525 Deal alert — {name}",
-        f"Don't sleep on {name}",
-        f"Obsessed with {name} rn",
+        f"Great deal on {name}",
+        f"Check out {name}",
+        f"{name} is worth every penny",
+        f"Looking for {cat.lower() + ' gear' if cat else 'a great deal'}? Try {name}",
     ]
-    tail = f" for just {price}." if price else "."
-    return _clean(random.choice(hooks) + tail + " Grab yours \U0001f447")
+    tail = f" — just {price}." if price else "."
+    return _clean(random.choice(hooks) + tail)
 
 
 async def generate_post_text(product: dict, trends: list | None = None) -> str:
@@ -155,8 +181,9 @@ async def generate_post_text(product: dict, trends: list | None = None) -> str:
         out = await provider(system, user)
         if out and out.strip():
             cleaned = _clean(out)
-            if len(cleaned) >= 20:
-                logger.info(f"Caption via {provider.__name__.replace('_try_', '')}: {cleaned[:60]}…")
+            if _looks_usable(cleaned):
+                logger.info(f"Caption via {provider.__name__.replace('_try_', '')}: {cleaned[:80]}…")
                 return cleaned
-    logger.warn("AI providers unavailable or responses too short — using template")
+            logger.warn(f"AI caption rejected (unusable): {repr(cleaned[:80])}")
+    logger.warn("AI providers unavailable or unusable — using template")
     return _template(product, trends)
