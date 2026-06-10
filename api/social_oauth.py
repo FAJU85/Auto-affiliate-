@@ -107,10 +107,18 @@ async def disconnect(platform: str):
 async def mastodon_register(request: Request):
     """Register an OAuth app on the Mastodon instance and return auth URL."""
     body = await request.json()
-    instance = body.get("instance", "").rstrip("/")
+    raw = body.get("instance", "").strip().rstrip("/")
     platform = body.get("platform", "mastodon")
-    if not instance:
+    if not raw:
         raise HTTPException(400, "instance URL required")
+
+    # Strip any path/username — keep only scheme + host
+    # e.g. https://mastodon.social/@user  →  https://mastodon.social
+    from urllib.parse import urlparse
+    parsed = urlparse(raw if "://" in raw else "https://" + raw)
+    instance = f"{parsed.scheme}://{parsed.netloc}"
+    if not parsed.netloc:
+        raise HTTPException(400, f"Could not parse instance URL: {raw}")
 
     base = get_base_url()
     if not base:

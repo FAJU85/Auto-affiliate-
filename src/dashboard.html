@@ -575,21 +575,33 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:16px">
           <!-- X -->
           <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px">
-            <div style="font-weight:600;margin-bottom:8px">𝕏 X (Twitter)</div>
-            <input class="f-input" id="qc-x-handle" placeholder="Username" style="margin-bottom:6px" />
-            <input class="f-input" id="qc-x-pass" type="password" placeholder="Password / API key" autocomplete="off" />
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+              <span style="font-weight:600">𝕏 X (Twitter)</span>
+              <span id="qc-x-badge" class="badge badge-fail" style="font-size:11px">✗</span>
+            </div>
+            <input class="f-input" id="qc-x-handle" placeholder="@username" style="margin-bottom:6px" />
+            <input class="f-input" id="qc-x-pass" type="password" placeholder="API Bearer Token" autocomplete="off" />
+            <div style="font-size:11px;color:var(--muted);margin-top:4px">Get token at developer.twitter.com</div>
           </div>
           <!-- Facebook -->
           <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px">
-            <div style="font-weight:600;margin-bottom:8px">📘 Facebook</div>
-            <input class="f-input" id="qc-facebook-handle" placeholder="Username / Page name" style="margin-bottom:6px" />
-            <input class="f-input" id="qc-facebook-pass" type="password" placeholder="Password / Access token" autocomplete="off" />
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+              <span style="font-weight:600">📘 Facebook</span>
+              <span id="qc-facebook-badge" class="badge badge-fail" style="font-size:11px">✗</span>
+            </div>
+            <input class="f-input" id="qc-facebook-handle" placeholder="Page name" style="margin-bottom:6px" />
+            <input class="f-input" id="qc-facebook-pass" type="password" placeholder="Page Access Token" autocomplete="off" />
+            <div style="font-size:11px;color:var(--muted);margin-top:4px">Get token at developers.facebook.com</div>
           </div>
           <!-- Instagram -->
           <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px">
-            <div style="font-weight:600;margin-bottom:8px">📸 Instagram</div>
-            <input class="f-input" id="qc-instagram-handle" placeholder="Username" style="margin-bottom:6px" />
-            <input class="f-input" id="qc-instagram-pass" type="password" placeholder="Password / Access token" autocomplete="off" />
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+              <span style="font-weight:600">📸 Instagram</span>
+              <span id="qc-instagram-badge" class="badge badge-fail" style="font-size:11px">✗</span>
+            </div>
+            <input class="f-input" id="qc-instagram-handle" placeholder="@username" style="margin-bottom:6px" />
+            <input class="f-input" id="qc-instagram-pass" type="password" placeholder="Access Token" autocomplete="off" />
+            <div style="font-size:11px;color:var(--muted);margin-top:4px">Use Instagram Graph API token</div>
           </div>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
@@ -650,41 +662,16 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
         </div>
       </div>
 
-      <!-- X (Twitter) card -->
-      <div class="card" style="margin-top:14px" id="card-x">
-        <div class="card-hdr"><div class="card-title">𝕏 X (Twitter)</div><span id="x-badge" class="badge badge-fail">✗ Not connected</span></div>
-        <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Enter your X username and app credentials to enable posting.</p>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <input class="f-input" id="cred-x-handle" style="flex:1;min-width:140px" placeholder="Username" />
-          <input class="f-input" id="cred-x-pass" type="password" style="flex:1;min-width:140px" placeholder="Password / API key" autocomplete="off" />
-          <button class="btn btn-primary" style="font-size:12px;padding:6px 12px" onclick="connectCredentials('x')">Save</button>
-          <button class="btn btn-secondary" id="btn-x-disconnect" style="display:none" onclick="disconnectSocial('x')">✗ Disconnect</button>
-        </div>
-      </div>
-
-      <!-- Facebook card -->
-      <div class="card" style="margin-top:14px" id="card-facebook">
-        <div class="card-hdr"><div class="card-title">📘 Facebook</div><span id="facebook-badge" class="badge badge-fail">✗ Not connected</span></div>
-        <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Enter your Facebook page credentials to enable posting.</p>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <input class="f-input" id="cred-facebook-handle" style="flex:1;min-width:140px" placeholder="Username / Page name" />
-          <input class="f-input" id="cred-facebook-pass" type="password" style="flex:1;min-width:140px" placeholder="Password / Access token" autocomplete="off" />
-          <button class="btn btn-primary" style="font-size:12px;padding:6px 12px" onclick="connectCredentials('facebook')">Save</button>
-          <button class="btn btn-secondary" id="btn-facebook-disconnect" style="display:none" onclick="disconnectSocial('facebook')">✗ Disconnect</button>
-        </div>
-      </div>
-
-      <!-- Instagram card -->
-      <div class="card" style="margin-top:14px" id="card-instagram">
-        <div class="card-hdr"><div class="card-title">📸 Instagram</div><span id="instagram-badge" class="badge badge-fail">✗ Not connected</span></div>
-        <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Enter your Instagram credentials to enable posting.</p>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <input class="f-input" id="cred-instagram-handle" style="flex:1;min-width:140px" placeholder="Username" />
-          <input class="f-input" id="cred-instagram-pass" type="password" style="flex:1;min-width:140px" placeholder="Password / Access token" autocomplete="off" />
-          <button class="btn btn-primary" style="font-size:12px;padding:6px 12px" onclick="connectCredentials('instagram')">Save</button>
-          <button class="btn btn-secondary" id="btn-instagram-disconnect" style="display:none" onclick="disconnectSocial('instagram')">✗ Disconnect</button>
-        </div>
-      </div>
+      <!-- X / Facebook / Instagram — managed via Quick Connect panel above -->
+      <div id="card-x" style="display:none"></div>
+      <div id="card-facebook" style="display:none"></div>
+      <div id="card-instagram" style="display:none"></div>
+      <span id="x-badge" style="display:none"></span>
+      <span id="facebook-badge" style="display:none"></span>
+      <span id="instagram-badge" style="display:none"></span>
+      <button id="btn-x-disconnect" style="display:none" onclick="disconnectSocial('x')"></button>
+      <button id="btn-facebook-disconnect" style="display:none" onclick="disconnectSocial('facebook')"></button>
+      <button id="btn-instagram-disconnect" style="display:none" onclick="disconnectSocial('instagram')"></button>
     </div>
 
     <!-- ══ SCHEDULE ══ -->
@@ -1320,17 +1307,15 @@ function renderSocialPlatforms(social) {
       : '';
   }
 
-  // Credential-based platforms: X, Facebook, Instagram
+  // Credential-based platforms: X, Facebook, Instagram (shown in Quick Connect panel)
   for (const p of ['x','facebook','instagram']) {
-    const badge   = document.getElementById(`${p}-badge`);
-    const disc    = document.getElementById(`btn-${p}-disconnect`);
-    const handleEl = document.getElementById(`cred-${p}-handle`);
-    const conn    = social[p];
-    if (badge) {
-      badge.className   = conn?.connected ? 'badge badge-ok' : 'badge badge-fail';
-      badge.textContent = conn?.connected ? `✓ @${conn.handle||'Connected'}` : '✗ Not connected';
+    const conn     = social[p];
+    const qcBadge  = document.getElementById(`qc-${p}-badge`);
+    const handleEl = document.getElementById(`qc-${p}-handle`);
+    if (qcBadge) {
+      qcBadge.className   = conn?.connected ? 'badge badge-ok' : 'badge badge-fail';
+      qcBadge.textContent = conn?.connected ? `✓ ${conn.handle||''}` : '✗';
     }
-    if (disc) disc.style.display = conn?.connected ? '' : 'none';
     if (handleEl && conn?.handle) handleEl.value = conn.handle;
   }
 }
@@ -1574,9 +1559,9 @@ async function quickSaveAll() {
   msg.textContent = 'Saving…';
 
   const platforms = [
-    { key: 'x',         handleId: 'qc-x-handle',         passId: 'qc-x-pass' },
-    { key: 'facebook',  handleId: 'qc-facebook-handle',   passId: 'qc-facebook-pass' },
-    { key: 'instagram', handleId: 'qc-instagram-handle',  passId: 'qc-instagram-pass' },
+    { key: 'x',         handleId: 'qc-x-handle',        passId: 'qc-x-pass' },
+    { key: 'facebook',  handleId: 'qc-facebook-handle',  passId: 'qc-facebook-pass' },
+    { key: 'instagram', handleId: 'qc-instagram-handle', passId: 'qc-instagram-pass' },
   ];
 
   const results = [];
