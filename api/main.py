@@ -3,6 +3,7 @@
 import csv
 import io
 import os
+import time
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -344,11 +345,35 @@ async def accounts():
     }
 
 
+_last_bsky_test: float = 0.0
+_TEST_COOLDOWN  = 60  # seconds between Test button calls
+
 @app.post("/api/accounts/bluesky/test")
 async def test_bluesky():
-    """Test Bluesky credentials by attempting a real login."""
+    """Test Bluesky credentials. Enforces 60s cooldown and respects persistent rate-limit guard."""
     import httpx as _httpx
     from datetime import datetime, timezone
+    from .bluesky_client import get_ratelimit_reset, _save_ratelimit
+
+    global _last_bsky_test
+
+    # Server-side cooldown — prevents rapid repeated clicks
+    since = time.time() - _last_bsky_test
+    if since < _TEST_COOLDOWN:
+        wait = int(_TEST_COOLDOWN - since)
+        return {"ok": False, "error": f"Please wait {wait}s before testing again."}
+
+    # Persistent rate-limit guard — no login if we know we're blocked
+    rl_until = get_ratelimit_reset()
+    if rl_until:
+        reset_dt = datetime.fromtimestamp(rl_until, tz=timezone.utc)
+        wait_s = int(rl_until - time.time())
+        return {
+            "ok": False,
+            "rateLimited": True,
+            "error": f"Bluesky rate limit active until {reset_dt.strftime('%H:%M:%S')} UTC ({wait_s}s). Login blocked automatically — no need to retry.",
+        }
+
     handle   = (os.environ.get("BSKY_HANDLE",        "") or "").strip()
     password = (os.environ.get("BSKY_APP_PASSWORD", "") or "").strip()
     if not handle or not password:
@@ -356,6 +381,8 @@ async def test_bluesky():
         if not handle:   missing.append("BSKY_HANDLE")
         if not password: missing.append("BSKY_APP_PASSWORD")
         return {"ok": False, "error": f"Missing secrets: {', '.join(missing)}"}
+
+    _last_bsky_test = time.time()
     try:
         timeout = _httpx.Timeout(connect=10, read=20, write=20, pool=5)
         async with _httpx.AsyncClient(timeout=timeout) as client:
@@ -367,21 +394,15 @@ async def test_bluesky():
             did = r.json().get("did", "")
             return {"ok": True, "handle": handle, "did": did}
         if r.status_code == 429:
-            reset_ts = r.headers.get("RateLimit-Reset") or r.headers.get("X-RateLimit-Reset")
-            retry_after = r.headers.get("Retry-After")
-            reset_info = ""
-            if reset_ts:
-                try:
-                    reset_dt = datetime.fromtimestamp(int(reset_ts), tz=timezone.utc)
-                    reset_info = f" Resets at {reset_dt.strftime('%H:%M:%S')} UTC."
-                except Exception:
-                    pass
-            elif retry_after:
-                reset_info = f" Retry after {retry_after}s."
+            reset_ts_hdr = r.headers.get("RateLimit-Reset") or r.headers.get("X-RateLimit-Reset")
+            retry_after  = int(r.headers.get("Retry-After", 300))
+            reset_epoch  = float(reset_ts_hdr) if reset_ts_hdr else time.time() + retry_after
+            _save_ratelimit(reset_epoch)  # persist so restarts respect it
+            reset_dt = datetime.fromtimestamp(reset_epoch, tz=timezone.utc)
             return {
                 "ok": False,
                 "rateLimited": True,
-                "error": f"Bluesky is rate-limiting login attempts (429).{reset_info} Wait a few minutes and try again — do not keep clicking Test.",
+                "error": f"Bluesky rate-limited (429). Resets at {reset_dt.strftime('%H:%M:%S')} UTC. Login blocked automatically — do not retry.",
             }
         body = r.text[:200]
         return {"ok": False, "error": f"HTTP {r.status_code}: {body}"}

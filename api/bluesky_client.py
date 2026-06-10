@@ -29,11 +29,45 @@ SESSION_TTL     = 80 * 60  # 80 minutes — refresh before Bluesky access token 
 _TIMEOUT = httpx.Timeout(connect=CONNECT_TIMEOUT, read=READ_TIMEOUT,
                           write=READ_TIMEOUT, pool=5)
 
-DATA_DIR     = Path(os.environ.get("DATA_DIR", "/data"))
-SESSION_FILE = DATA_DIR / "bsky-session.json"
+DATA_DIR      = Path(os.environ.get("DATA_DIR", "/data"))
+SESSION_FILE  = DATA_DIR / "bsky-session.json"
+RATELIMIT_FILE = DATA_DIR / "bsky-ratelimit.json"
 
 # In-memory session cache: {accessJwt, did, expiry}
 _session: dict = {}
+
+
+# ── Persistent rate-limit guard ──────────────────────────────────────────────
+
+def _save_ratelimit(reset_ts: float) -> None:
+    """Persist the rate-limit reset timestamp so restarts respect it."""
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        RATELIMIT_FILE.write_text(json.dumps({"reset": reset_ts}))
+    except Exception:
+        pass
+
+def _clear_ratelimit() -> None:
+    try:
+        RATELIMIT_FILE.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+def _ratelimit_until() -> float:
+    """Return the epoch when the rate limit clears, or 0 if not limited."""
+    try:
+        data = json.loads(RATELIMIT_FILE.read_text())
+        reset = float(data.get("reset", 0))
+        if reset > time.time():
+            return reset
+        _clear_ratelimit()
+    except Exception:
+        pass
+    return 0.0
+
+def get_ratelimit_reset() -> float:
+    """Public: return rate-limit reset epoch (0 = not limited)."""
+    return _ratelimit_until()
 
 
 # ── Session management ───────────────────────────────────────────────────────
@@ -76,6 +110,17 @@ async def _get_session(handle: str, password: str) -> tuple[str, str]:
         logger.info(f"Bluesky: reusing session for @{handle}")
         return cached["accessJwt"], cached["did"]
 
+    # Check persistent rate-limit guard before attempting login
+    rl_until = _ratelimit_until()
+    if rl_until:
+        reset_dt = datetime.fromtimestamp(rl_until, tz=timezone.utc)
+        wait_s = int(rl_until - time.time())
+        raise RuntimeError(
+            f"Bluesky login blocked — rate limit active until "
+            f"{reset_dt.strftime('%H:%M:%S')} UTC ({wait_s}s remaining). "
+            f"No login will be attempted until then."
+        )
+
     logger.info(f"Bluesky: logging in as @{handle}")
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         with Timer("bluesky_login"):
@@ -84,10 +129,16 @@ async def _get_session(handle: str, password: str) -> tuple[str, str]:
                 json={"identifier": handle, "password": password},
             )
     if r.status_code == 429:
-        retry_after = int(r.headers.get("Retry-After", 60))
+        # Parse reset time and persist it so restarts respect the limit
+        reset_ts_hdr = r.headers.get("RateLimit-Reset") or r.headers.get("X-RateLimit-Reset")
+        retry_after  = int(r.headers.get("Retry-After", 300))
+        reset_epoch  = float(reset_ts_hdr) if reset_ts_hdr else time.time() + retry_after
+        _save_ratelimit(reset_epoch)
+        reset_dt = datetime.fromtimestamp(reset_epoch, tz=timezone.utc)
         raise RuntimeError(
             f"Bluesky createSession rate-limited (429) — "
-            f"too many login attempts. Wait {retry_after}s before retrying."
+            f"too many login attempts. Resets at {reset_dt.strftime('%H:%M:%S')} UTC. "
+            f"Login blocked automatically until then."
         )
     if r.status_code != 200:
         body = r.text[:300]
@@ -99,6 +150,7 @@ async def _get_session(handle: str, password: str) -> tuple[str, str]:
     access_jwt = data["accessJwt"]
     did = data["did"]
     _save_session(access_jwt, did)
+    _clear_ratelimit()  # successful login — remove any stale rate limit guard
     logger.info(f"Bluesky: authenticated as @{handle} (did={did})")
     return access_jwt, did
 

@@ -216,7 +216,15 @@ async def _execute(started: float) -> dict:
 
     # ── Phase 5: Post to Bluesky ──
     with Timer("bluesky_publish") as t:
-        uri = await post_to_bluesky(caption, redirect, image, product)
+        try:
+            uri = await post_to_bluesky(caption, redirect, image, product)
+        except RuntimeError as _bsky_err:
+            _msg = str(_bsky_err)
+            # Auto-pause scheduler when rate-limited so it stops hammering Bluesky
+            if "rate" in _msg.lower() or "429" in _msg.lower():
+                STATE["paused"] = True
+                logger.warn(f"Bluesky rate-limited — scheduler auto-paused: {_msg}")
+            raise
 
     budget_util.add_spend(0.001)
     metrics.mark_posted(product.get("siteUrl"), product.get("name"), product.get("source"))
