@@ -41,7 +41,21 @@ def _fmt_price(product: dict) -> str:
 def _build_prompts(product: dict, trends: list) -> tuple[str, str]:
     s = settings.get_settings()
     trend = (trends[0] if trends else product.get("category", "trending"))
-    # Safely format — unknown keys fall back to empty string
+
+    # Inject CTA phrase list into the system prompt so the AI picks the best fit
+    # for the product type — not randomly, but based on category/product context.
+    cta_phrases: list[str] = s.get("ctaPhrases") or ["👉 Shop now"]
+    cta_list = "\n".join(f"  - {p}" for p in cta_phrases)
+    base_system = s.get("postSystemPrompt", "Write a short affiliate post.")
+    system = (
+        f"{base_system}\n\n"
+        f"END your post with EXACTLY one of these CTA phrases — choose the one that best "
+        f"fits the product type and category (e.g. urgency for limited-time deals, "
+        f"lifestyle for fashion/beauty, value for tech/home):\n{cta_list}\n"
+        f"Do NOT invent a new phrase. Use one verbatim from the list above."
+    )
+
+    # Safely format user template — unknown keys fall back to empty string
     template = s.get("postUserTemplate", "{name}")
     try:
         user = template.format(
@@ -54,7 +68,7 @@ def _build_prompts(product: dict, trends: list) -> tuple[str, str]:
         )
     except KeyError:
         user = f"Product: {product.get('name', 'this product')}. Write a short affiliate post."
-    return s.get("postSystemPrompt", "Write a short affiliate post."), user
+    return system, user
 
 
 def _looks_usable(text: str) -> bool:

@@ -139,9 +139,6 @@ async def _upload_mastodon_image(instance: str, auth_header: dict, image: bytes)
 
 
 async def _post_mastodon(caption: str, deeplink: str, image: bytes | None = None, product: dict | None = None) -> str:
-    from .utils.settings import get_settings
-    import random
-
     conns = _load_connections()
     c = conns.get("mastodon", {})
     if not c.get("connected") or not c.get("access_token"):
@@ -151,33 +148,27 @@ async def _post_mastodon(caption: str, deeplink: str, image: bytes | None = None
     access_token = c["access_token"]
     auth_header  = {"Authorization": f"Bearer {access_token}"}
 
-    # Pick a CTA phrase from settings (configurable in dashboard → AI & Content)
-    s = get_settings()
-    cta_phrases: list[str] = s.get("ctaPhrases") or ["👉 Shop now"]
-    cta_text = random.choice(cta_phrases)
-
-    # Build hashtags from product metadata
+    # The AI already embedded the CTA phrase inside the caption (chosen by product type).
+    # We just add hashtags and the URL on separate lines.
+    # mastodon.social is plain-text only — Mastodon auto-shortens any URL to 23 visible chars.
     hashtags = " ".join(_pick_hashtags(product or {}))
 
-    # mastodon.social does NOT render HTML in posts — use plain text only.
-    # Mastodon automatically shortens any URL to 23 visible chars regardless of real length,
-    # so the tracking URL displays as a short link. Format:
-    #   {caption}
+    # Format:
+    #   {caption with AI-chosen CTA at the end}
     #
     #   {hashtags}
     #
-    #   {CTA phrase}: {url}
-    cta_line = f"{cta_text}: {deeplink}" if deeplink else cta_text
-    parts = [p for p in [caption, hashtags, cta_line] if p]
+    #   {tracking url}   ← shows as 23-char truncated link, fully clickable
+    parts = [p for p in [caption, hashtags, deeplink] if p]
     text = "\n\n".join(parts)
 
-    # Trim caption if needed — Mastodon counts URLs as 23 chars regardless of real length
-    url_display_len = 23 if deeplink else 0
-    visible_len = len(caption) + len(hashtags) + len(cta_text) + 2 + url_display_len + 4  # 4 = separators
-    if visible_len > 497:
-        trim_to = max(0, 497 - len(hashtags) - len(cta_text) - url_display_len - 8)
+    # Trim caption if needed (Mastodon counts URLs as 23 chars)
+    url_chars = 23 if deeplink else 0
+    visible = len(caption) + len(hashtags) + url_chars + 4  # 4 = 2 separators × 2
+    if visible > 498:
+        trim_to = max(0, 498 - len(hashtags) - url_chars - 8)
         caption = caption[:trim_to].rstrip() + "…"
-        parts = [p for p in [caption, hashtags, cta_line] if p]
+        parts = [p for p in [caption, hashtags, deeplink] if p]
         text = "\n\n".join(parts)
 
     # Upload image
@@ -200,7 +191,7 @@ async def _post_mastodon(caption: str, deeplink: str, image: bytes | None = None
     if r.status_code not in (200, 201):
         raise RuntimeError(f"HTTP {r.status_code}: {r.text[:300]}")
     uri = r.json().get("url", "")
-    logger.info(f"Posted {uri} — CTA: {cta_text!r}", "mastodon")
+    logger.info(f"Posted {uri}", "mastodon")
     return uri
 
 
