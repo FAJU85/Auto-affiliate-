@@ -11,7 +11,9 @@ from pathlib import Path
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from fastapi import FastAPI, Request
+from typing import Optional
+
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
@@ -78,10 +80,25 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title="Affiliate Bot", lifespan=lifespan)
 
 try:
-    from .social_oauth import router as social_router
+    from .social_oauth import router as social_router, _handle_oauth_callback
     app.include_router(social_router, prefix="/api")
 except Exception as err:  # noqa: BLE001
     logger.warn(f"social_oauth router not mounted: {err}")
+    _handle_oauth_callback = None  # type: ignore
+
+
+# Mastodon redirects to /oauth/social/callback (not /api/social/callback)
+@app.get("/oauth/social/callback")
+async def oauth_social_callback(
+    request: Request,
+    platform: str = "",
+    code: Optional[str] = Query(None),
+    state: Optional[str] = Query(None),
+    error: Optional[str] = Query(None),
+):
+    if _handle_oauth_callback is None:
+        raise HTTPException(503, "OAuth not available")
+    return await _handle_oauth_callback(platform, code, state, error)
 
 
 # ── Pages & health ───────────────────────────────────────────────────────────
