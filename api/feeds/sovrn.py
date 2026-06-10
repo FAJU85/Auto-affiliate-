@@ -18,6 +18,7 @@ from urllib.parse import quote
 import httpx
 
 from ..utils import logger
+from ..utils.circuit_breaker import sovrn_cb
 
 API_BASE = "https://api.viglink.com/api"
 
@@ -120,27 +121,34 @@ async def monetize_url(merchant_url: str) -> str:
         return merchant_url
     try:
         encoded = quote(merchant_url, safe="")
-        api_url = f"{API_BASE}/link?key={key}&u={encoded}&ref=https%3A%2F%2Fbluesky.app"
+        api_url = f"{API_BASE}/link?key={key}&u={encoded}"
         async with httpx.AsyncClient(timeout=8) as client:
             r = await client.get(api_url, headers={"Accept": "application/json"})
         if r.status_code != 200:
-            logger.warn(f"SOVRN link API {r.status_code} for {merchant_url[:60]}")
+            logger.warn(f"SOVRN link API {r.status_code}: {r.text[:120]} — using original URL", "sovrn")
             return merchant_url
         data = r.json()
         monetized = data.get("url") or merchant_url
-        logger.info(f"SOVRN monetized: {merchant_url[:50]} -> {monetized[:60]}")
+        logger.info(f"Monetized: {merchant_url[:50]} → {monetized[:60]}", "sovrn")
         return monetized
     except Exception as err:  # noqa: BLE001
-        logger.warn(f"SOVRN monetize failed: {err}")
+        logger.warn(f"Monetize failed: {err}", "sovrn")
         return merchant_url
 
 
 async def get_sovrn_product() -> dict | None:
     if not _key():
         return None
-    product = _pick_product()
-    logger.info(f"SOVRN Commerce: monetizing \"{product['name']}\"")
-    deeplink = await monetize_url(product["url"])
+    if sovrn_cb.is_open():
+        logger.warn("SOVRN circuit breaker OPEN — using original URL", "sovrn")
+        product = _pick_product()
+    else:
+        product = _pick_product()
+    logger.info(f"SOVRN Commerce: monetizing \"{product['name']}\"", "sovrn")
+    try:
+        deeplink = await sovrn_cb.call(monetize_url, product["url"])
+    except Exception:
+        deeplink = product["url"]
     if not deeplink or deeplink == product["url"]:
         logger.warn(f"SOVRN: link unchanged for \"{product['name']}\" — using original")
     pid = "sovrn-" + base64.b64encode(product["url"].encode()).decode()[:16]

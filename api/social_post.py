@@ -1,12 +1,19 @@
 """Post to social platforms using stored credentials from social-connections.json."""
 
+import base64
+import hashlib
+import hmac
 import json
 import os
+import secrets as _secrets
+import time
+import urllib.parse
 from pathlib import Path
 
 import httpx
 
 from .utils import logger
+from .utils.circuit_breaker import mastodon_cb as _mastodon_cb, x_cb as _x_cb, threads_cb as _threads_cb, tumblr_cb as _tumblr_cb
 
 DATA_DIR         = Path(os.environ.get("DATA_DIR", "/data"))
 CONNECTIONS_FILE = DATA_DIR / "social-connections.json"
@@ -20,7 +27,56 @@ def _load_connections() -> dict:
         return {}
 
 
-async def post_to_mastodon(caption: str, deeplink: str) -> str:
+# ── OAuth 1.0a signing (RFC 5849 compliant) ─────────────────────────────────
+
+def _pct(s: str) -> str:
+    """Percent-encode per OAuth 1.0a — only unreserved chars are safe."""
+    return urllib.parse.quote(str(s), safe="")   # safe="" → encodes everything including %
+
+
+def _oauth1_sign(method: str, url: str, params: dict,
+                 consumer_secret: str, token_secret: str) -> str:
+    """Return base64 HMAC-SHA1 OAuth 1.0a signature."""
+    # Step 1: build normalised parameter string
+    param_str = "&".join(
+        f"{_pct(k)}={_pct(v)}" for k, v in sorted(params.items())
+    )
+    # Step 2: build signature base string
+    base_str = "&".join([
+        _pct(method.upper()),
+        _pct(url),
+        _pct(param_str),
+    ])
+    # Step 3: signing key = percent-encoded consumer_secret & percent-encoded token_secret
+    signing_key = f"{_pct(consumer_secret)}&{_pct(token_secret)}"
+    sig = hmac.new(signing_key.encode(), base_str.encode(), hashlib.sha1).digest()
+    return base64.b64encode(sig).decode()
+
+
+def _oauth1_header(method: str, url: str, consumer_key: str, consumer_secret: str,
+                   access_token: str, token_secret: str, extra_params: dict | None = None) -> str:
+    ts    = str(int(time.time()))
+    nonce = _secrets.token_hex(16)
+    oauth_params: dict = {
+        "oauth_consumer_key":     consumer_key,
+        "oauth_nonce":            nonce,
+        "oauth_signature_method": "HMAC-SHA1",
+        "oauth_timestamp":        ts,
+        "oauth_token":            access_token,
+        "oauth_version":          "1.0",
+    }
+    all_params = {**oauth_params, **(extra_params or {})}
+    oauth_params["oauth_signature"] = _oauth1_sign(
+        method, url, all_params, consumer_secret, token_secret
+    )
+    return "OAuth " + ", ".join(
+        f'{k}="{_pct(v)}"' for k, v in sorted(oauth_params.items())
+    )
+
+
+# ── Platform posting functions ───────────────────────────────────────────────
+
+async def _post_mastodon(caption: str, deeplink: str) -> str:
     conns = _load_connections()
     c = conns.get("mastodon", {})
     if not c.get("connected") or not c.get("access_token"):
@@ -45,7 +101,7 @@ async def post_to_mastodon(caption: str, deeplink: str) -> str:
     return uri
 
 
-async def post_to_x(caption: str, deeplink: str) -> str:
+async def _post_x(caption: str, deeplink: str) -> str:
     conns = _load_connections()
     c = conns.get("x", {})
     if not c.get("connected"):
@@ -63,39 +119,13 @@ async def post_to_x(caption: str, deeplink: str) -> str:
     if len(text) > 280:
         text = text[:279] + "…"
 
-    # OAuth 1.0a signing
-    import time, hmac, hashlib, urllib.parse, base64, secrets as _secrets
-
-    def _sign(method, url, params, oauth_params):
-        all_params = {**params, **oauth_params}
-        base = "&".join([
-            urllib.parse.quote(method.upper(), safe=""),
-            urllib.parse.quote(url, safe=""),
-            urllib.parse.quote("&".join(f"{urllib.parse.quote(k,safe='%')}"
-                                        f"={urllib.parse.quote(str(v),safe='%')}"
-                                        for k, v in sorted(all_params.items())), safe=""),
-        ])
-        key = f"{urllib.parse.quote(consumer_secret,safe='%')}&{urllib.parse.quote(access_secret,safe='%')}"
-        return base64.b64encode(hmac.new(key.encode(), base.encode(), hashlib.sha1).digest()).decode()
-
-    url = "https://api.twitter.com/2/tweets"
-    ts  = str(int(time.time()))
-    nonce = _secrets.token_hex(16)
-    oauth = {
-        "oauth_consumer_key":     consumer_key,
-        "oauth_nonce":            nonce,
-        "oauth_signature_method": "HMAC-SHA1",
-        "oauth_timestamp":        ts,
-        "oauth_token":            access_token,
-        "oauth_version":          "1.0",
-    }
-    oauth["oauth_signature"] = _sign("POST", url, {}, oauth)
-    auth_header = "OAuth " + ", ".join(f'{k}="{urllib.parse.quote(str(v),safe="")}"'
-                                        for k, v in sorted(oauth.items()))
+    url    = "https://api.twitter.com/2/tweets"
+    header = _oauth1_header("POST", url, consumer_key, consumer_secret, access_token, access_secret)
 
     async with httpx.AsyncClient(timeout=POST_TIMEOUT) as client:
-        r = await client.post(url,
-            headers={"Authorization": auth_header, "Content-Type": "application/json"},
+        r = await client.post(
+            url,
+            headers={"Authorization": header, "Content-Type": "application/json"},
             json={"text": text},
         )
     if r.status_code not in (200, 201):
@@ -107,7 +137,7 @@ async def post_to_x(caption: str, deeplink: str) -> str:
     return uri
 
 
-async def post_to_threads(caption: str, deeplink: str) -> str:
+async def _post_threads(caption: str, deeplink: str) -> str:
     conns = _load_connections()
     c = conns.get("threads", {})
     if not c.get("connected") or not c.get("access_token"):
@@ -121,11 +151,10 @@ async def post_to_threads(caption: str, deeplink: str) -> str:
 
     base = "https://graph.threads.net/v1.0"
     async with httpx.AsyncClient(timeout=POST_TIMEOUT) as client:
-        # Step 1: create media container
         r = await client.post(f"{base}/{user_id}/threads", params={
-            "media_type":    "TEXT",
-            "text":          text,
-            "access_token":  access_token,
+            "media_type":   "TEXT",
+            "text":         text,
+            "access_token": access_token,
         })
         if r.status_code not in (200, 201):
             raise RuntimeError(f"Threads container failed HTTP {r.status_code}: {r.text[:200]}")
@@ -133,7 +162,6 @@ async def post_to_threads(caption: str, deeplink: str) -> str:
         if not container_id:
             raise RuntimeError(f"Threads: no container id: {r.text[:200]}")
 
-        # Step 2: publish the container
         r2 = await client.post(f"{base}/{user_id}/threads_publish", params={
             "creation_id":  container_id,
             "access_token": access_token,
@@ -148,7 +176,7 @@ async def post_to_threads(caption: str, deeplink: str) -> str:
     return uri
 
 
-async def post_to_tumblr(caption: str, deeplink: str) -> str:
+async def _post_tumblr(caption: str, deeplink: str) -> str:
     conns = _load_connections()
     c = conns.get("tumblr", {})
     if not c.get("connected") or not c.get("access_token"):
@@ -175,6 +203,24 @@ async def post_to_tumblr(caption: str, deeplink: str) -> str:
     return uri
 
 
+# ── Public dispatcher with circuit breakers ──────────────────────────────────
+
+async def post_to_mastodon(caption: str, deeplink: str) -> str:
+    return await _mastodon_cb.call(_post_mastodon, caption, deeplink)
+
+
+async def post_to_x(caption: str, deeplink: str) -> str:
+    return await _x_cb.call(_post_x, caption, deeplink)
+
+
+async def post_to_threads(caption: str, deeplink: str) -> str:
+    return await _threads_cb.call(_post_threads, caption, deeplink)
+
+
+async def post_to_tumblr(caption: str, deeplink: str) -> str:
+    return await _tumblr_cb.call(_post_tumblr, caption, deeplink)
+
+
 async def post_to_platform(platform: str, caption: str, deeplink: str) -> str | None:
     """Post to a single platform. Returns URI on success, logs and returns None on failure."""
     try:
@@ -189,7 +235,13 @@ async def post_to_platform(platform: str, caption: str, deeplink: str) -> str | 
         if platform in ("facebook", "instagram"):
             logger.warn("Meta Business API requires app review — posting not supported", platform)
             return None
-        logger.warn(f"Unknown platform — skipping", platform)
+        logger.warn("Unknown platform — skipping", platform)
+        return None
+    except RuntimeError as err:
+        if "Circuit breaker" in str(err):
+            logger.warn(f"Circuit breaker open — skipping until recovery: {err}", platform)
+        else:
+            logger.error(f"Post failed: {err}", platform)
         return None
     except Exception as err:
         logger.error(f"Post failed: {err}", platform)

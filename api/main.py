@@ -1,5 +1,6 @@
 """FastAPI backend for the affiliate-posting bot (HuggingFace Spaces, port 7860)."""
 
+import asyncio
 import csv
 import io
 import os
@@ -72,9 +73,11 @@ def _next_run() -> str | None:
 async def lifespan(_: FastAPI):
     _schedule_job()
     scheduler.start()
-    logger.info(f"Scheduler started (cron={_cron()})")
+    logger.info(f"Scheduler started (cron={_cron()})", "scheduler")
+    logger.info(f"Platform circuit breakers armed: bluesky, mastodon, x, threads, tumblr, sovrn, groq, mistral", "system")
     yield
     scheduler.shutdown(wait=False)
+    logger.info("Scheduler stopped", "scheduler")
 
 
 app = FastAPI(title="Affiliate Bot", lifespan=lifespan)
@@ -270,13 +273,34 @@ async def api_metrics():
 async def api_slo():
     """SLO compliance and error budget status."""
     slo = pipeline.calculate_slo(500)
-    # Circuit breaker: if error budget is 0%, signal halt
-    if slo.get("error_budget_remaining_pct", 100) <= 0:
+    budget_remaining = slo.get("error_budget_remaining_pct", 100)
+    if budget_remaining <= 0:
         slo["circuit_breaker_active"] = True
         slo["action"] = "HALT_FEATURE_DEPLOYS — redirect all capacity to stability"
+        logger.warn("Error budget exhausted — circuit breaker active, feature deploys halted", "system")
+    elif budget_remaining <= 20:
+        slo["circuit_breaker_active"] = False
+        slo["action"] = "WARNING — error budget below 20%, monitor closely"
     else:
         slo["circuit_breaker_active"] = False
+        slo["action"] = "nominal"
     return slo
+
+
+@app.post("/api/circuit-breakers/{name}/reset")
+async def reset_circuit_breaker(name: str):
+    ok = reset_breaker(name)
+    if not ok:
+        raise HTTPException(404, f"No circuit breaker named '{name}'")
+    logger.info(f"Circuit breaker '{name}' manually reset", "system")
+    return {"ok": True, "name": name}
+
+
+@app.post("/api/circuit-breakers/reset-all")
+async def reset_all_circuit_breakers():
+    cb_reset_all()
+    logger.info("All circuit breakers manually reset", "system")
+    return {"ok": True}
 
 
 @app.get("/api/logs")
@@ -397,6 +421,7 @@ async def accounts():
 
 _last_bsky_test: float = 0.0
 _TEST_COOLDOWN  = 60  # seconds between Test button calls
+_test_lock      = asyncio.Lock()  # prevent concurrent test calls racing the cooldown
 
 @app.post("/api/accounts/bluesky/test")
 async def test_bluesky():
@@ -407,11 +432,12 @@ async def test_bluesky():
 
     global _last_bsky_test
 
-    # Server-side cooldown — prevents rapid repeated clicks
-    since = time.time() - _last_bsky_test
-    if since < _TEST_COOLDOWN:
-        wait = int(_TEST_COOLDOWN - since)
-        return {"ok": False, "error": f"Please wait {wait}s before testing again."}
+    async with _test_lock:
+        # Server-side cooldown — prevents rapid repeated clicks and races
+        since = time.time() - _last_bsky_test
+        if since < _TEST_COOLDOWN:
+            wait = int(_TEST_COOLDOWN - since)
+            return {"ok": False, "error": f"Please wait {wait}s before testing again."}
 
     # Persistent rate-limit guard — no login if we know we're blocked
     rl_until = get_ratelimit_reset()

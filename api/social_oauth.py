@@ -10,6 +10,8 @@ import time
 from pathlib import Path
 from typing import Optional
 
+from .utils import logger as _log
+
 import httpx
 from fastapi import APIRouter, HTTPException, Request, Query
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -193,7 +195,8 @@ async def threads_callback(code: str, state: str):
     base = get_base_url()
     callback = f"{base}/oauth/social/callback?platform=threads"
 
-    async with httpx.AsyncClient() as client:
+    _timeout = httpx.Timeout(connect=10, read=20, write=20, pool=5)
+    async with httpx.AsyncClient(timeout=_timeout) as client:
         r = await client.post("https://graph.threads.net/oauth/access_token", data={
             "client_id":     client_id,
             "client_secret": client_secret,
@@ -207,7 +210,7 @@ async def threads_callback(code: str, state: str):
     if not access_token:
         raise HTTPException(502, f"No access_token: {token_data}")
 
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=_timeout) as client:
         me = (await client.get(
             "https://graph.threads.net/v1.0/me",
             params={"fields": "id,username", "access_token": access_token}
@@ -255,7 +258,8 @@ async def tumblr_callback(code: str, state: str):
     base = get_base_url()
     callback = f"{base}/oauth/social/callback?platform=tumblr"
 
-    async with httpx.AsyncClient() as client:
+    _timeout = httpx.Timeout(connect=10, read=20, write=20, pool=5)
+    async with httpx.AsyncClient(timeout=_timeout) as client:
         r = await client.post("https://api.tumblr.com/v2/oauth2/token", data={
             "grant_type":    "authorization_code",
             "code":          code,
@@ -269,7 +273,7 @@ async def tumblr_callback(code: str, state: str):
     if not access_token:
         raise HTTPException(502, f"No access_token: {token_data}")
 
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=_timeout) as client:
         me = (await client.get(
             "https://api.tumblr.com/v2/user/info",
             headers={"Authorization": f"Bearer {access_token}"}
@@ -349,6 +353,7 @@ async def _handle_oauth_callback(
         else:
             return RedirectResponse(url=f"{dashboard_url}?oauth_error=unknown_platform", status_code=302)
     except Exception as e:
+        _log.error(f"OAuth callback error [{platform}]: {e}", "oauth")
         return RedirectResponse(url=f"{dashboard_url}?oauth_error={str(e)[:80]}", status_code=302)
 
     handle = result.get("handle", "") if isinstance(result, dict) else ""
