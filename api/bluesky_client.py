@@ -12,6 +12,7 @@ Reliability:
 import asyncio
 import json
 import os
+import socket
 import threading
 import time
 import unicodedata
@@ -24,10 +25,14 @@ from .utils.circuit_breaker import bluesky_cb
 from .utils.telemetry import Timer, record_saturation
 
 GRAPHEME_LIMIT  = 300
-LOGIN_TIMEOUT   = 20   # seconds — kept short so a hung login fails fast, not at 300s pipeline timeout
+LOGIN_TIMEOUT   = 20   # seconds
 POST_TIMEOUT    = 20   # seconds
+LOCK_TIMEOUT    = 25   # seconds — fail fast if a previous thread holds the lock (stuck network call)
 MAX_RETRIES     = 3
 SESSION_TTL     = 90 * 60  # 90 minutes — refresh before Bluesky access token expires
+
+# Cap all blocking socket calls at the OS level so atproto's login never hangs indefinitely.
+socket.setdefaulttimeout(LOGIN_TIMEOUT + 2)
 
 DATA_DIR        = Path(os.environ.get("DATA_DIR", "/data"))
 SESSION_FILE    = DATA_DIR / "bsky-session.json"
@@ -59,9 +64,8 @@ def _load_session() -> str | None:
 
 def _invalidate_session() -> None:
     global _cached_client, _session_expiry
-    with _session_lock:
-        _cached_client = None
-        _session_expiry = 0.0
+    _cached_client = None
+    _session_expiry = 0.0
     try:
         SESSION_FILE.unlink(missing_ok=True)
     except Exception:
@@ -72,7 +76,14 @@ def _get_or_create_client(handle: str, password: str) -> Client:
     """Return a live Client, reusing a saved session when possible."""
     global _cached_client, _session_expiry
 
-    with _session_lock:
+    if not _session_lock.acquire(timeout=LOCK_TIMEOUT):
+        # A previous thread is still in a blocking network call — fail fast rather than deadlock
+        logger.warn("Bluesky: session lock timed out — previous login attempt is still running")
+        raise RuntimeError(
+            f"Bluesky session lock timed out after {LOCK_TIMEOUT}s — "
+            "a previous login is still running. Try again shortly."
+        )
+    try:
         if _cached_client is not None and time.time() < _session_expiry:
             logger.info("Bluesky: reusing in-memory session")
             return _cached_client
@@ -105,6 +116,8 @@ def _get_or_create_client(handle: str, password: str) -> Client:
         _session_expiry = time.time() + SESSION_TTL
         logger.info(f"Bluesky: authenticated as @{handle}")
         return client
+    finally:
+        _session_lock.release()
 
 
 # ── Grapheme helpers ─────────────────────────────────────────────────────────
