@@ -380,7 +380,18 @@ async def _post_instagram(caption: str, deeplink: str, image_url: str | None = N
     return uri
 
 
-async def _post_threads(caption: str, deeplink: str) -> str:
+async def _post_threads(caption: str, deeplink: str,
+                        image_url: str | None = None, product: dict | None = None) -> str:
+    """Post to Threads via Meta Graph API.
+
+    Supports:
+    - IMAGE posts when a public product image URL is available (preferred — better reach)
+    - TEXT fallback when no image URL exists
+    - Hashtags based on product category
+    - AI-generated CTA embedded in caption + deeplink on its own line
+
+    Threads character limit: 500. Image must be a public HTTPS URL (no binary upload).
+    """
     conns = _load_connections()
     c = conns.get("threads", {})
     if not c.get("connected") or not c.get("access_token"):
@@ -388,34 +399,63 @@ async def _post_threads(caption: str, deeplink: str) -> str:
 
     access_token = c["access_token"]
     user_id      = c.get("user_id", "me")
-    text         = f"{caption}\n{deeplink}" if deeplink else caption
-    if len(text) > 500:
-        text = text[:499] + "…"
+    base         = "https://graph.threads.net/v1.0"
 
-    base = "https://graph.threads.net/v1.0"
-    async with httpx.AsyncClient(timeout=POST_TIMEOUT) as client:
-        r = await client.post(f"{base}/{user_id}/threads", params={
-            "media_type":   "TEXT",
-            "text":         text,
-            "access_token": access_token,
-        })
-        if r.status_code not in (200, 201):
-            raise RuntimeError(f"Threads container failed HTTP {r.status_code}: {r.text[:200]}")
-        container_id = r.json().get("id")
+    # Build post text: caption (with AI CTA) + hashtags + link
+    hashtags = " ".join(_pick_hashtags(product or {}))
+    parts    = [p for p in [caption, hashtags, deeplink] if p]
+    text     = "\n\n".join(parts)
+    if len(text) > 498:
+        overhead = len("\n\n".join(["", hashtags, deeplink or ""])) + 1
+        caption  = caption[:max(0, 498 - overhead)] + "…"
+        parts    = [p for p in [caption, hashtags, deeplink] if p]
+        text     = "\n\n".join(parts)
+
+    # Step 1: create media container
+    img_upload_timeout = httpx.Timeout(connect=10, read=60, write=60, pool=5)
+    async with httpx.AsyncClient(timeout=img_upload_timeout) as client:
+        if image_url:
+            # IMAGE post — Threads downloads the image from the public URL
+            container_params = {
+                "media_type":   "IMAGE",
+                "image_url":    image_url,
+                "text":         text,
+                "access_token": access_token,
+            }
+        else:
+            container_params = {
+                "media_type":   "TEXT",
+                "text":         text,
+                "access_token": access_token,
+            }
+
+        r1 = await client.post(f"{base}/{user_id}/threads", params=container_params)
+        if r1.status_code not in (200, 201):
+            # If image fails, retry as text-only
+            if image_url and r1.status_code in (400, 422):
+                logger.warn(f"Threads image container failed ({r1.status_code}) — retrying as text", "threads")
+                r1 = await client.post(f"{base}/{user_id}/threads", params={
+                    "media_type": "TEXT", "text": text, "access_token": access_token,
+                })
+        if r1.status_code not in (200, 201):
+            raise RuntimeError(f"Threads container HTTP {r1.status_code}: {r1.text[:200]}")
+        container_id = r1.json().get("id")
         if not container_id:
-            raise RuntimeError(f"Threads: no container id: {r.text[:200]}")
+            raise RuntimeError(f"Threads: no container id: {r1.text[:200]}")
 
+    # Step 2: publish
+    async with httpx.AsyncClient(timeout=POST_TIMEOUT) as client:
         r2 = await client.post(f"{base}/{user_id}/threads_publish", params={
             "creation_id":  container_id,
             "access_token": access_token,
         })
-        if r2.status_code not in (200, 201):
-            raise RuntimeError(f"Threads publish failed HTTP {r2.status_code}: {r2.text[:200]}")
-        post_id = r2.json().get("id", "")
+    if r2.status_code not in (200, 201):
+        raise RuntimeError(f"Threads publish HTTP {r2.status_code}: {r2.text[:200]}")
+    post_id = r2.json().get("id", "")
 
     handle = c.get("handle", "")
     uri = f"https://www.threads.net/@{handle}/post/{post_id}" if post_id and handle else "https://www.threads.net"
-    logger.info(f"Posted {uri}", "threads")
+    logger.info(f"Posted {uri} ({'image' if image_url else 'text'})", "threads")
     return uri
 
 
@@ -464,8 +504,9 @@ async def post_to_instagram(caption: str, deeplink: str, image_url: str | None =
     return await _instagram_cb.call(_post_instagram, caption, deeplink, image_url)
 
 
-async def post_to_threads(caption: str, deeplink: str) -> str:
-    return await _threads_cb.call(_post_threads, caption, deeplink)
+async def post_to_threads(caption: str, deeplink: str,
+                          image_url: str | None = None, product: dict | None = None) -> str:
+    return await _threads_cb.call(_post_threads, caption, deeplink, image_url, product)
 
 
 async def post_to_tumblr(caption: str, deeplink: str) -> str:
@@ -481,7 +522,8 @@ async def post_to_platform(platform: str, caption: str, deeplink: str,
         if platform == "x":
             return await post_to_x(caption, deeplink, image)
         if platform == "threads":
-            return await post_to_threads(caption, deeplink)
+            image_url = (product or {}).get("imageUrl")
+            return await post_to_threads(caption, deeplink, image_url, product)
         if platform == "tumblr":
             return await post_to_tumblr(caption, deeplink)
         if platform == "facebook":

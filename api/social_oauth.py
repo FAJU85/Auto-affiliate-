@@ -210,6 +210,22 @@ async def threads_callback(code: str, state: str):
     if not access_token:
         raise HTTPException(502, f"No access_token: {token_data}")
 
+    # Exchange short-lived token (1h) for long-lived token (60 days)
+    async with httpx.AsyncClient(timeout=_timeout) as client:
+        ll = await client.get(
+            "https://graph.threads.net/access_token",
+            params={
+                "grant_type":    "th_exchange_token",
+                "client_secret": client_secret,
+                "access_token":  access_token,
+            }
+        )
+    if ll.status_code == 200 and ll.json().get("access_token"):
+        access_token = ll.json()["access_token"]
+        _log.info("Threads: exchanged for long-lived token (60 days)", "threads")
+    else:
+        _log.warn(f"Threads: long-lived token exchange failed ({ll.status_code}) — using short-lived", "threads")
+
     async with httpx.AsyncClient(timeout=_timeout) as client:
         me = (await client.get(
             "https://graph.threads.net/v1.0/me",
