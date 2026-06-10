@@ -311,16 +311,36 @@ async def post_settings(request: Request):
 
 @app.get("/api/accounts")
 async def accounts():
+    import json as _json
+    from pathlib import Path as _Path
     has_creds = bool(os.environ.get("BSKY_HANDLE") and os.environ.get("BSKY_APP_PASSWORD"))
     bsky_enabled = settings.get_settings().get("bskyEnabled", True)
     connected = has_creds and bsky_enabled
+
+    # Load social platform connections
+    data_dir = _Path(os.environ.get("DATA_DIR", "/data"))
+    try:
+        social_raw = _json.loads((data_dir / "social-connections.json").read_text())
+    except Exception:
+        social_raw = {}
+
+    social = {}
+    for key in ("mastodon", "threads", "tumblr", "x", "facebook", "instagram"):
+        c = social_raw.get(key, {})
+        social[key] = {
+            "connected": bool(c.get("connected")),
+            "handle":    c.get("handle", ""),
+            "instance":  c.get("instance", ""),
+        }
+
     return {
         "bluesky": {
             "connected": connected,
             "handle": os.environ.get("BSKY_HANDLE", "") if connected else "",
             "method": "app-password",
             "hasCreds": has_creds,
-        }
+        },
+        "social": social,
     }
 
 

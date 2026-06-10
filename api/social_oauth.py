@@ -65,18 +65,12 @@ def get_base_url() -> str:
 # ── Platform registry ──────────────────────────────────────────────────────────
 
 PLATFORMS = {
-    "mastodon":     {"name": "Mastodon",      "icon": "🐘", "auth": "oauth2",   "needs_instance": True},
-    "threads":      {"name": "Threads",        "icon": "🧵", "auth": "oauth2"},
-    "tumblr":       {"name": "Tumblr",         "icon": "📝", "auth": "oauth2"},
-    "plurk":        {"name": "Plurk",          "icon": "📣", "auth": "oauth1"},
-    "nostr":        {"name": "Nostr",          "icon": "⚡", "auth": "keypair"},
-    "truth_social": {"name": "Truth Social",   "icon": "🇺🇸", "auth": "mastodon", "needs_instance": True, "default_instance": "https://truthsocial.com"},
-    "counter":      {"name": "CounterSocial",  "icon": "🛡️", "auth": "mastodon", "needs_instance": True, "default_instance": "https://counter.social"},
-    "pillowfort":   {"name": "Pillowfort",     "icon": "🐾", "auth": "credentials"},
-    "squabblr":     {"name": "Squabblr",       "icon": "💬", "auth": "credentials"},
-    "spill":        {"name": "Spill",          "icon": "🫗",  "auth": "credentials"},
-    "substack":     {"name": "Substack",       "icon": "📰", "auth": "credentials"},
-    "semble":       {"name": "Semble",         "icon": "🔗", "auth": "credentials"},
+    "mastodon":  {"name": "Mastodon",    "icon": "🐘", "auth": "oauth2",      "needs_instance": True},
+    "threads":   {"name": "Threads",     "icon": "🧵", "auth": "oauth2"},
+    "tumblr":    {"name": "Tumblr",      "icon": "📝", "auth": "oauth2"},
+    "x":         {"name": "X (Twitter)", "icon": "𝕏",  "auth": "credentials"},
+    "facebook":  {"name": "Facebook",    "icon": "📘", "auth": "credentials"},
+    "instagram": {"name": "Instagram",   "icon": "📸", "auth": "credentials"},
 }
 
 # ── Status ─────────────────────────────────────────────────────────────────────
@@ -285,33 +279,13 @@ async def tumblr_callback(code: str, state: str):
     save_connections(conns)
     return {"ok": True, "handle": handle}
 
-# ── Nostr (keypair) ────────────────────────────────────────────────────────────
-
-@router.post("/social/nostr/connect")
-async def nostr_connect(request: Request):
-    body = await request.json()
-    nsec = body.get("nsec", "").strip()
-    npub = body.get("npub", "").strip()
-    if not nsec:
-        raise HTTPException(400, "nsec (private key) required")
-
-    conns = load_connections()
-    conns["nostr"] = {
-        "connected":   True,
-        "handle":      npub or "nostr",
-        "nsec":        nsec,
-        "connectedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
-    }
-    save_connections(conns)
-    return {"ok": True}
-
-# ── Credentials store (Pillowfort, Squabblr, Spill, Substack, Semble) ─────────
+# ── Credentials store (X, Facebook, Instagram) ────────────────────────────────
 
 @router.post("/social/{platform}/credentials")
 async def store_credentials(platform: str, request: Request):
     if platform not in PLATFORMS:
         raise HTTPException(404, "Unknown platform")
-    if PLATFORMS[platform]["auth"] != "credentials":
+    if PLATFORMS[platform].get("auth") != "credentials":
         raise HTTPException(400, "This platform uses OAuth, not credentials")
 
     body = await request.json()
@@ -350,7 +324,7 @@ async def oauth_callback(
         return JSONResponse({"ok": False, "error": "Invalid or expired state"})
     save_states(states)
 
-    if platform in ("mastodon", "truth_social", "counter"):
+    if platform == "mastodon":
         return await _mastodon_complete(platform, code, state_data)
     elif platform == "threads":
         return await threads_callback(code, state)
@@ -398,76 +372,6 @@ async def _mastodon_complete(platform: str, code: str, state_data: dict):
     }
     save_connections(conns)
     return {"ok": True, "handle": conns[platform]["handle"]}
-
-# ── Plurk OAuth1 ───────────────────────────────────────────────────────────────
-
-@router.get("/social/plurk/auth")
-async def plurk_auth():
-    consumer_key    = os.environ.get("PLURK_CONSUMER_KEY", "")
-    consumer_secret = os.environ.get("PLURK_CONSUMER_SECRET", "")
-    if not consumer_key:
-        raise HTTPException(503, "PLURK_CONSUMER_KEY not set")
-    base = get_base_url()
-    callback = f"{base}/oauth/social/callback?platform=plurk"
-
-    from requests_oauthlib import OAuth1Session
-    oauth = OAuth1Session(consumer_key, client_secret=consumer_secret, callback_uri=callback)
-    fetch_response = oauth.fetch_request_token("https://www.plurk.com/OAuth/request_token")
-    resource_owner_key    = fetch_response.get("oauth_token")
-    resource_owner_secret = fetch_response.get("oauth_token_secret")
-
-    states = load_states()
-    temp_state = secrets.token_urlsafe(16)
-    states[resource_owner_key] = {
-        "platform":              "plurk",
-        "resource_owner_key":    resource_owner_key,
-        "resource_owner_secret": resource_owner_secret,
-        "temp_state":            temp_state,
-        "ts":                    time.time(),
-    }
-    save_states(states)
-
-    auth_url = f"https://www.plurk.com/OAuth/authorize?oauth_token={resource_owner_key}"
-    return {"url": auth_url}
-
-@router.post("/social/plurk/callback")
-async def plurk_callback(oauth_token: str, oauth_verifier: str):
-    consumer_key    = os.environ.get("PLURK_CONSUMER_KEY", "")
-    consumer_secret = os.environ.get("PLURK_CONSUMER_SECRET", "")
-
-    states = load_states()
-    state_data = states.pop(oauth_token, None)
-    if not state_data:
-        raise HTTPException(400, "Invalid OAuth token")
-    save_states(states)
-
-    from requests_oauthlib import OAuth1Session
-    oauth = OAuth1Session(
-        consumer_key, client_secret=consumer_secret,
-        resource_owner_key=state_data["resource_owner_key"],
-        resource_owner_secret=state_data["resource_owner_secret"],
-        verifier=oauth_verifier,
-    )
-    tokens = oauth.fetch_access_token("https://www.plurk.com/OAuth/access_token")
-
-    oauth2 = OAuth1Session(
-        consumer_key, client_secret=consumer_secret,
-        resource_owner_key=tokens["oauth_token"],
-        resource_owner_secret=tokens["oauth_token_secret"],
-    )
-    me = oauth2.get("https://www.plurk.com/APP/Users/me").json()
-    handle = me.get("nick_name", me.get("display_name", ""))
-
-    conns = load_connections()
-    conns["plurk"] = {
-        "connected":             True,
-        "handle":                handle,
-        "oauth_token":           tokens["oauth_token"],
-        "oauth_token_secret":    tokens["oauth_token_secret"],
-        "connectedAt":           time.strftime("%Y-%m-%dT%H:%M:%SZ"),
-    }
-    save_connections(conns)
-    return {"ok": True, "handle": handle}
 
 # ── Health ─────────────────────────────────────────────────────────────────────
 
