@@ -335,6 +335,7 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
     <button class="btn btn-secondary" onclick="triggerDiagnose()" id="btn-diagnose" style="margin-left:8px">🩺 Diagnose</button>
     <button class="btn btn-danger" onclick="resetCircuitBreakers()" id="btn-cb-reset" style="margin-left:8px;display:none">⚡ Reset CB</button>
     <button class="btn btn-primary" onclick="triggerRun()" id="btn-run" style="margin-left:8px">▶ Run Now</button>
+    <button class="btn btn-secondary" onclick="logout()" id="btn-logout" style="margin-left:8px;display:none" title="Sign out">⏻</button>
   </div>
 
   <div id="content">
@@ -854,17 +855,32 @@ function nav(p) {
 }
 
 // ── API ────────────────────────────────────────────────────────
+function _sessionToken() {
+  return localStorage.getItem('dash_token') || '';
+}
+
 async function api(path, method='GET', body=null) {
   try {
-    const opts = { method, headers: {} };
+    const opts = { method, headers: { 'X-Session-Token': _sessionToken() } };
     if (body != null) { opts.headers['Content-Type']='application/json'; opts.body=JSON.stringify(body); }
     const r = await fetch(path, opts);
+    if (r.status === 401) { localStorage.removeItem('dash_token'); window.location.reload(); return null; }
     return r.json();
   } catch { return null; }
 }
 
+async function logout() {
+  await fetch('/api/auth/logout', { method:'POST', headers:{'X-Session-Token': _sessionToken()} });
+  localStorage.removeItem('dash_token');
+  window.location.reload();
+}
+
 // ── LOAD ALL ───────────────────────────────────────────────────
 async function loadAll() {
+  // Check auth status and show logout button if auth is enabled
+  const authCheck = await fetch('/api/auth/check', { headers:{'X-Session-Token': _sessionToken()} }).then(r=>r.json()).catch(()=>null);
+  if (authCheck?.authEnabled) document.getElementById('btn-logout').style.display = '';
+
   await Promise.all([loadStatus(), loadClicks(), loadHistory(), loadNetworks(), loadInsights(), loadAccounts(), loadNetworkStats()]);
   renderOverview(); renderAnalytics(); renderPosts(); renderSEO(); renderAI(); renderNetworks(); renderAccounts();
   document.getElementById('topbar-ts').textContent = 'Updated ' + new Date().toLocaleTimeString();
