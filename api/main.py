@@ -15,6 +15,7 @@ from apscheduler.triggers.cron import CronTrigger
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.middleware.base import BaseHTTPMiddleware
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
@@ -81,6 +82,44 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="Affiliate Bot", lifespan=lifespan)
+
+
+# ── Dashboard auth middleware ────────────────────────────────────────────────
+# Protects all /api/* routes with a bearer token derived from DASHBOARD_PASSWORD.
+# Public routes (no auth): /, /health, /r/{id}, /oauth/*, /api/social/*/callback
+_PUBLIC_PREFIXES = ("/r/", "/health", "/oauth/", "/api/social/")
+_PUBLIC_EXACT    = {"/", "/health"}
+
+class DashboardAuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        password = os.environ.get("DASHBOARD_PASSWORD", "")
+        # No password set → Space is in open/dev mode, allow everything
+        if not password:
+            return await call_next(request)
+
+        path = request.url.path
+
+        # Always allow: redirect links, health check, OAuth callbacks, social OAuth flows
+        if path in _PUBLIC_EXACT:
+            return await call_next(request)
+        if any(path.startswith(p) for p in _PUBLIC_PREFIXES):
+            return await call_next(request)
+
+        # Check Authorization header: "Bearer {DASHBOARD_PASSWORD}"
+        auth = request.headers.get("Authorization", "")
+        token = auth.removeprefix("Bearer ").strip()
+        if token == password:
+            return await call_next(request)
+
+        # Unauthenticated API call
+        if path.startswith("/api/"):
+            return JSONResponse({"ok": False, "error": "Unauthorized"}, status_code=401)
+
+        # Unauthenticated dashboard page — serve the HTML (login form handles it client-side)
+        return await call_next(request)
+
+app.add_middleware(DashboardAuthMiddleware)
+
 
 try:
     from .social_oauth import router as social_router, _handle_oauth_callback

@@ -275,7 +275,28 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
 </style>
 </head>
 <body>
-<div id="app">
+
+<!-- ═══════════ LOGIN SCREEN ═══════════ -->
+<div id="login-screen" style="display:none;position:fixed;inset:0;z-index:9999;background:var(--bg);display:flex;align-items:center;justify-content:center">
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:40px 36px;width:100%;max-width:380px;box-shadow:0 8px 40px rgba(0,0,0,.35)">
+    <div style="text-align:center;margin-bottom:28px">
+      <div style="font-size:36px;margin-bottom:10px">🤖</div>
+      <div style="font-size:20px;font-weight:700;color:var(--text)">Shop Smart Dashboard</div>
+      <div style="font-size:13px;color:var(--muted);margin-top:6px">Enter your dashboard password to continue</div>
+    </div>
+    <div id="login-error" style="display:none;background:rgba(239,68,68,.12);border:1px solid var(--red);border-radius:8px;padding:10px 14px;font-size:13px;color:var(--red);margin-bottom:16px"></div>
+    <input id="login-pw" type="password" class="f-input" placeholder="Dashboard password"
+      style="width:100%;margin-bottom:14px;font-size:15px;padding:12px 14px"
+      onkeydown="if(event.key==='Enter')doLogin()" autocomplete="current-password" />
+    <button class="btn btn-primary" style="width:100%;padding:12px;font-size:15px" onclick="doLogin()">🔓 Unlock Dashboard</button>
+    <div style="font-size:11px;color:var(--dim);text-align:center;margin-top:18px">
+      Set <code>DASHBOARD_PASSWORD</code> in your HuggingFace Space secrets.<br>
+      Affiliate redirect links always work publicly.
+    </div>
+  </div>
+</div>
+
+<div id="app" style="display:none">
 
 <!-- ═══════════ SIDEBAR ═══════════ -->
 <nav id="sidebar">
@@ -984,11 +1005,58 @@ function nav(p) {
 }
 
 // ── API ────────────────────────────────────────────────────────
+// ── AUTH ───────────────────────────────────────────────────────
+function getToken() { return sessionStorage.getItem('dash_token') || ''; }
+function setToken(t) { sessionStorage.setItem('dash_token', t); }
+function clearToken() { sessionStorage.removeItem('dash_token'); }
+
+function showLogin(msg) {
+  document.getElementById('app').style.display = 'none';
+  const ls = document.getElementById('login-screen');
+  ls.style.display = 'flex';
+  if (msg) {
+    const el = document.getElementById('login-error');
+    el.textContent = msg; el.style.display = 'block';
+  }
+  setTimeout(() => document.getElementById('login-pw')?.focus(), 50);
+}
+
+async function doLogin() {
+  const pw = document.getElementById('login-pw').value.trim();
+  if (!pw) return;
+  setToken(pw);
+  // Try a lightweight auth check
+  const r = await fetch('/api/status', { headers: { Authorization: `Bearer ${pw}` } });
+  if (r.status === 401) {
+    clearToken();
+    showLogin('Incorrect password — try again.');
+    return;
+  }
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app').style.display = '';
+  init();
+}
+
+function addLogoutButton() {
+  const sidebar = document.getElementById('sidebar');
+  if (!sidebar || document.getElementById('btn-logout')) return;
+  const btn = document.createElement('button');
+  btn.id = 'btn-logout';
+  btn.textContent = '🔒 Lock';
+  btn.className = 'btn btn-secondary';
+  btn.style.cssText = 'position:fixed;bottom:14px;left:14px;font-size:11px;padding:5px 12px;z-index:100;opacity:.7';
+  btn.onclick = () => { clearToken(); showLogin(); };
+  document.body.appendChild(btn);
+}
+
 async function api(path, method='GET', body=null) {
   try {
     const opts = { method, headers: {} };
+    const token = getToken();
+    if (token) opts.headers['Authorization'] = `Bearer ${token}`;
     if (body != null) { opts.headers['Content-Type']='application/json'; opts.body=JSON.stringify(body); }
     const r = await fetch(path, opts);
+    if (r.status === 401) { showLogin('Session expired — please log in again.'); return null; }
     return r.json();
   } catch { return null; }
 }
@@ -1484,8 +1552,7 @@ async function testNetwork(key, btn) {
   btn.disabled=true; btn.textContent='⏳ Testing…';
   out.textContent=''; out.style.color='var(--muted)';
   try {
-    const r=await fetch('/api/network/test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({network:key})});
-    const d=r.ok||r.status===200?await r.json():null;
+    const d=await api('/api/network/test','POST',{network:key});
     if (d?.ok) {
       out.style.color='var(--green)';
       out.textContent='✓ OK — '+esc(d.product?.name||'product received');
@@ -1669,7 +1736,7 @@ async function saveSettings() {
     ctaPhrases: document.getElementById('s-cta').value.split('\n').map(l=>l.trim()).filter(Boolean),
     publishPlatforms,
   };
-  const d = await fetch('/api/settings', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(p)}).then(r=>r.json()).catch(()=>null);
+  const d = await api('/api/settings','POST',p);
   const msg = document.getElementById('s-msg');
   if (d?.ok) { msg.style.color='var(--green)'; msg.textContent='✓ Saved'; toast('Settings saved','ok'); }
   else { msg.style.color='var(--red)'; msg.textContent=d?.error||'Save failed'; }
@@ -1681,7 +1748,7 @@ async function triggerRun() {
   btns.forEach(b => b.disabled = true);
 
   const triggerTs = Date.now();
-  const d = await fetch('/api/run', {method:'POST'}).then(r=>r.json()).catch(()=>null);
+  const d = await api('/api/run','POST');
 
   if (!d) {
     toast('⚠ Could not reach the API — is the Space running?', 'err');
@@ -1702,7 +1769,7 @@ async function triggerRun() {
   const poll = async () => {
     polls++;
     if (polls > 105) { btns.forEach(b => b.disabled = false); return; }
-    const st = await fetch('/api/status').then(r=>r.json()).catch(()=>null);
+    const st = await api('/api/status');
     if (!st) { setTimeout(poll, 3000); return; }
     S.status = st;
     renderOverview();
@@ -1720,7 +1787,7 @@ async function triggerRun() {
 async function triggerDiagnose() {
   const btn = document.getElementById('btn-diagnose');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Diagnosing…'; }
-  const d = await fetch('/api/diagnose').then(r=>r.json()).catch(()=>null);
+  const d = await api('/api/diagnose');
   if (btn) { btn.disabled = false; btn.textContent = '🩺 Diagnose'; }
   if (!d) { toast('⚠ Could not reach /api/diagnose', 'err'); return; }
 
@@ -1751,11 +1818,7 @@ async function triggerDiagnose() {
 async function resetCircuitBreakers() {
   const btn = document.getElementById('btn-cb-reset');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Resetting…'; }
-  const d = await fetch('/api/circuit-breaker/reset', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({name:'all'})
-  }).then(r=>r.json()).catch(()=>null);
+  const d = await api('/api/circuit-breaker/reset', 'POST', {name:'all'});
   if (btn) { btn.disabled = false; btn.textContent = '⚡ Reset CB'; }
   if (d?.ok) {
     toast('✓ Circuit breakers reset — pipeline will attempt Bluesky on next Run', 'ok');
@@ -1766,7 +1829,7 @@ async function resetCircuitBreakers() {
 }
 
 async function triggerDryRun() {
-  const d = await fetch('/api/dry-run', {method:'POST'}).then(r=>r.json()).catch(()=>null);
+  const d = await api('/api/dry-run','POST');
   if (d?.ok) toast(`Dry run: ${d.product?.name || 'product'} via ${d.product?.source || '?'}`, 'ok');
   else toast(d?.error || 'Dry run failed', 'err');
 }
@@ -1782,7 +1845,7 @@ async function togglePause() {
 async function generateCaption() {
   const btn=document.getElementById('btn-gen');
   btn.disabled=true; btn.textContent='⏳ Generating…';
-  const d=await fetch('/api/ai/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({productName:document.getElementById('gen-name').value,category:document.getElementById('gen-cat').value,description:document.getElementById('gen-desc').value})}).then(r=>r.json()).catch(()=>null);
+  const d=await api('/api/ai/generate','POST',{productName:document.getElementById('gen-name').value,category:document.getElementById('gen-cat').value,description:document.getElementById('gen-desc').value});
   btn.disabled=false; btn.textContent='✨ Generate Caption';
   if (d?.text) {
     document.getElementById('gen-out').style.display='';
@@ -1799,12 +1862,12 @@ function startOAuth() {
 }
 async function disconnectBsky() {
   if (!confirm('Disconnect Bluesky? The pipeline will stop posting until you re-enable it.')) return;
-  const d = await fetch('/api/accounts/bluesky/disconnect', {method:'POST'}).then(r=>r.json()).catch(()=>null);
+  const d = await api('/api/accounts/bluesky/disconnect','POST');
   if (d?.ok) { toast('Bluesky disconnected'); await loadAccounts(); }
   else toast('Disconnect failed','err');
 }
 async function enableBsky() {
-  const d = await fetch('/api/accounts/bluesky/enable', {method:'POST'}).then(r=>r.json()).catch(()=>null);
+  const d = await api('/api/accounts/bluesky/enable','POST');
   if (d?.ok) { toast('Bluesky re-enabled ✓'); await loadAccounts(); }
   else toast('Failed to enable','err');
 }
@@ -1813,7 +1876,7 @@ async function testBskyConnection() {
   const msg = document.getElementById('bsky-status-msg');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Testing…'; }
   if (msg) msg.textContent = 'Testing connection to Bluesky…';
-  const d = await fetch('/api/accounts/bluesky/test', {method:'POST'}).then(r=>r.json()).catch(()=>null);
+  const d = await api('/api/accounts/bluesky/test','POST');
   if (btn) { btn.disabled = false; btn.textContent = '🧪 Test'; }
   if (!d) {
     if (msg) msg.textContent = '⚠ Could not reach API';
@@ -2033,11 +2096,7 @@ async function schedSave() {
   const hrs  = document.getElementById('sched-hours').value.trim();
   const enab = document.getElementById('sched-enabled').checked;
   const msg  = document.getElementById('sched-msg');
-  const r = await fetch('/api/schedule/config', {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ postsPerDay: ppd, postingHours: hrs, schedulerEnabled: enab }),
-  }).then(x => x.json()).catch(() => null);
+  const r = await api('/api/schedule/config', 'POST', { postsPerDay: ppd, postingHours: hrs, schedulerEnabled: enab });
   if (r?.ok) {
     msg.style.color = 'var(--green)'; msg.textContent = '✓ Saved';
     toast('Schedule saved', 'ok');
@@ -2151,9 +2210,38 @@ window.addEventListener('resize', () => {
     history.replaceState({}, '', '/');
   }
 })();
-loadAll();
-setInterval(()=>{ loadStatus(); loadGoldenSignals(); if(currentPage==='analytics'){loadClicks().then(renderAnalytics);} if(currentPage==='logs')loadLogs(); }, 20000);
-setInterval(()=>{ if(currentPage==='logs' && _logLive) loadLogs(); }, 5000);
+// ── BOOTSTRAP: check auth before showing anything ─────────────
+async function init() {
+  addLogoutButton();
+  loadAll();
+  setInterval(()=>{ loadStatus(); loadGoldenSignals(); if(currentPage==='analytics'){loadClicks().then(renderAnalytics);} if(currentPage==='logs')loadLogs(); }, 20000);
+  setInterval(()=>{ if(currentPage==='logs' && _logLive) loadLogs(); }, 5000);
+}
+
+(async () => {
+  const token = getToken();
+  if (token) {
+    // Validate stored token silently
+    const r = await fetch('/api/status', { headers: { Authorization: `Bearer ${token}` } }).catch(()=>null);
+    if (r && r.status !== 401) {
+      document.getElementById('login-screen').style.display = 'none';
+      document.getElementById('app').style.display = '';
+      init();
+      return;
+    }
+    clearToken();
+  }
+  // No password set on server → open mode
+  const probe = await fetch('/api/status').catch(()=>null);
+  if (probe && probe.status !== 401) {
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('app').style.display = '';
+    init();
+    return;
+  }
+  // Password required → show login
+  showLogin();
+})();
 </script>
 <!-- SOVRN Commerce (VigLink) — monetizes outbound product links on this page -->
 <script type="text/javascript">
