@@ -65,21 +65,25 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Get HuggingFace token via Trusted Publisher (OIDC)
+      - name: Resolve HuggingFace token
         env:
           HF_USERNAME:   ${{ secrets.HF_USERNAME }}
           HF_SPACE_NAME: ${{ secrets.HF_SPACE_NAME }}
+          HF_TOKEN_SECRET: ${{ secrets.HF_TOKEN }}
         run: |
           set -euo pipefail
 
-          # Exchange the GitHub OIDC token for a short-lived HF token (valid 1h)
-          # Requires a Trusted Publisher configured on the HF Space:
-          #   https://huggingface.co/${HF_USERNAME}/${HF_SPACE_NAME}/settings → Trusted Publishers
-          #   Provider: GitHub Actions
-          #   repository: faju85/auto-affiliate-
-          #   workflow: sync-to-hf.yml
-          #   branch: main  (or the branch you push from)
+          # Prefer a static HF_TOKEN secret if present.
+          # Fall back to Trusted Publisher OIDC exchange (requires Space Settings → Trusted Publishers).
+          if [ -n "${HF_TOKEN_SECRET:-}" ]; then
+            echo "Using HF_TOKEN secret"
+            echo "::add-mask::${HF_TOKEN_SECRET}"
+            DELIM="EOF_$(openssl rand -hex 16)"
+            { echo "HF_TOKEN<<$DELIM"; echo "${HF_TOKEN_SECRET}"; echo "$DELIM"; } >> "$GITHUB_ENV"
+            exit 0
+          fi
 
+          echo "HF_TOKEN secret not set — attempting Trusted Publisher OIDC exchange"
           ID_TOKEN=$(curl -sSf \
             -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
             "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://huggingface.co" \
@@ -102,6 +106,7 @@ jobs:
           if [ "$STATUS" -ne 200 ]; then
             REQUEST_ID=$(grep -i '^x-request-id:' "$HEADERS" | sed 's/.*: *//' | tr -d '\r')
             echo "::error::HF token exchange failed HTTP $STATUS (x-request-id: ${REQUEST_ID:-unknown})"
+            echo "::error::To fix: add HF_TOKEN as a GitHub secret, OR configure Trusted Publishers on the HF Space."
             cat "$BODY"
             exit 1
           fi
