@@ -42,6 +42,10 @@ jobs:
           print('All imports OK')
           "
 
+      - name: Run Python unit tests
+        run: |
+          DATA_DIR=/tmp/ci-data python -m pytest api/tests/ -v --tb=short
+
       - name: Dockerfile syntax check
         run: docker build --check . || true
         # 'check' mode available in Docker 24+; non-fatal if unavailable
