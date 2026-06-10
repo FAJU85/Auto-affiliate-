@@ -10,9 +10,12 @@ Reliability:
 """
 
 import asyncio
+import json
 import os
+import threading
 import time
 import unicodedata
+from pathlib import Path
 
 from atproto import Client, models
 
@@ -20,10 +23,88 @@ from .utils import logger
 from .utils.circuit_breaker import bluesky_cb
 from .utils.telemetry import Timer, record_saturation
 
-GRAPHEME_LIMIT = 300
-LOGIN_TIMEOUT  = 30   # seconds
-POST_TIMEOUT   = 30   # seconds
-MAX_RETRIES    = 3
+GRAPHEME_LIMIT  = 300
+LOGIN_TIMEOUT   = 30   # seconds
+POST_TIMEOUT    = 30   # seconds
+MAX_RETRIES     = 3
+SESSION_TTL     = 90 * 60  # 90 minutes — refresh before Bluesky access token expires
+
+DATA_DIR        = Path(os.environ.get("DATA_DIR", "/data"))
+SESSION_FILE    = DATA_DIR / "bsky-session.json"
+
+_session_lock   = threading.Lock()
+_cached_client: Client | None = None
+_session_expiry: float = 0.0
+
+
+def _save_session(client: Client) -> None:
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        sess = client.export_session_string()
+        SESSION_FILE.write_text(json.dumps({"session": sess, "ts": time.time()}))
+    except Exception as err:  # noqa: BLE001
+        logger.warn(f"Bluesky session save failed: {err}")
+
+
+def _load_session() -> str | None:
+    try:
+        data = json.loads(SESSION_FILE.read_text())
+        age = time.time() - float(data.get("ts", 0))
+        if age < SESSION_TTL:
+            return data.get("session")
+    except Exception:
+        pass
+    return None
+
+
+def _invalidate_session() -> None:
+    global _cached_client, _session_expiry
+    with _session_lock:
+        _cached_client = None
+        _session_expiry = 0.0
+    try:
+        SESSION_FILE.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
+def _get_or_create_client(handle: str, password: str) -> Client:
+    """Return a live Client, reusing a saved session when possible."""
+    global _cached_client, _session_expiry
+
+    with _session_lock:
+        if _cached_client is not None and time.time() < _session_expiry:
+            logger.info("Bluesky: reusing in-memory session")
+            return _cached_client
+
+        client = Client()
+
+        # Try resuming a persisted session first — avoids createSession rate limit
+        saved = _load_session()
+        if saved:
+            try:
+                with Timer("bluesky_resume"):
+                    client.login(session_string=saved)
+                _cached_client = client
+                _session_expiry = time.time() + SESSION_TTL
+                logger.info(f"Bluesky: resumed persisted session for @{handle}")
+                return client
+            except Exception as err:
+                logger.warn(f"Bluesky: session resume failed ({err}) — re-logging in")
+                try:
+                    SESSION_FILE.unlink(missing_ok=True)
+                except Exception:
+                    pass
+
+        # Full login
+        logger.info(f"Bluesky: full login for @{handle}")
+        with Timer("bluesky_login"):
+            client.login(handle, password)
+        _save_session(client)
+        _cached_client = client
+        _session_expiry = time.time() + SESSION_TTL
+        logger.info(f"Bluesky: authenticated as @{handle}")
+        return client
 
 
 # ── Grapheme helpers ─────────────────────────────────────────────────────────
@@ -118,17 +199,7 @@ def _post_sync(caption: str, deeplink: str, image_bytes: bytes | None, product: 
             f"BSKY_APP_PASSWORD {'set' if password else 'MISSING'})"
         )
 
-    client = Client()
-
-    # Login with timeout guard
-    import signal
-
-    def _timeout_handler(signum, frame):
-        raise TimeoutError("Bluesky login timed out")
-
-    # signal-based timeout only works on main thread; use a thread timer fallback
-    with Timer("bluesky_login"):
-        client.login(handle, password)
+    client = _get_or_create_client(handle, password)
 
     full_text = _build_post_text(caption, deeplink)
     facets    = _link_facets(full_text, deeplink)
@@ -182,6 +253,9 @@ async def post_to_bluesky(
                 wait = 60 * attempt
                 logger.warn(f"Bluesky rate-limited — waiting {wait}s")
                 await asyncio.sleep(wait)
+            elif any(x in msg for x in ("expired", "revoked", "deleted", "unauthorized", "401")):
+                logger.warn(f"Bluesky auth error — invalidating session: {e}")
+                _invalidate_session()
             else:
                 logger.warn(f"Bluesky attempt {attempt} failed: {e}")
 
