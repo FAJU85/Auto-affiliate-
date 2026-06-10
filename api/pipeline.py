@@ -246,7 +246,7 @@ async def _execute(started: float) -> dict:
                 logger.error(f"Post failed: {_msg}", "bluesky")
         else:
             logger.info(f"Attempting post…", platform)
-            uri = await post_to_platform(platform, caption, redirect)
+            uri = await post_to_platform(platform, caption, redirect, image=image, product=product)
             if uri:
                 uris[platform] = uri
                 primary_uri = primary_uri or uri

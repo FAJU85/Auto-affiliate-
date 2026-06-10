@@ -76,7 +76,27 @@ def _oauth1_header(method: str, url: str, consumer_key: str, consumer_secret: st
 
 # ── Platform posting functions ───────────────────────────────────────────────
 
-async def _post_mastodon(caption: str, deeplink: str) -> str:
+_HASHTAG_MAP = [
+    (["travel", "flight", "hotel", "airline", "travelpayouts", "vacation", "trip"], ["#travel", "#deals"]),
+    (["fashion", "clothing", "apparel", "shoes", "dress", "shirt", "sneakers", "handbag"], ["#fashion", "#style"]),
+    (["tech", "electronics", "laptop", "phone", "gadget", "camera", "earbuds", "smartwatch"], ["#TechDeals", "#Electronics"]),
+    (["beauty", "skincare", "makeup", "cosmetics", "hair", "serum", "lipstick"], ["#beauty", "#selfcare"]),
+    (["home", "furniture", "decor", "kitchen", "garden", "appliance"], ["#homedecor", "#deals"]),
+    (["sport", "fitness", "gym", "outdoor", "running", "yoga", "workout"], ["#fitness", "#deals"]),
+    (["pet", "dog", "cat", "animal", "bird"], ["#pets", "#deals"]),
+    (["baby", "kids", "toy", "children", "nursery"], ["#kids", "#deals"]),
+    (["health", "vitamin", "supplement", "wellness"], ["#health", "#wellness"]),
+]
+
+def _pick_hashtags(product: dict) -> list[str]:
+    haystack = " ".join(filter(None, [product.get("source"), product.get("category"), product.get("name", "")])).lower()
+    for keywords, tags in _HASHTAG_MAP:
+        if any(k in haystack for k in keywords):
+            return tags
+    return ["#deals", "#shopping"]
+
+
+async def _post_mastodon(caption: str, deeplink: str, image: bytes | None = None, product: dict | None = None) -> str:
     conns = _load_connections()
     c = conns.get("mastodon", {})
     if not c.get("connected") or not c.get("access_token"):
@@ -84,15 +104,49 @@ async def _post_mastodon(caption: str, deeplink: str) -> str:
 
     instance     = c.get("instance", "https://mastodon.social").rstrip("/")
     access_token = c["access_token"]
-    text         = f"{caption}\n{deeplink}" if deeplink else caption
+    auth_header  = {"Authorization": f"Bearer {access_token}"}
+
+    # Build hashtags from product metadata
+    hashtags = " ".join(_pick_hashtags(product or {}))
+
+    # Format: caption + hashtags + Shop Now link
+    link_line = f"Shop Now 🔗 {deeplink}" if deeplink else ""
+    parts = [p for p in [caption, hashtags, link_line] if p]
+    text = "\n\n".join(parts)
     if len(text) > 500:
-        text = text[:499] + "…"
+        # Trim caption to fit, preserving hashtags and link
+        overhead = len("\n\n".join(["", hashtags, link_line])) + 1
+        caption = caption[:max(0, 497 - overhead)] + "…"
+        parts = [p for p in [caption, hashtags, link_line] if p]
+        text = "\n\n".join(parts)
+
+    # Upload image if provided
+    media_ids = []
+    if image:
+        try:
+            async with httpx.AsyncClient(timeout=POST_TIMEOUT) as client:
+                r_img = await client.post(
+                    f"{instance}/api/v1/media",
+                    headers=auth_header,
+                    files={"file": ("product.jpg", image, "image/jpeg")},
+                )
+            if r_img.status_code in (200, 201, 202):
+                media_ids = [r_img.json().get("id")]
+                logger.info("Image uploaded to Mastodon", "mastodon")
+            else:
+                logger.warn(f"Mastodon image upload failed HTTP {r_img.status_code} — posting without image", "mastodon")
+        except Exception as err:
+            logger.warn(f"Mastodon image upload error (non-fatal): {err}", "mastodon")
+
+    payload: dict = {"status": text, "visibility": "public"}
+    if media_ids:
+        payload["media_ids"] = media_ids
 
     async with httpx.AsyncClient(timeout=POST_TIMEOUT) as client:
         r = await client.post(
             f"{instance}/api/v1/statuses",
-            headers={"Authorization": f"Bearer {access_token}"},
-            json={"status": text, "visibility": "public"},
+            headers=auth_header,
+            json=payload,
         )
     if r.status_code not in (200, 201):
         raise RuntimeError(f"HTTP {r.status_code}: {r.text[:300]}")
@@ -205,8 +259,8 @@ async def _post_tumblr(caption: str, deeplink: str) -> str:
 
 # ── Public dispatcher with circuit breakers ──────────────────────────────────
 
-async def post_to_mastodon(caption: str, deeplink: str) -> str:
-    return await _mastodon_cb.call(_post_mastodon, caption, deeplink)
+async def post_to_mastodon(caption: str, deeplink: str, image: bytes | None = None, product: dict | None = None) -> str:
+    return await _mastodon_cb.call(_post_mastodon, caption, deeplink, image, product)
 
 
 async def post_to_x(caption: str, deeplink: str) -> str:
@@ -221,11 +275,12 @@ async def post_to_tumblr(caption: str, deeplink: str) -> str:
     return await _tumblr_cb.call(_post_tumblr, caption, deeplink)
 
 
-async def post_to_platform(platform: str, caption: str, deeplink: str) -> str | None:
+async def post_to_platform(platform: str, caption: str, deeplink: str,
+                           image: bytes | None = None, product: dict | None = None) -> str | None:
     """Post to a single platform. Returns URI on success, logs and returns None on failure."""
     try:
         if platform == "mastodon":
-            return await post_to_mastodon(caption, deeplink)
+            return await post_to_mastodon(caption, deeplink, image, product)
         if platform == "x":
             return await post_to_x(caption, deeplink)
         if platform == "threads":

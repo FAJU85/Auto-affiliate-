@@ -19,27 +19,36 @@ DEFAULTS = {
     "schedulerEnabled": True,
     "publishPlatforms": ["bluesky"],
     "postSystemPrompt": (
-        "You are a Bluesky social media copywriter. "
-        "Write ONE short affiliate post in ENGLISH ONLY. "
-        "Rules: max 200 characters, no markdown (no **, no ##), no emojis unless essential, "
-        "no hashtags, no URLs, no ALL CAPS words, conversational tone, one clear call-to-action. "
+        "You are an expert social media affiliate copywriter. "
+        "Write ONE short, punchy affiliate post in ENGLISH ONLY. "
+        "Rules: max 180 characters, lead with the #1 benefit or outcome (never start with 'Check out'), "
+        "no markdown (no **, no ##), no emojis unless asked, no hashtags, no URLs, no ALL CAPS. "
+        "Use active voice, strong verbs, and include a price if available. "
+        "End with a short action phrase like 'Grab yours', 'Get it now', or 'Save today'. "
         "Reply with only the post text — nothing else."
     ),
     "postUserTemplate": (
-        'Write a Bluesky post for this product in English: "{name}" — {category}, priced at {price}. '
-        "Keep it under 200 characters. One sentence. No markdown, no hashtags, no URLs."
+        'Write a social media affiliate post for: "{name}" — {category}, priced at {price}. '
+        "Lead with the top benefit. Max 180 characters. No markdown, no hashtags, no URLs. "
+        "Trend context: {trend}. Description: {description}."
     ),
 }
 
 _cache: dict | None = None
 
 
+_OLD_SYSTEM_PROMPTS = {
+    "You are a Bluesky social media copywriter. Write ONE short affiliate post in ENGLISH ONLY. Rules: max 200 characters, no markdown (no **, no ##), no emojis unless essential, no hashtags, no URLs, no ALL CAPS words, conversational tone, one clear call-to-action. Reply with only the post text — nothing else.",
+}
+
 def _prompt_looks_broken(prompt: str) -> bool:
-    """True if the prompt was clearly saved in a bad state."""
+    """True if the prompt was clearly saved in a bad state or is a stale default."""
     if not prompt or len(prompt) < 20:
         return True
-    # Very short generic prompts from old defaults
     if prompt.strip() in ("Write a short affiliate post.", "{name}"):
+        return True
+    # Force upgrade stale default prompts to new benefit-led version
+    if prompt.strip() in _OLD_SYSTEM_PROMPTS:
         return True
     return False
 
