@@ -573,6 +573,7 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <input class="f-input" style="max-width:260px;flex:1" id="bsky-handle" placeholder="yourhandle.bsky.social" />
           <button class="btn btn-primary" id="btn-bsky-connect" onclick="startOAuth()">🔑 Connect</button>
+          <button class="btn btn-primary" id="btn-bsky-enable" style="display:none" onclick="enableBsky()">✓ Re-enable</button>
           <button class="btn btn-secondary" id="btn-bsky-disconnect" style="display:none" onclick="disconnectBsky()">✗ Disconnect</button>
         </div>
         <div id="bsky-status-msg" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
@@ -1172,10 +1173,14 @@ function renderAccounts() {
   const bskyBadge = document.getElementById('bsky-badge');
   const bskyDisc  = document.getElementById('btn-bsky-disconnect');
   const bskyConn  = document.getElementById('btn-bsky-connect');
-  if (bskyBadge) bskyBadge.className = bsky.connected ? 'badge badge-ok' : 'badge badge-fail';
-  if (bskyBadge) bskyBadge.textContent = bsky.connected ? `✓ ${bsky.did||'Connected'}` : '✗ Not connected';
-  if (bskyDisc)  bskyDisc.style.display = bsky.connected ? '' : 'none';
-  if (bskyConn)  bskyConn.style.display = bsky.connected ? 'none' : '';
+  const bskyEnable = document.getElementById('btn-bsky-enable');
+  if (bskyBadge) {
+    bskyBadge.className   = bsky.connected ? 'badge badge-ok' : (bsky.hasCreds ? 'badge badge-warn' : 'badge badge-fail');
+    bskyBadge.textContent = bsky.connected ? `✓ ${bsky.handle||'Connected'}` : (bsky.hasCreds ? '⏸ Disabled' : '✗ Not connected');
+  }
+  if (bskyDisc)   bskyDisc.style.display   = bsky.connected ? '' : 'none';
+  if (bskyEnable) bskyEnable.style.display  = (!bsky.connected && bsky.hasCreds) ? '' : 'none';
+  if (bskyConn)   bskyConn.style.display    = (!bsky.connected && !bsky.hasCreds) ? '' : 'none';
 
   // Social platforms from FastAPI
   renderSocialPlatforms(d.social || {});
@@ -1387,10 +1392,15 @@ function startOAuth() {
   window.location.href = '/oauth/start?handle=' + encodeURIComponent(h);
 }
 async function disconnectBsky() {
-  if (!confirm('Disconnect Bluesky?')) return;
+  if (!confirm('Disconnect Bluesky? The pipeline will stop posting until you re-enable it.')) return;
   const d = await fetch('/api/accounts/bluesky/disconnect', {method:'POST'}).then(r=>r.json()).catch(()=>null);
   if (d?.ok) { toast('Bluesky disconnected'); await loadAccounts(); }
   else toast('Disconnect failed','err');
+}
+async function enableBsky() {
+  const d = await fetch('/api/accounts/bluesky/enable', {method:'POST'}).then(r=>r.json()).catch(()=>null);
+  if (d?.ok) { toast('Bluesky re-enabled ✓'); await loadAccounts(); }
+  else toast('Failed to enable','err');
 }
 async function connectMastodon() {
   const platform  = document.getElementById('mastodon-platform').value;
@@ -1425,7 +1435,7 @@ async function disconnectSocial(platform) {
   if (!confirm(`Disconnect ${platform}?`)) return;
   const d = await api(`/api/social/${platform}/disconnect`, 'DELETE');
   if (d?.ok) { toast(`${platform} disconnected`); await loadAccounts(); }
-  else toast('Disconnect failed', 'err');
+  else toast(d?.detail || d?.error || 'Disconnect failed', 'err');
 }
 async function loadAccounts() {
   const [bsky, social] = await Promise.all([

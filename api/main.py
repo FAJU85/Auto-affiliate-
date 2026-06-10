@@ -296,19 +296,29 @@ async def post_settings(request: Request):
 
 @app.get("/api/accounts")
 async def accounts():
-    connected = bool(os.environ.get("BSKY_HANDLE") and os.environ.get("BSKY_APP_PASSWORD"))
+    has_creds = bool(os.environ.get("BSKY_HANDLE") and os.environ.get("BSKY_APP_PASSWORD"))
+    bsky_enabled = settings.get_settings().get("bskyEnabled", True)
+    connected = has_creds and bsky_enabled
     return {
         "bluesky": {
             "connected": connected,
-            "handle": os.environ.get("BSKY_HANDLE", ""),
+            "handle": os.environ.get("BSKY_HANDLE", "") if connected else "",
             "method": "app-password",
+            "hasCreds": has_creds,
         }
     }
 
 
 @app.post("/api/accounts/bluesky/disconnect")
 async def disconnect_bluesky():
-    return {"ok": True, "note": "Bluesky uses env credentials; clear them in Space settings."}
+    settings.save_settings({"bskyEnabled": False})
+    return {"ok": True}
+
+
+@app.post("/api/accounts/bluesky/enable")
+async def enable_bluesky():
+    settings.save_settings({"bskyEnabled": True})
+    return {"ok": True}
 
 
 @app.get("/api/networks")
