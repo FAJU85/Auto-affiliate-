@@ -2,165 +2,193 @@
 
 Maintained by: SRE duty cycle  
 Space URL: https://vooom-fast-growth.hf.space  
-Branch: claude/zealous-carson-oMr43
+Branch: claude/zealous-carson-oMr43  
+Last updated: 2026-06-10
 
 ---
 
 ## 1. Run the Pipeline Manually
 
 ### Via dashboard (preferred)
-1. Open https://vooom-fast-growth.hf.space
+1. Open https://vooom-fast-growth.hf.space (login with `DASHBOARD_PASSWORD`)
 2. Click **"Run now"** on the dashboard home page.
 3. Watch the run log appear in the Logs tab within 30 seconds.
 
-### Via API
+### Via API (requires auth if DASHBOARD_PASSWORD is set)
 ```bash
-curl -X POST https://vooom-fast-growth.hf.space/api/run
+curl -X POST https://vooom-fast-growth.hf.space/api/run \
+  -H "Authorization: Bearer YOUR_DASHBOARD_PASSWORD"
 # Returns: {"ok":true,"message":"Run triggered"}
-# 409 = already running, 503 = not configured
-```
-
-### Via CLI (local dev)
-```bash
-cd /home/user/Auto-affiliate-
-node -e "import('./src/pipeline/run.js').then(m => m.runPipeline())"
+# 409 = already running
 ```
 
 ---
 
-## 2. Reset a Circuit Breaker
+## 2. Circuit Breakers
 
-This app uses Node.js in-memory state — there are no explicit circuit breakers.
-To reset after a feed failure:
+The app has 10 in-process circuit breakers (bluesky, groq, mistral, sovrn, mastodon, x, threads, tumblr, facebook, instagram).
 
-1. Check which network failed: `GET /api/networks`
-2. If a network is showing errors, verify its env var is set: `GET /api/env-status`
-3. For Bluesky auth failures: restart or call `POST /api/accounts/bluesky/disconnect` and reconnect
-4. For transient network errors: wait for the next scheduled run (errors auto-clear)
-5. To force a fresh run after fixing: `POST /api/run`
+```bash
+# Check all breaker states
+curl https://vooom-fast-growth.hf.space/health | jq '.circuit_breakers'
+
+# Reset a specific breaker (requires auth)
+curl -X POST https://vooom-fast-growth.hf.space/api/circuit-breakers/bluesky/reset \
+  -H "Authorization: Bearer YOUR_DASHBOARD_PASSWORD"
+
+# Reset all breakers
+curl -X POST https://vooom-fast-growth.hf.space/api/circuit-breakers/reset-all \
+  -H "Authorization: Bearer YOUR_DASHBOARD_PASSWORD"
+```
+
+Breaker opens after N consecutive failures; auto-closes after recovery_timeout seconds.
 
 ---
 
-## 3. Check Metrics / SLO
+## 3. SLO & Error Budget
 
-### Quick health check
 ```bash
+# Quick health (public, no auth)
 curl https://vooom-fast-growth.hf.space/health
-# Returns: {"status":"ok","successRate":"85%","hoursSinceLastSuccess":2,...}
+# Returns: slo_pct, error_budget_remaining_pct, circuit_breakers, pipeline_running
+
+# Detailed SLO (requires auth)
+curl https://vooom-fast-growth.hf.space/api/slo \
+  -H "Authorization: Bearer YOUR_DASHBOARD_PASSWORD"
 ```
 
-### Full SLO stats (rolling 24h window, 90% target)
-```bash
-curl https://vooom-fast-growth.hf.space/api/status | jq '.stats'
-```
+**KPIs:**
+- SLO target: 90% successful runs (500-run rolling window)
+- Error budget: 10% failure rate allowed
+- If budget hits 0%: circuit breaker activates — halt feature deploys, fix stability
 
-### Recent run history
+### Reset SLO baseline after fixing a systematic failure
 ```bash
-curl https://vooom-fast-growth.hf.space/api/history?n=20
-```
-
-### SLO calculation
-- **Target**: 90% success rate (configurable via dashboard Settings → `sloTarget`)
-- **Window**: 24 hours rolling
-- **Error budget**: 10% of runs allowed to fail per 24h
-- **Budget used**: `failures / (total * 0.10) * 100%`
-- Example: 100 runs, 15 failed → budget used = 150% (exhausted, investigate)
-
-### CSV export (for offline analysis)
-```bash
-curl https://vooom-fast-growth.hf.space/api/history/csv -o pipeline-history.csv
+curl -X POST https://vooom-fast-growth.hf.space/api/slo/reset \
+  -H "Authorization: Bearer YOUR_DASHBOARD_PASSWORD"
+# Clears run history so fresh SLO calculation starts from zero
 ```
 
 ---
 
-## 4. Fix Common Errors
+## 4. Dedup Store
+
+Products are deduped for 24 hours by default (configurable via `DEDUP_TTL_HOURS` env var).
+With 55 products posting hourly, the catalog cycles cleanly within the 24h window.
+
+```bash
+# Check dedup status (requires auth)
+curl https://vooom-fast-growth.hf.space/api/dedup \
+  -H "Authorization: Bearer YOUR_DASHBOARD_PASSWORD"
+
+# Clear dedup store (allows re-posting all products immediately)
+curl -X POST https://vooom-fast-growth.hf.space/api/dedup/reset \
+  -H "Authorization: Bearer YOUR_DASHBOARD_PASSWORD"
+```
+
+---
+
+## 5. Fix Common Errors
 
 ### X (Twitter) 403
-Not applicable — this bot posts to Bluesky only. If you see 403 in logs, it
-is from the FastAPI social-post proxy. Check `GET /api/social/status` for
-OAuth token expiry. Re-authenticate via the Accounts page in the dashboard.
+The app's Twitter credentials require "Read and Write" OAuth 1.0a permission.
+1. Go to https://developer.twitter.com → your app → Settings → User authentication settings
+2. Enable OAuth 1.0a with Read+Write permissions
+3. Regenerate Access Token & Secret
+4. Update `X_ACCESS_TOKEN` and `X_ACCESS_TOKEN_SECRET` in HF Space secrets
 
-### Mastodon image upload fail
-1. Check logs: `GET /api/logs`
-2. Image may exceed Mastodon's 8 MB limit — the upscaler can produce large files.
-3. Temporary fix: set `SKIP_IMAGE_UPSCALE=true` in HF Space secrets.
-4. Permanent fix: ensure `upscaleImage()` returns a buffer ≤ 8 MB.
+### Mastodon: "Auto Affiliate Bot" label on posts
+The OAuth app name appears as the post author badge.
+1. Go to mastodon.social/settings/applications
+2. Rename the app to something neutral (e.g. your account name)
 
 ### SOVRN 400 / link not monetized
-Symptom: logs show `SOVRN link API 400` or monetized URL === original URL.
+Fixed 2026-06-10: API URL now uses `out=` parameter (not `u=`).
+If still broken: verify `SOVRN_API_KEY` is set in HF Space secrets.
 
-1. Verify `SOVRN_API_KEY` is set in HF Space secrets.
-2. The API URL must use `out=<encoded-url>` (not `u=`). This was fixed 2026-06-10.
-3. Test monetization:
-   ```bash
-   curl "https://api.viglink.com/api/link?key=YOUR_KEY&out=https%3A%2F%2Famazon.com%2Fdp%2FB09XS7JWHH"
-   ```
-4. If the response `url` field equals the input URL, the key may be invalid or
-   the merchant is not in SOVRN's network.
+### Bluesky rate limit (429)
+Rate limit auto-respected — the app stores the reset timestamp and blocks login until clear.
+Do NOT manually trigger runs during cooldown (cooldown auto-clears).
 
-### Admitad feed empty / 0 offers parsed
-1. Check `ADMITAD_FEED_URL` is set and not expired.
-2. The feed is streamed up to 2 MB — if all products are in the first 2 MB, this
-   is fine. If the feed is entirely non-Latin, all offers will be filtered out.
-3. Test: `curl "$ADMITAD_FEED_URL" | head -c 500` — should show `<yml_catalog>`.
+### Groq rate limit (429)
+Pipeline auto-falls back to Mistral, then to template text. Never blocks posting.
+Check Groq dashboard: https://console.groq.com
 
-### Bluesky rate limit (createSession 429)
-The session is persisted to `data/bsky-session.json`. After a 429, a 15-minute
-cooldown file is written to `data/bsky-ratelimit.json`.
-- Do NOT manually trigger runs during the cooldown window.
-- The cooldown auto-clears after 15 minutes.
-- If the session file is corrupted: delete `data/bsky-session.json` and restart.
+### AI circuit breaker trips on 429
+Fixed 2026-06-10: 429s now trigger exponential backoff (up to 3×, max 30s) before counting as a failure.
 
-### Groq rate limit (14,400 req/day)
-The bot uses ~1 API call per pipeline run. At 24 runs/day, daily usage is well
-within the free tier limit. If you see `429` from Groq:
-1. The pipeline auto-falls back to Mistral (if `MISTRAL_API_KEY` is set).
-2. If both fail, it uses a template fallback (never blocks posting).
-3. Check Groq dashboard for quota usage: https://console.groq.com
+### All pipeline runs failing ("Product already posted recently")
+Root cause: DEDUP_TTL_HOURS too long (was 168h). Fixed 2026-06-10 to 24h default.
+Recovery: call `/api/slo/reset` to clear bad run history after fix deploys.
 
 ---
 
-## 5. DR: Persistent Data in /data/
+## 6. DR: Persistent Data
 
-The HF Space mounts a persistent volume at `/data/`. All state lives here.
+The HF Space mounts a persistent volume at `/data/`. All runtime state lives here.
 
 | File | Contents | Restore procedure |
 |------|----------|-------------------|
-| `data/metrics.json` | Last 500 pipeline run records | Delete to reset history; will be recreated on next run |
-| `data/budget.json` | Daily AI spend tracker (resets at UTC midnight) | Delete to reset today's spend counter |
-| `data/posted-products.json` | 60-day dedup store (prevents re-posting same product) | Delete to allow re-posting all products |
-| `data/caption-cache.json` | Per-product AI caption cache (1 day TTL) | Delete to force caption regeneration on next run |
-| `data/bsky-session.json` | Bluesky auth session (refreshed every 90 min) | Delete to force re-login on next run |
-| `data/bsky-ratelimit.json` | Bluesky rate limit cooldown timestamp | Delete to lift the 15-min cooldown early |
-| `data/settings.json` | Pipeline settings (cost caps, schedule, SLO target) | Delete to reset to defaults; or restore from `PIPELINE_SETTINGS` env secret |
+| `metrics.json` | Last 500 pipeline run records | Call `/api/slo/reset` to clear |
+| `budget.json` | Daily AI spend tracker | Resets at UTC midnight automatically |
+| `settings.json` | Pipeline settings | Restored from `PIPELINE_SETTINGS` env secret on restart |
+| `bsky-ratelimit.json` | Bluesky rate limit cooldown | Delete to lift early |
 
-### Full restore after container rebuild
-Settings are persisted to both `/data/settings.json` AND the HF secret
-`PIPELINE_SETTINGS`. On startup, if `/data/` is empty, the code reads
-`PIPELINE_SETTINGS` and re-writes the file. No manual action needed.
-
-### Backup run history off-space
+**WORM backup:** Run history exports available via:
 ```bash
-curl https://vooom-fast-growth.hf.space/api/history/csv -o backup-$(date +%Y%m%d).csv
+curl https://vooom-fast-growth.hf.space/api/history/csv \
+  -H "Authorization: Bearer YOUR_DASHBOARD_PASSWORD" \
+  -o backup-$(date +%Y%m%d).csv
 ```
+
+**Full container rebuild:** Settings auto-restore from `PIPELINE_SETTINGS` HF secret. No manual action needed. Dedup store and run history are lost but non-critical.
+
+**DR Game Day:** Recommended quarterly — rebuild the Space from scratch and verify all env secrets restore correctly.
 
 ---
 
-## 6. Useful API Endpoints Reference
+## 7. API Reference
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/health` | GET | Health gate — returns 200/503 |
-| `/api/status` | GET | Full dashboard payload |
-| `/api/run` | POST | Trigger a manual pipeline run |
-| `/api/settings` | GET/POST | Read/update pipeline settings |
-| `/api/history` | GET | Recent run records (`?n=N`) |
-| `/api/history/csv` | GET | CSV export of all runs |
-| `/api/logs` | GET | Recent log lines (`?n=N`) |
-| `/api/networks` | GET | Per-network status and error info |
-| `/api/dedup` | GET | Dedup store status |
-| `/api/dedup` | DELETE | Clear dedup store |
-| `/api/dry-run` | POST | Fetch product + generate caption without posting |
-| `/api/debug` | GET | Env var + last run diagnostics |
-| `/api/schedule/pause` | POST | Pause the cron scheduler |
-| `/api/schedule/resume` | POST | Resume the cron scheduler |
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/health` | GET | None | Public health — returns SLO, budget, circuit breakers |
+| `/api/run` | POST | Bearer | Trigger manual pipeline run |
+| `/api/slo` | GET | Bearer | SLO + error budget details |
+| `/api/slo/reset` | POST | Bearer | Purge run history (resets SLO baseline) |
+| `/api/logs` | GET | Bearer | Recent log lines |
+| `/api/settings` | GET/POST | Bearer | Read/update pipeline settings |
+| `/api/history` | GET | Bearer | Recent run records |
+| `/api/history/csv` | GET | Bearer | CSV export |
+| `/api/dedup` | GET | Bearer | Dedup store status |
+| `/api/dedup/reset` | POST | Bearer | Clear dedup store |
+| `/api/circuit-breakers/{name}/reset` | POST | Bearer | Reset named circuit breaker |
+| `/api/circuit-breakers/reset-all` | POST | Bearer | Reset all circuit breakers |
+| `/r/{id}` | GET | None | Public affiliate redirect (must stay public) |
+
+---
+
+## 8. Post-Mortem — SLO Collapse 2026-06-10
+
+**Incident:** SLO dropped to 58.25%, error budget exhausted (0% remaining).
+
+**Impact:** ~41.75% of pipeline runs failing for an estimated 2–4 days. Zero affiliate link posts during failure windows. No user-facing outage (redirect links and dashboard remained accessible).
+
+**Root cause:** `DEDUP_TTL_HOURS` defaulted to 168 hours (7 days). The product pool contains 55 products. With hourly posts, all 55 products were exhausted in ~2.3 days. After exhaustion, `sovrn._pick_product()` logged a warning and returned a random fallback product, but the pipeline-level dedup guard caught this and recorded every subsequent run as `success: False`. The SLO window (last 500 runs) filled with failures.
+
+**Contributing factor:** The pipeline dedup guard used the same 168h TTL as the sovrn-level guard, making both layers equally strict. When sovrn fell back gracefully, the pipeline cancelled the work anyway.
+
+**Fix (deployed 2026-06-10 commit 6c768d9):**
+1. Reduced default `DEDUP_TTL_HOURS` from 168h to 24h
+2. Pipeline-level dedup now uses a 1-hour hard block (prevents exact repeat within a session only)
+3. Added `POST /api/slo/reset` endpoint to clear run history after fixing systematic failures
+4. Added `clear_run_history()` to metrics module
+
+**Action items:**
+- [ ] After fix deploys: call `POST /api/slo/reset` to clear bad history and restart SLO baseline — owner: operator — deadline: immediately after deploy
+- [ ] Expand product pool beyond 55 items to increase catalog diversity — owner: product — deadline: next cycle
+- [ ] Add monitoring alert when SLO drops below 80% (warn) and 70% (page) — owner: SRE — deadline: next duty cycle
+
+**Detection time (MTTD):** ~3 days (no alerting on SLO degradation)
+**Fix time (MTTR):** <30 minutes once root cause identified
+
+**Toil reduction:** Added `/api/slo/reset` endpoint so future systematic failures can be recovered with a single API call instead of manual `/data/metrics.json` surgery.
