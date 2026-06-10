@@ -136,7 +136,7 @@ jobs:
           echo "Checking $URL"
           # HF Spaces can take 2-5 min to rebuild Docker containers
           for i in $(seq 1 15); do
-            BODY=$(curl -s -w "\nHTTP_STATUS:%{http_code}" "$URL")
+            BODY=$(curl -s -w "\nHTTP_STATUS:%{http_code}" "$URL" || echo "HTTP_STATUS:000")
             STATUS=$(echo "$BODY" | grep "HTTP_STATUS:" | cut -d: -f2)
             echo "Attempt $i: HTTP $STATUS"
             if [ "$STATUS" = "200" ]; then
