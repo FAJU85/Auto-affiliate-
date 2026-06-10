@@ -55,14 +55,64 @@ jobs:
     name: Deploy to HuggingFace
     needs: validate
     runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write   # required to request the OIDC token
+      contents: read
+
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
+      - name: Get HuggingFace token via Trusted Publisher (OIDC)
+        env:
+          HF_USERNAME:   ${{ secrets.HF_USERNAME }}
+          HF_SPACE_NAME: ${{ secrets.HF_SPACE_NAME }}
+        run: |
+          set -euo pipefail
+
+          # Exchange the GitHub OIDC token for a short-lived HF token (valid 1h)
+          # Requires a Trusted Publisher configured on the HF Space:
+          #   https://huggingface.co/${HF_USERNAME}/${HF_SPACE_NAME}/settings → Trusted Publishers
+          #   Provider: GitHub Actions
+          #   repository: faju85/auto-affiliate-
+          #   workflow: sync-to-hf.yml
+          #   branch: main  (or the branch you push from)
+
+          ID_TOKEN=$(curl -sSf \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://huggingface.co" \
+            | jq -r .value)
+
+          HEADERS=$(mktemp); BODY=$(mktemp)
+          STATUS=$(curl -sS -D "$HEADERS" -o "$BODY" -w '%{http_code}' \
+            -X POST "https://huggingface.co/oauth/token" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n \
+                  --arg t "$ID_TOKEN" \
+                  --arg r "spaces/${HF_USERNAME}/${HF_SPACE_NAME}" \
+                  '{
+                    grant_type:         "urn:ietf:params:oauth:grant-type:token-exchange",
+                    subject_token_type: "urn:ietf:params:oauth:token-type:id_token",
+                    subject_token:      $t,
+                    resource:           $r
+                  }')")
+
+          if [ "$STATUS" -ne 200 ]; then
+            REQUEST_ID=$(grep -i '^x-request-id:' "$HEADERS" | sed 's/.*: *//' | tr -d '\r')
+            echo "::error::HF token exchange failed HTTP $STATUS (x-request-id: ${REQUEST_ID:-unknown})"
+            cat "$BODY"
+            exit 1
+          fi
+
+          HF_TOKEN=$(jq -r .access_token "$BODY")
+          echo "::add-mask::$HF_TOKEN"
+          DELIM="EOF_$(openssl rand -hex 16)"
+          { echo "HF_TOKEN<<$DELIM"; echo "$HF_TOKEN"; echo "$DELIM"; } >> "$GITHUB_ENV"
+
       - name: Push to HuggingFace Space
         env:
-          HF_TOKEN:      ${{ secrets.HF_TOKEN }}
           HF_USERNAME:   ${{ secrets.HF_USERNAME }}
           HF_SPACE_NAME: ${{ secrets.HF_SPACE_NAME }}
         run: |
@@ -88,7 +138,6 @@ jobs:
               echo "Health gate PASSED"
               exit 0
             fi
-            # Print response on first attempt to aid debugging
             if [ "$i" = "1" ]; then
               echo "Response body: $(echo "$BODY" | grep -v HTTP_STATUS | head -5)"
             fi
