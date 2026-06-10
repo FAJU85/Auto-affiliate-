@@ -3,7 +3,6 @@
 import csv
 import io
 import os
-import secrets
 import time
 from collections import defaultdict
 from contextlib import asynccontextmanager
@@ -12,7 +11,7 @@ from pathlib import Path
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
@@ -27,38 +26,7 @@ from .utils import budget, logger, metrics, settings
 from .utils.circuit_breaker import all_statuses as cb_statuses, reset_breaker, reset_all as cb_reset_all
 from .utils.telemetry import golden_signals
 
-DASHBOARD  = Path(__file__).resolve().parent.parent / "src" / "dashboard.html"
-LOGIN_PAGE = Path(__file__).resolve().parent.parent / "src" / "login.html"
-
-# ── Auth ─────────────────────────────────────────────────────────────────────
-_DASHBOARD_USER = os.environ.get("DASHBOARD_USER", "admin")
-_DASHBOARD_PASS = os.environ.get("DASHBOARD_PASSWORD", "")
-_SESSION_TTL    = 7 * 24 * 3600  # 7 days
-_sessions: dict[str, float] = {}  # token -> expiry epoch
-
-def _auth_enabled() -> bool:
-    return bool(_DASHBOARD_PASS)
-
-def _valid_token(token: str) -> bool:
-    if not _auth_enabled():
-        return True
-    exp = _sessions.get(token or "", 0)
-    return exp > time.time()
-
-def _token_from_request(request: Request) -> str:
-    return (
-        request.cookies.get("dash_session", "")
-        or request.headers.get("X-Session-Token", "")
-    )
-
-def _is_authenticated(request: Request) -> bool:
-    return _valid_token(_token_from_request(request))
-
-def _require_auth(request: Request) -> JSONResponse | None:
-    """Return a 401 response if not authenticated, else None."""
-    if not _is_authenticated(request):
-        return JSONResponse({"ok": False, "error": "Not authenticated"}, status_code=401)
-    return None
+DASHBOARD = Path(__file__).resolve().parent.parent / "src" / "dashboard.html"
 
 # Env vars surfaced in /api/debug and used to compute setup warnings.
 ENV_KEYS = [
@@ -116,113 +84,10 @@ except Exception as err:  # noqa: BLE001
     logger.warn(f"social_oauth router not mounted: {err}")
 
 
-@app.middleware("http")
-async def auth_middleware(request: Request, call_next):
-    """Block all /api/* routes (except auth) when auth is enabled and user not logged in."""
-    path = request.url.path
-    public = (
-        path in ("/health", "/api/auth/login", "/api/auth/check")
-        or path.startswith("/r/")
-        or path.startswith("/oauth/")
-    )
-    if not public and path.startswith("/api/") and _auth_enabled() and not _is_authenticated(request):
-        return JSONResponse({"ok": False, "error": "Not authenticated"}, status_code=401)
-    return await call_next(request)
-
-
-def _inline_login_page() -> str:
-    user_set  = "✓ set" if _DASHBOARD_USER != "admin" else "default: admin"
-    pass_info = "Set DASHBOARD_PASSWORD in Space secrets to enable login."
-    return f"""<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Login · Auto-Affiliate</title>
-<style>
-  *{{box-sizing:border-box;margin:0;padding:0}}
-  body{{font-family:system-ui,sans-serif;background:#0a0f1e;color:#f1f5f9;min-height:100vh;
-       display:flex;align-items:center;justify-content:center}}
-  .box{{background:#111827;border:1px solid #1f2937;border-radius:16px;padding:2.5rem;
-        width:100%;max-width:380px}}
-  h1{{font-size:1.3rem;font-weight:700;margin-bottom:0.4rem;color:#fff}}
-  .sub{{font-size:0.82rem;color:#64748b;margin-bottom:1.8rem}}
-  label{{display:block;font-size:0.78rem;color:#94a3b8;margin-bottom:0.4rem;margin-top:1rem}}
-  input{{width:100%;background:#0a0f1e;border:1px solid #1f2937;border-radius:8px;
-         padding:10px 14px;font-size:0.9rem;color:#f1f5f9;outline:none}}
-  input:focus{{border-color:#6366f1}}
-  button{{width:100%;margin-top:1.5rem;padding:12px;background:#6366f1;color:#fff;
-           border:none;border-radius:8px;font-size:0.95rem;font-weight:600;cursor:pointer}}
-  button:hover{{opacity:.88}}
-  #msg{{font-size:0.82rem;color:#ef4444;margin-top:0.8rem;min-height:1.2rem}}
-</style></head>
-<body>
-<div class="box">
-  <h1>🤖 Auto-Affiliate</h1>
-  <div class="sub">Sign in to access the dashboard</div>
-  <label>Username</label>
-  <input id="u" type="text" placeholder="admin" autocomplete="username" />
-  <label>Password</label>
-  <input id="p" type="password" placeholder="Your dashboard password" autocomplete="current-password"
-         onkeydown="if(event.key==='Enter')login()" />
-  <button onclick="login()">Sign in</button>
-  <div id="msg"></div>
-</div>
-<script>
-async function login(){{
-  const u=document.getElementById('u').value.trim();
-  const p=document.getElementById('p').value;
-  const msg=document.getElementById('msg');
-  if(!p){{msg.textContent='Enter your password';return}}
-  msg.textContent='Signing in…';
-  const r=await fetch('/api/auth/login',{{method:'POST',headers:{{'Content-Type':'application/json'}},
-    body:JSON.stringify({{username:u||'admin',password:p}})}});
-  const d=await r.json();
-  if(d.ok){{localStorage.setItem('dash_token',d.token||'');window.location.reload()}}
-  else msg.textContent=d.error||'Login failed';
-}}
-</script>
-</body></html>"""
-
-
-# ── Auth endpoints ───────────────────────────────────────────────────────────
-
-@app.post("/api/auth/login")
-async def auth_login(request: Request, response: Response):
-    body = await request.json()
-    username = (body.get("username") or "").strip()
-    password = (body.get("password") or "").strip()
-    if not _auth_enabled():
-        return {"ok": True, "message": "Auth not configured — open access"}
-    if username != _DASHBOARD_USER or password != _DASHBOARD_PASS:
-        return JSONResponse({"ok": False, "error": "Invalid username or password"}, status_code=401)
-    token = secrets.token_urlsafe(32)
-    _sessions[token] = time.time() + _SESSION_TTL
-    response.set_cookie("dash_session", token, max_age=_SESSION_TTL, httponly=True, samesite="lax")
-    return {"ok": True, "token": token}
-
-
-@app.post("/api/auth/logout")
-async def auth_logout(request: Request, response: Response):
-    token = _token_from_request(request)
-    _sessions.pop(token, None)
-    response.delete_cookie("dash_session")
-    return {"ok": True}
-
-
-@app.get("/api/auth/check")
-async def auth_check(request: Request):
-    if not _auth_enabled():
-        return {"ok": True, "authEnabled": False}
-    return {"ok": _is_authenticated(request), "authEnabled": True}
-
-
 # ── Pages & health ───────────────────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
-async def home(request: Request):
-    if _auth_enabled() and not _is_authenticated(request):
-        if LOGIN_PAGE.exists():
-            return FileResponse(str(LOGIN_PAGE))
-        return HTMLResponse(_inline_login_page())
+async def home():
     if DASHBOARD.exists():
         return FileResponse(str(DASHBOARD))
     return HTMLResponse("<h1>Affiliate Bot</h1><p>Dashboard not found.</p>")
