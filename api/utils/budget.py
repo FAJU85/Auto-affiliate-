@@ -75,7 +75,7 @@ def get_monthly_forecast(cap: float = 2.0) -> dict:
         if k <= today
     ][-7:]
     if not days_with_data:
-        return {"daily_avg": 0.0, "monthly_est": 0.0, "cap_pct": 0.0}
+        return {"daily_avg_usd": 0.0, "monthly_est_usd": 0.0, "cap_usd": cap, "cap_pct": 0.0, "on_track": True}
     daily_avg   = sum(days_with_data) / len(days_with_data)
     monthly_est = round(daily_avg * 30, 4)
     return {

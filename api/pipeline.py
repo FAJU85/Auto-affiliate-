@@ -235,20 +235,26 @@ async def _execute(started: float) -> dict:
 
 # ── SLO calculation ──────────────────────────────────────────────────────────
 
+SLO_TARGET = 90.0  # 90% — realistic for a bot posting hourly via third-party APIs
+                   # 99.9% would deplete budget on any single transient failure
+
 def calculate_slo(window: int = 500) -> dict:
     """Calculate 30-day SLO compliance and error budget."""
     runs = metrics.get_recent_runs(window)
     if not runs:
-        return {"slo_pct": None, "error_budget_remaining_pct": 100.0, "total": 0}
+        return {"slo_pct": None, "error_budget_remaining_pct": 100.0, "total": 0,
+                "slo_target": SLO_TARGET}
     total   = len(runs)
     success = sum(1 for r in runs if r.get("success"))
     slo_pct = round(success / total * 100, 2)
-    target  = 99.9
-    # Error budget = allowed failures in period
-    budget_consumed = max(0.0, target - slo_pct) / (100 - target) * 100 if total > 0 else 0.0
+    # Error budget = fraction of allowed failures consumed
+    # At SLO_TARGET=90%: 10% failures allowed per window
+    allowed_failure_rate = (100 - SLO_TARGET) / 100
+    actual_failure_rate  = (total - success) / total
+    budget_consumed = min(1.0, actual_failure_rate / allowed_failure_rate) * 100 if allowed_failure_rate > 0 else 100.0
     return {
         "slo_pct": slo_pct,
-        "slo_target": target,
+        "slo_target": SLO_TARGET,
         "error_budget_remaining_pct": round(max(0.0, 100.0 - budget_consumed), 1),
         "error_budget_consumed_pct": round(min(100.0, budget_consumed), 1),
         "total": total,
