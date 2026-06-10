@@ -62,14 +62,14 @@ describe('getNetworkSelectCounts', () => {
 });
 
 describe('TASKS consistency', () => {
-  it('TASKS covers all 9 networks', async () => {
+  it('TASKS covers all 10 networks', async () => {
     const { TASKS } = await import('./index.js');
     const expectedKeys = [
       'admitad-feed', 'admitad-api', 'admitad-catalog',
-      'temu', 'takeads', 'travelpayouts', 'impact', 'cj', 'shareasale',
+      'temu', 'takeads', 'travelpayouts', 'impact', 'cj', 'shareasale', 'sovrn',
     ];
     assert.ok(Array.isArray(TASKS), 'TASKS is an array');
-    assert.equal(TASKS.length, 9, 'TASKS has 9 networks');
+    assert.equal(TASKS.length, 10, 'TASKS has 10 networks');
     for (const key of expectedKeys) {
       assert.ok(TASKS.some(t => t.key === key), `TASKS missing: ${key}`);
     }

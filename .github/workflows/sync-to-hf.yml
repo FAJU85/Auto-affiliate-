@@ -4,16 +4,61 @@ on:
   push:
     branches:
       - main
-      - claude/zealous-carson-oMr43   # current dev branch
+      - claude/zealous-carson-oMr43
 
 jobs:
-  sync:
+  # ── Pre-flight validation ───────────────────────────────────────────────────
+  validate:
+    name: Validate before deploy
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          fetch-depth: 0        # full history so HF gets proper git log
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install -q fastapi uvicorn httpx atproto apscheduler \
+                        feedparser Pillow python-multipart
+        # Install without pinned versions to catch conflicts early
+
+      - name: Import check (catches syntax + missing deps)
+        run: |
+          DATA_DIR=/tmp/ci-data python -c "
+          import sys, os
+          sys.path.insert(0, '.')
+          os.environ.setdefault('DATA_DIR', '/tmp/ci-data')
+          from api.utils.settings import get_settings
+          from api.utils.metrics import get_recent_runs
+          from api.utils.logger import info
+          from api.utils.budget import get_daily_spend
+          from api.utils.circuit_breaker import all_statuses
+          from api.utils.telemetry import golden_signals
+          from api.feeds.sovrn import get_sovrn_product
+          from api.ai.text import generate_post_text
+          print('All imports OK')
+          "
+
+      - name: Run Python unit tests
+        run: |
+          DATA_DIR=/tmp/ci-data python -m pytest api/tests/ -v --tb=short
+
+      - name: Dockerfile syntax check
+        run: docker build --check . || true
+        # 'check' mode available in Docker 24+; non-fatal if unavailable
+
+  # ── Deploy to HuggingFace Space ─────────────────────────────────────────────
+  deploy:
+    name: Deploy to HuggingFace
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Push to HuggingFace Space
         env:
@@ -26,3 +71,25 @@ jobs:
           git remote add space \
             https://${HF_USERNAME}:${HF_TOKEN}@huggingface.co/spaces/${HF_USERNAME}/${HF_SPACE_NAME}
           git push space HEAD:main --force
+
+      - name: Wait for Space to rebuild
+        run: sleep 45
+
+      - name: Health gate — verify Space is up after deploy
+        env:
+          HF_USERNAME:   ${{ secrets.HF_USERNAME }}
+          HF_SPACE_NAME: ${{ secrets.HF_SPACE_NAME }}
+        run: |
+          URL="https://${HF_USERNAME}-${HF_SPACE_NAME}.hf.space/health"
+          echo "Checking $URL"
+          for i in 1 2 3 4 5; do
+            STATUS=$(curl -sf -o /dev/null -w "%{http_code}" "$URL" || echo "000")
+            echo "Attempt $i: HTTP $STATUS"
+            if [ "$STATUS" = "200" ]; then
+              echo "Health gate PASSED"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "Health gate FAILED — Space did not come up healthy after deploy"
+          exit 1
