@@ -255,3 +255,43 @@ export function getDailyNetworkStats(days = 7) {
   }
   return result;
 }
+
+/**
+ * Calculates SLO compliance over a rolling time window.
+ *
+ * Error budget math:
+ *   allowable_failures = (1 - sloTarget) * total_runs
+ *   budget_used%       = actual_failures / allowable_failures * 100
+ *
+ * Example (default 90% SLO, 100 runs in window):
+ *   allowable_failures = 10
+ *   If 15 failed → budget_used = 150% (budget exhausted, alert needed)
+ *
+ * @param {number} windowHours - Rolling window in hours (default 24)
+ * @param {number} sloTarget   - Fractional target, e.g. 0.90 for 90% (default from settings)
+ */
+export function getSloStats({ windowHours = 24, sloTarget = 0.90 } = {}) {
+  const data   = load();
+  const cutoff = new Date(Date.now() - windowHours * 60 * 60 * 1000).toISOString();
+  const window = data.runs.filter(r => r.timestamp >= cutoff);
+  const total      = window.length;
+  const successes  = window.filter(r => r.success).length;
+  const failures   = total - successes;
+  const compliance = total > 0 ? successes / total : null;
+  // Budget calc: how much of the allowable failure quota has been spent
+  const allowedFailures = (1 - sloTarget) * total;
+  const errorBudgetUsedPct = total > 0 && allowedFailures > 0
+    ? Math.min(+(failures / allowedFailures * 100).toFixed(1), 999)
+    : (total > 0 && failures === 0 ? 0 : null);
+  return {
+    windowHours,
+    sloTarget,
+    total,
+    successes,
+    failures,
+    compliance,
+    compliancePct: compliance !== null ? +(compliance * 100).toFixed(1) : null,
+    errorBudgetUsedPct,
+    healthy: compliance === null || compliance >= sloTarget,
+  };
+}
