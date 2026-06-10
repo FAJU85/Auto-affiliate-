@@ -367,6 +367,34 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
         </div>
       </div>
 
+      <!-- Golden Signals + SLO -->
+      <div class="card" style="margin-bottom:16px" id="golden-signals-card">
+        <div class="card-hdr">
+          <div class="card-title">⚡ Four Golden Signals</div>
+          <span id="slo-badge" style="font-size:12px;padding:2px 10px;border-radius:12px;font-weight:600"></span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px" id="golden-signals-grid">
+          <div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:4px">LATENCY (pipeline p99)</div>
+            <div style="font-size:18px;font-weight:700" id="gs-latency">—</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:4px">TRAFFIC (total runs)</div>
+            <div style="font-size:18px;font-weight:700" id="gs-traffic">—</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:4px">ERROR RATE (30-day SLO)</div>
+            <div style="font-size:18px;font-weight:700" id="gs-errors">—</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:4px">ERROR BUDGET REMAINING</div>
+            <div style="font-size:18px;font-weight:700" id="gs-budget">—</div>
+            <div class="kpi-bar" style="margin-top:4px"><div class="kpi-fill" id="gs-budget-bar" style="background:var(--green);width:0%"></div></div>
+          </div>
+        </div>
+        <div id="slo-alert" style="display:none;margin-top:12px;padding:8px 12px;border-radius:6px;font-size:12px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);color:var(--red)"></div>
+      </div>
+
       <div class="g2" style="margin-bottom:24px">
         <div class="card">
           <div class="card-hdr">
@@ -963,8 +991,52 @@ async function api(path, method='GET', body=null) {
 }
 
 // ── LOAD ALL ───────────────────────────────────────────────────
+async function loadGoldenSignals() {
+  const [m, slo] = await Promise.all([api('/api/metrics'), api('/api/slo')]);
+  if (!m || !slo) return;
+  const gs = m.golden_signals || {};
+  // Latency — pipeline_total p99
+  const lat = gs.latency_p99_ms?.pipeline_total || gs.latency_p99_ms?.bluesky_total;
+  document.getElementById('gs-latency').textContent = lat ? Math.round(lat) + 'ms' : '—';
+  // Traffic
+  const traffic = Object.values(gs.traffic_total || {}).reduce((a,b)=>a+b,0);
+  document.getElementById('gs-traffic').textContent = traffic || '—';
+  // Error rate via SLO
+  const sloVal = slo.slo_pct;
+  const errRate = sloVal != null ? (100-sloVal).toFixed(1)+'%' : '—';
+  document.getElementById('gs-errors').textContent = errRate;
+  const errEl = document.getElementById('gs-errors');
+  errEl.style.color = sloVal==null?'':sloVal>=99?'var(--green)':sloVal>=90?'#f59e0b':'var(--red)';
+  // Error budget
+  const budget = slo.error_budget_remaining_pct;
+  document.getElementById('gs-budget').textContent = budget != null ? budget.toFixed(1)+'%' : '—';
+  document.getElementById('gs-budget-bar').style.width = (budget||0)+'%';
+  document.getElementById('gs-budget-bar').style.background = budget>=50?'var(--green)':budget>=20?'#f59e0b':'var(--red)';
+  // SLO badge
+  const badge = document.getElementById('slo-badge');
+  if (sloVal != null) {
+    badge.textContent = sloVal.toFixed(1)+'% SLO';
+    badge.style.background = (sloVal>=99?'var(--green)':sloVal>=90?'#f59e0b':'var(--red)')+'22';
+    badge.style.color = sloVal>=99?'var(--green)':sloVal>=90?'#f59e0b':'var(--red)';
+  }
+  // Alert if circuit breaker active or budget critical
+  const alert = document.getElementById('slo-alert');
+  if (slo.circuit_breaker_active) {
+    alert.style.display='';
+    alert.textContent='⚡ Error budget exhausted — circuit breaker active. Feature deployments halted. Focus: stability.';
+  } else if (budget != null && budget < 20) {
+    alert.style.display='';
+    alert.style.background='rgba(245,158,11,.08)';
+    alert.style.borderColor='rgba(245,158,11,.25)';
+    alert.style.color='#f59e0b';
+    alert.textContent=`⚠ Error budget at ${budget.toFixed(1)}% — below 20% threshold. Monitor closely.`;
+  } else {
+    alert.style.display='none';
+  }
+}
+
 async function loadAll() {
-  await Promise.all([loadStatus(), loadClicks(), loadHistory(), loadNetworks(), loadInsights(), loadAccounts(), loadNetworkStats()]);
+  await Promise.all([loadStatus(), loadClicks(), loadHistory(), loadNetworks(), loadInsights(), loadAccounts(), loadNetworkStats(), loadGoldenSignals()]);
   renderOverview(); renderAnalytics(); renderPosts(); renderSEO(); renderAI(); renderNetworks(); renderAccounts();
   document.getElementById('topbar-ts').textContent = 'Updated ' + new Date().toLocaleTimeString();
 }
@@ -2061,7 +2133,7 @@ window.addEventListener('resize', () => {
   }
 })();
 loadAll();
-setInterval(()=>{ loadStatus(); if(currentPage==='analytics'){loadClicks().then(renderAnalytics);} if(currentPage==='logs')loadLogs(); }, 20000);
+setInterval(()=>{ loadStatus(); loadGoldenSignals(); if(currentPage==='analytics'){loadClicks().then(renderAnalytics);} if(currentPage==='logs')loadLogs(); }, 20000);
 setInterval(()=>{ if(currentPage==='logs' && _logLive) loadLogs(); }, 5000);
 </script>
 <!-- SOVRN Commerce (VigLink) — monetizes outbound product links on this page -->
