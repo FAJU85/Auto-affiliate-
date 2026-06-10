@@ -573,6 +573,7 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <input class="f-input" style="max-width:260px;flex:1" id="bsky-handle" placeholder="yourhandle.bsky.social" />
           <button class="btn btn-primary" id="btn-bsky-connect" onclick="startOAuth()">🔑 Connect</button>
+          <button class="btn btn-primary" id="btn-bsky-enable" style="display:none" onclick="enableBsky()">✓ Re-enable</button>
           <button class="btn btn-secondary" id="btn-bsky-disconnect" style="display:none" onclick="disconnectBsky()">✗ Disconnect</button>
         </div>
         <div id="bsky-status-msg" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
@@ -846,7 +847,13 @@ async function loadAll() {
 
 async function loadStatus() {
   const d = await api('/api/status');
-  if (!d) return;
+  if (!d) {
+    const dot = document.getElementById('status-dot');
+    if (dot) dot.className = 'status-dot error';
+    const txt = document.getElementById('status-text');
+    if (txt) txt.innerHTML = '<strong style="color:var(--red)">⚠ API unreachable</strong>';
+    return;
+  }
   S.status = d;
   const running = d.pipeline?.running;
   const dot = document.getElementById('status-dot');
@@ -866,28 +873,43 @@ async function loadStatus() {
 }
 async function loadClicks() {
   const d = await api('/api/clicks?days=30');
-  S.clicks = d?.daily||[];
-  S.totalClicks = d?.total||0;
+  if (!d) { S.clicksError = true; S.clicks = []; S.totalClicks = 0; return; }
+  S.clicksError = false;
+  S.clicks = d.daily||[];
+  S.totalClicks = d.total||0;
 }
 async function loadHistory() {
   const d = await api('/api/history?n=200');
+  if (!d) { S.historyError = true; S.history = []; return; }
+  S.historyError = false;
   S.history = Array.isArray(d) ? d : [];
 }
 async function loadNetworks() {
   const d = await api('/api/networks');
+  if (!d) { S.networksError = true; S.networks = []; return; }
+  S.networksError = false;
   S.networks = Array.isArray(d) ? d : [];
 }
 async function loadInsights() {
   const d = await api('/api/insights');
-  S.insights = d||{};
+  if (!d) { S.insightsError = true; S.insights = {}; return; }
+  S.insightsError = false;
+  S.insights = d;
 }
 async function loadNetworkStats() {
   const d = await api('/api/stats?days=7');
+  if (!d) { S.networkStatsError = true; S.networkStats = []; return; }
+  S.networkStatsError = false;
   S.networkStats = Array.isArray(d) ? d : [];
 }
 // loadAccounts is defined further down (after renderSocialPlatforms)
 async function loadLogs() {
   const d = await api('/api/logs?n=150');
+  if (!d) {
+    const el = document.getElementById('logs-list');
+    if (el) el.innerHTML = '<div class="empty"><div class="empty-txt" style="color:var(--red)">⚠ Failed to load logs — API unreachable</div></div>';
+    return;
+  }
   S.allLogs = Array.isArray(d) ? d : (Array.isArray(d?.logs) ? d.logs : []);
   filterLogs();
 }
@@ -965,10 +987,13 @@ function renderOverview() {
   // bar chart
   const days = S.clicks.slice(-7);
   const chart = document.getElementById('posts-chart');
-  if (!days.length) { chart.innerHTML='<div class="empty"><div class="empty-txt">No data yet</div></div>'; return; }
-  const maxB = Math.max(...days.map(d=>d.posts),1);
-  chart.innerHTML = days.map(d=>`<div class="bar-col"><div class="bar-fill" style="height:${Math.max((d.posts/maxB)*100,2)}%;background:var(--accent)" title="${d.posts} posts on ${d.date}"></div><div class="bar-lbl">${d.date.slice(5)}</div></div>`).join('');
-  document.getElementById('chart-total').textContent = days.reduce((s,d)=>s+d.posts,0)+' posts this week';
+  if (S.clicksError) { chart.innerHTML='<div class="empty"><div class="empty-txt" style="color:var(--red)">⚠ Failed to load click data</div></div>'; }
+  else if (!days.length) { chart.innerHTML='<div class="empty"><div class="empty-txt">No data yet</div></div>'; }
+  else {
+    const maxB = Math.max(...days.map(d=>d.posts),1);
+    chart.innerHTML = days.map(d=>`<div class="bar-col"><div class="bar-fill" style="height:${Math.max((d.posts/maxB)*100,2)}%;background:var(--accent)" title="${d.posts} posts on ${d.date}"></div><div class="bar-lbl">${d.date.slice(5)}</div></div>`).join('');
+    document.getElementById('chart-total').textContent = days.reduce((s,d)=>s+d.posts,0)+' posts this week';
+  }
 
   // Last post time
   const lastSuccess = [...(S.history||[])].reverse().find(r=>r.success);
@@ -977,7 +1002,9 @@ function renderOverview() {
 
   // Network breakdown mini chart
   const nbEl = document.getElementById('net-breakdown');
-  if (nbEl && S.networkStats) {
+  if (nbEl && S.networkStatsError) {
+    nbEl.innerHTML = '<div class="empty"><div class="empty-txt" style="color:var(--red)">⚠ Failed to load network stats</div></div>';
+  } else if (nbEl && S.networkStats) {
     const byNet = {};
     for (const d of S.networkStats) {
       for (const [src, cnt] of Object.entries(d.byNetwork||{})) {
@@ -1011,12 +1038,20 @@ function renderAnalytics() {
   const best = [...S.clicks].sort((a,b)=>b.clicks-a.clicks)[0];
   document.getElementById('a-best').textContent = best ? fmt(best.clicks) : '0';
   document.getElementById('a-best-sub').textContent = best ? 'on '+best.date : 'no clicks yet';
+  if (S.clicksError) {
+    document.getElementById('a-clicks').textContent = '⚠';
+    document.getElementById('a-ctr').textContent = '⚠';
+  }
+  if (S.historyError) {
+    document.getElementById('a-seo').textContent = '⚠';
+  }
   const withSeo = S.history.filter(r=>r.seoScore!=null);
   const avgSeo = withSeo.length ? Math.round(withSeo.reduce((s,r)=>s+(r.seoScore||0),0)/withSeo.length) : null;
   document.getElementById('a-seo').textContent = avgSeo!=null ? avgSeo : '—';
   // clicks chart
   const cc=document.getElementById('clicks-chart');
-  if (S.clicks.length) {
+  if (S.clicksError) { cc.innerHTML='<div class="empty"><div class="empty-txt" style="color:var(--red)">⚠ Failed to load click data</div></div>'; }
+  else if (S.clicks.length) {
     const mx=Math.max(...S.clicks.map(d=>d.clicks),1);
     cc.innerHTML=S.clicks.slice(-30).map(d=>`<div class="bar-col"><div class="bar-fill" style="height:${Math.max((d.clicks/mx)*100,2)}%;background:var(--cyan)" title="${d.clicks} clicks on ${d.date}"></div><div class="bar-lbl">${d.date.slice(5)}</div></div>`).join('');
   }
@@ -1037,6 +1072,10 @@ function renderAnalytics() {
 // ── RENDER POSTS ──────────────────────────────────────────────
 function renderPosts() { filterPosts(); }
 function filterPosts() {
+  if (S.historyError) {
+    document.getElementById('posts-body').innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--red);padding:32px">⚠ Failed to load post history — API unreachable</td></tr>';
+    return;
+  }
   const f = document.getElementById('posts-filter')?.value||'all';
   const runs = f==='success' ? S.history.filter(r=>r.success)
              : f==='failed'  ? S.history.filter(r=>!r.success) : S.history;
@@ -1088,6 +1127,10 @@ function renderSEO() {
 
 // ── RENDER AI ─────────────────────────────────────────────────
 function renderAI() {
+  if (S.insightsError) {
+    document.getElementById('insights-list').innerHTML = '<div class="empty"><div class="empty-txt" style="color:var(--red)">⚠ Failed to load AI insights</div></div>';
+    return;
+  }
   const ins=S.insights;
   document.getElementById('insights-ts').textContent = ins.updatedAt ? 'Updated '+new Date(ins.updatedAt).toLocaleString() : '';
   document.getElementById('insights-summary').textContent = ins.summary||'';
@@ -1112,6 +1155,7 @@ function renderNetworks() {
   const act=nets.filter(n=>n.enabled).length;
   document.getElementById('nets-summary').innerHTML=`<span class="badge badge-ok">${act} active</span> <span class="badge badge-warn">${nets.length-act} off</span>`;
   const nl=document.getElementById('nets-list');
+  if (S.networksError) { nl.innerHTML='<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-txt" style="color:var(--red)">Failed to load networks — API unreachable</div></div>'; return; }
   if (!nets.length) { nl.innerHTML='<div class="empty"><div class="empty-icon">🌐</div><div class="empty-txt">Configure affiliate network credentials in HF Space secrets</div></div>'; return; }
   nl.innerHTML='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px">'
     +nets.map(n=>{
@@ -1172,10 +1216,14 @@ function renderAccounts() {
   const bskyBadge = document.getElementById('bsky-badge');
   const bskyDisc  = document.getElementById('btn-bsky-disconnect');
   const bskyConn  = document.getElementById('btn-bsky-connect');
-  if (bskyBadge) bskyBadge.className = bsky.connected ? 'badge badge-ok' : 'badge badge-fail';
-  if (bskyBadge) bskyBadge.textContent = bsky.connected ? `✓ ${bsky.did||'Connected'}` : '✗ Not connected';
-  if (bskyDisc)  bskyDisc.style.display = bsky.connected ? '' : 'none';
-  if (bskyConn)  bskyConn.style.display = bsky.connected ? 'none' : '';
+  const bskyEnable = document.getElementById('btn-bsky-enable');
+  if (bskyBadge) {
+    bskyBadge.className   = bsky.connected ? 'badge badge-ok' : (bsky.hasCreds ? 'badge badge-warn' : 'badge badge-fail');
+    bskyBadge.textContent = bsky.connected ? `✓ ${bsky.handle||'Connected'}` : (bsky.hasCreds ? '⏸ Disabled' : '✗ Not connected');
+  }
+  if (bskyDisc)   bskyDisc.style.display   = bsky.connected ? '' : 'none';
+  if (bskyEnable) bskyEnable.style.display  = (!bsky.connected && bsky.hasCreds) ? '' : 'none';
+  if (bskyConn)   bskyConn.style.display    = (!bsky.connected && !bsky.hasCreds) ? '' : 'none';
 
   // Social platforms from FastAPI
   renderSocialPlatforms(d.social || {});
@@ -1281,7 +1329,11 @@ function filterLogs() {
 // ── SETTINGS ──────────────────────────────────────────────────
 async function loadSettingsForm() {
   const d = await api('/api/settings');
-  if (!d) return;
+  if (!d) {
+    const msg = document.getElementById('s-msg');
+    if (msg) { msg.style.color='var(--red)'; msg.textContent='⚠ Failed to load settings — API unreachable'; }
+    return;
+  }
   document.getElementById('s-maxlen').value    = d.maxPostLength    || 280;
   document.getElementById('s-cap').value       = d.dailyCostCap     || 2;
   document.getElementById('s-alert').value     = d.alertThreshold   || 1.5;
@@ -1387,10 +1439,15 @@ function startOAuth() {
   window.location.href = '/oauth/start?handle=' + encodeURIComponent(h);
 }
 async function disconnectBsky() {
-  if (!confirm('Disconnect Bluesky?')) return;
+  if (!confirm('Disconnect Bluesky? The pipeline will stop posting until you re-enable it.')) return;
   const d = await fetch('/api/accounts/bluesky/disconnect', {method:'POST'}).then(r=>r.json()).catch(()=>null);
   if (d?.ok) { toast('Bluesky disconnected'); await loadAccounts(); }
   else toast('Disconnect failed','err');
+}
+async function enableBsky() {
+  const d = await fetch('/api/accounts/bluesky/enable', {method:'POST'}).then(r=>r.json()).catch(()=>null);
+  if (d?.ok) { toast('Bluesky re-enabled ✓'); await loadAccounts(); }
+  else toast('Failed to enable','err');
 }
 async function connectMastodon() {
   const platform  = document.getElementById('mastodon-platform').value;
@@ -1425,13 +1482,17 @@ async function disconnectSocial(platform) {
   if (!confirm(`Disconnect ${platform}?`)) return;
   const d = await api(`/api/social/${platform}/disconnect`, 'DELETE');
   if (d?.ok) { toast(`${platform} disconnected`); await loadAccounts(); }
-  else toast('Disconnect failed', 'err');
+  else toast(d?.detail || d?.error || 'Disconnect failed', 'err');
 }
 async function loadAccounts() {
   const [bsky, social] = await Promise.all([
     api('/api/accounts'),
     api('/api/social/status'),
   ]);
+  if (!bsky && !social) {
+    const msg = document.getElementById('bsky-status-msg');
+    if (msg) { msg.style.color='var(--red)'; msg.textContent='⚠ Failed to load account status — API unreachable'; }
+  }
   S.accounts = { ...(bsky||{}), social: social||{} };
   renderAccounts();
 }
@@ -1458,7 +1519,13 @@ let _schedData = null;
 
 async function loadSchedule() {
   const d = await api('/api/schedule/config');
-  if (!d) return;
+  if (!d) {
+    const el = document.getElementById('sched-next-runs');
+    if (el) el.innerHTML = '<div class="empty"><div class="empty-txt" style="color:var(--red)">⚠ Failed to load schedule — API unreachable</div></div>';
+    const badge = document.getElementById('sched-status-badge');
+    if (badge) badge.innerHTML = '<span class="badge badge-fail">⚠ Error</span>';
+    return;
+  }
   _schedData = d;
   document.getElementById('sched-enabled').checked   = d.schedulerEnabled !== false;
   document.getElementById('sched-ppd').value          = d.postsPerDay || 1;

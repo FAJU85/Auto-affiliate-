@@ -175,6 +175,10 @@ async def _execute(started: float) -> dict:
     if budget_util.get_daily_spend() >= cap:
         return _record({"success": False, "error": f"Daily cost cap ${cap:.2f} reached"})
 
+    # ── Guard: Bluesky enabled ──
+    if not s.get("bskyEnabled", True):
+        return _record({"success": False, "error": "Bluesky disabled — re-enable in Accounts settings"})
+
     # ── Guard: credentials ──
     if not os.environ.get("BSKY_HANDLE") or not os.environ.get("BSKY_APP_PASSWORD"):
         return _record({
