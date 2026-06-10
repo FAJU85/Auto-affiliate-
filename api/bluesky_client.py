@@ -24,8 +24,8 @@ from .utils.circuit_breaker import bluesky_cb
 from .utils.telemetry import Timer, record_saturation
 
 GRAPHEME_LIMIT  = 300
-LOGIN_TIMEOUT   = 30   # seconds
-POST_TIMEOUT    = 30   # seconds
+LOGIN_TIMEOUT   = 20   # seconds — kept short so a hung login fails fast, not at 300s pipeline timeout
+POST_TIMEOUT    = 20   # seconds
 MAX_RETRIES     = 3
 SESSION_TTL     = 90 * 60  # 90 minutes — refresh before Bluesky access token expires
 

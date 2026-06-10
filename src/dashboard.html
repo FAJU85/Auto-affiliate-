@@ -332,6 +332,8 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
     <div class="topbar-spacer"></div>
     <span id="topbar-ts" style="font-size:11px;color:var(--dim);margin-right:10px"></span>
     <button class="btn btn-secondary" onclick="refresh()" id="btn-refresh">↻ Refresh</button>
+    <button class="btn btn-secondary" onclick="triggerDiagnose()" id="btn-diagnose" style="margin-left:8px">🩺 Diagnose</button>
+    <button class="btn btn-danger" onclick="resetCircuitBreakers()" id="btn-cb-reset" style="margin-left:8px;display:none">⚡ Reset CB</button>
     <button class="btn btn-primary" onclick="triggerRun()" id="btn-run" style="margin-left:8px">▶ Run Now</button>
   </div>
 
@@ -394,6 +396,7 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
               <button class="btn btn-primary" style="font-size:12px;padding:5px 12px" onclick="triggerRun()" id="btn-run2">▶ Run</button>
               <button class="btn btn-secondary" style="font-size:12px;padding:5px 12px" id="btn-pause" onclick="togglePause()">⏸ Pause</button>
               <button class="btn btn-secondary" style="font-size:12px;padding:5px 12px" onclick="triggerDryRun()">🔍 Dry Run</button>
+              <button class="btn btn-secondary" style="font-size:12px;padding:5px 12px" onclick="triggerDiagnose()">🩺 Diagnose</button>
             </div>
           </div>
         </div>
@@ -1027,6 +1030,14 @@ function renderOverview() {
     }
     document.getElementById('net-breakdown-sub').textContent = total+' total posts (7d)';
   }
+
+  // Show Reset CB button in topbar when any circuit breaker is open
+  const cbBtn = document.getElementById('btn-cb-reset');
+  if (cbBtn) {
+    const cbs = S.status?.circuit_breakers || [];
+    const anyOpen = Array.isArray(cbs) ? cbs.some(c=>c.state==='open') : Object.values(cbs||{}).some(v=>v==='open');
+    cbBtn.style.display = anyOpen ? '' : 'none';
+  }
 }
 
 // ── RENDER ANALYTICS ──────────────────────────────────────────
@@ -1378,32 +1389,86 @@ async function triggerRun() {
   const triggerTs = Date.now();
   const d = await fetch('/api/run', {method:'POST'}).then(r=>r.json()).catch(()=>null);
 
-  if (!d?.ok) {
-    toast(d?.error || 'Run failed — check Logs tab for details', 'err');
+  if (!d) {
+    toast('⚠ Could not reach the API — is the Space running?', 'err');
+    btns.forEach(b => b.disabled = false);
+    return;
+  }
+  if (!d.ok) {
+    toast(`✗ ${d.error || 'Run failed — check Logs tab for details'}`, 'err');
     btns.forEach(b => b.disabled = false);
     return;
   }
 
   toast('⏳ Running pipeline…', 'ok');
 
-  // Poll status every 3s until pipeline stops, then show result
+  // Poll at 500ms first (catches fast failures), then every 3s for up to 5 min
   let polls = 0;
-  const interval = setInterval(async () => {
+  const delays = [500, 1000, 2000, 3000];
+  const poll = async () => {
     polls++;
-    if (polls > 60) { clearInterval(interval); btns.forEach(b => b.disabled = false); return; }
+    if (polls > 105) { btns.forEach(b => b.disabled = false); return; }
     const st = await fetch('/api/status').then(r=>r.json()).catch(()=>null);
-    if (!st) return;
+    if (!st) { setTimeout(poll, 3000); return; }
     S.status = st;
     renderOverview();
-    if (st.pipeline?.running) return;
-    clearInterval(interval);
+    if (st.pipeline?.running) { setTimeout(poll, 3000); return; }
     btns.forEach(b => b.disabled = false);
-    // Find the run triggered after we clicked
     const run = (st.runs || []).find(r => new Date(r.timestamp).getTime() >= triggerTs - 500);
     if (run?.success) toast(`✓ Posted: ${run.product || 'done'} via ${run.productSource || ''}`, 'ok');
-    else if (run?.error) toast(`✗ Run failed: ${run.error}`, 'err');
+    else if (run?.error) toast(`✗ ${run.error}`, 'err');
+    else if (st.lastRun?.error) toast(`✗ ${st.lastRun.error}`, 'err');
     else toast('Run complete', 'ok');
-  }, 3000);
+  };
+  setTimeout(poll, delays[0]);
+}
+
+async function triggerDiagnose() {
+  const btn = document.getElementById('btn-diagnose');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Diagnosing…'; }
+  const d = await fetch('/api/diagnose').then(r=>r.json()).catch(()=>null);
+  if (btn) { btn.disabled = false; btn.textContent = '🩺 Diagnose'; }
+  if (!d) { toast('⚠ Could not reach /api/diagnose', 'err'); return; }
+
+  const lines = d.checks.map(c => `${c.ok ? '✓' : '✗'} ${c.name}: ${c.detail}`);
+  if (d.lastError) lines.push(`Last error: ${d.lastError}`);
+  const cbIssues = Object.entries(d.circuitBreakers || {}).filter(([,v])=>v==='open').map(([k])=>k);
+  if (cbIssues.length) lines.push(`Circuit breakers OPEN: ${cbIssues.join(', ')}`);
+
+  const msg = lines.join('\n');
+  // Show in a modal-like alert with line breaks
+  const failed = d.checks.filter(c=>!c.ok);
+  if (d.ready) {
+    toast('✓ All checks passed — pipeline is ready to post', 'ok');
+  } else {
+    failed.forEach(c => toast(`✗ ${c.name}: ${c.detail}`, 'err'));
+  }
+  // Show Reset CB button if any breaker is open
+  const cbBtn = document.getElementById('btn-cb-reset');
+  if (cbBtn && d.circuitBreakers) {
+    const anyOpen = Array.isArray(d.circuitBreakers)
+      ? d.circuitBreakers.some(c=>c.state==='open')
+      : Object.values(d.circuitBreakers).some(v=>v==='open');
+    cbBtn.style.display = anyOpen ? '' : 'none';
+  }
+  console.log('[Diagnose]', d);
+}
+
+async function resetCircuitBreakers() {
+  const btn = document.getElementById('btn-cb-reset');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Resetting…'; }
+  const d = await fetch('/api/circuit-breaker/reset', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({name:'all'})
+  }).then(r=>r.json()).catch(()=>null);
+  if (btn) { btn.disabled = false; btn.textContent = '⚡ Reset CB'; }
+  if (d?.ok) {
+    toast('✓ Circuit breakers reset — pipeline will attempt Bluesky on next Run', 'ok');
+    if (btn) btn.style.display = 'none';
+  } else {
+    toast('⚠ Reset failed', 'err');
+  }
 }
 
 async function triggerDryRun() {

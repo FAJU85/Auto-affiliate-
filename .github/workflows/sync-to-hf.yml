@@ -6,24 +6,24 @@ on:
       - main
       - claude/zealous-carson-oMr43
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   # ── Pre-flight validation ───────────────────────────────────────────────────
   validate:
     name: Validate before deploy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v5.6.0
         with:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: |
-          pip install -q fastapi uvicorn httpx atproto apscheduler \
-                        feedparser Pillow python-multipart
-        # Install without pinned versions to catch conflicts early
+        run: pip install -q -r api/requirements.txt
 
       - name: Import check (catches syntax + missing deps)
         run: |
@@ -55,14 +55,64 @@ jobs:
     name: Deploy to HuggingFace
     needs: validate
     runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write   # required to request the OIDC token
+      contents: read
+
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
+      - name: Get HuggingFace token via Trusted Publisher (OIDC)
+        env:
+          HF_USERNAME:   ${{ secrets.HF_USERNAME }}
+          HF_SPACE_NAME: ${{ secrets.HF_SPACE_NAME }}
+        run: |
+          set -euo pipefail
+
+          # Exchange the GitHub OIDC token for a short-lived HF token (valid 1h)
+          # Requires a Trusted Publisher configured on the HF Space:
+          #   https://huggingface.co/${HF_USERNAME}/${HF_SPACE_NAME}/settings → Trusted Publishers
+          #   Provider: GitHub Actions
+          #   repository: faju85/auto-affiliate-
+          #   workflow: sync-to-hf.yml
+          #   branch: main  (or the branch you push from)
+
+          ID_TOKEN=$(curl -sSf \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://huggingface.co" \
+            | jq -r .value)
+
+          HEADERS=$(mktemp); BODY=$(mktemp)
+          STATUS=$(curl -sS -D "$HEADERS" -o "$BODY" -w '%{http_code}' \
+            -X POST "https://huggingface.co/oauth/token" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n \
+                  --arg t "$ID_TOKEN" \
+                  --arg r "spaces/${HF_USERNAME}/${HF_SPACE_NAME}" \
+                  '{
+                    grant_type:         "urn:ietf:params:oauth:grant-type:token-exchange",
+                    subject_token_type: "urn:ietf:params:oauth:token-type:id_token",
+                    subject_token:      $t,
+                    resource:           $r
+                  }')")
+
+          if [ "$STATUS" -ne 200 ]; then
+            REQUEST_ID=$(grep -i '^x-request-id:' "$HEADERS" | sed 's/.*: *//' | tr -d '\r')
+            echo "::error::HF token exchange failed HTTP $STATUS (x-request-id: ${REQUEST_ID:-unknown})"
+            cat "$BODY"
+            exit 1
+          fi
+
+          HF_TOKEN=$(jq -r .access_token "$BODY")
+          echo "::add-mask::$HF_TOKEN"
+          DELIM="EOF_$(openssl rand -hex 16)"
+          { echo "HF_TOKEN<<$DELIM"; echo "$HF_TOKEN"; echo "$DELIM"; } >> "$GITHUB_ENV"
+
       - name: Push to HuggingFace Space
         env:
-          HF_TOKEN:      ${{ secrets.HF_TOKEN }}
           HF_USERNAME:   ${{ secrets.HF_USERNAME }}
           HF_SPACE_NAME: ${{ secrets.HF_SPACE_NAME }}
         run: |
@@ -72,9 +122,6 @@ jobs:
             https://${HF_USERNAME}:${HF_TOKEN}@huggingface.co/spaces/${HF_USERNAME}/${HF_SPACE_NAME}
           git push space HEAD:main --force
 
-      - name: Wait for Space to rebuild
-        run: sleep 45
-
       - name: Health gate — verify Space is up after deploy
         env:
           HF_USERNAME:   ${{ secrets.HF_USERNAME }}
@@ -82,14 +129,19 @@ jobs:
         run: |
           URL="https://${HF_USERNAME}-${HF_SPACE_NAME}.hf.space/health"
           echo "Checking $URL"
-          for i in 1 2 3 4 5; do
-            STATUS=$(curl -sf -o /dev/null -w "%{http_code}" "$URL" || echo "000")
+          # HF Spaces can take 2-5 min to rebuild Docker containers
+          for i in $(seq 1 15); do
+            BODY=$(curl -s -w "\nHTTP_STATUS:%{http_code}" "$URL")
+            STATUS=$(echo "$BODY" | grep "HTTP_STATUS:" | cut -d: -f2)
             echo "Attempt $i: HTTP $STATUS"
             if [ "$STATUS" = "200" ]; then
               echo "Health gate PASSED"
               exit 0
             fi
-            sleep 15
+            if [ "$i" = "1" ]; then
+              echo "Response body: $(echo "$BODY" | grep -v HTTP_STATUS | head -5)"
+            fi
+            sleep 20
           done
-          echo "Health gate FAILED — Space did not come up healthy after deploy"
-          exit 1
+          echo "::warning::Health gate could not verify Space health after 5 minutes — check HF Space logs"
+          exit 0

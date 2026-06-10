@@ -21,7 +21,7 @@ from fastapi.responses import (
 from . import pipeline
 from .ai import text as ai_text
 from .utils import budget, logger, metrics, settings
-from .utils.circuit_breaker import all_statuses as cb_statuses
+from .utils.circuit_breaker import all_statuses as cb_statuses, reset_breaker, reset_all as cb_reset_all
 from .utils.telemetry import golden_signals
 
 DASHBOARD = Path(__file__).resolve().parent.parent / "src" / "dashboard.html"
@@ -155,6 +155,7 @@ async def status():
         "stats": _stats(),
         "runs": metrics.get_recent_runs(20),
         "missingVars": _missing_vars(),
+        "circuit_breakers": cb_statuses(),
         # top-level lastRun for dashboard compatibility
         "lastRun": last_run,
     }
@@ -186,6 +187,20 @@ async def stats(days: int = 7):
 async def run():
     if pipeline.STATE["running"]:
         return {"ok": False, "error": "Pipeline already running"}
+    if pipeline.STATE["paused"]:
+        return {"ok": False, "error": "Pipeline is paused — click Resume first"}
+
+    # Pre-flight: check settings-level guards before firing the background task
+    s = settings.get_settings()
+    cap = float(s.get("dailyCostCap", 2.0))
+    if budget.get_daily_spend() >= cap:
+        return {"ok": False, "error": f"Daily cost cap ${cap:.2f} reached"}
+    if not s.get("bskyEnabled", True):
+        return {"ok": False, "error": "Bluesky is disabled — re-enable it in Accounts"}
+    missing = _missing_vars()
+    if missing:
+        return {"ok": False, "error": f"Missing credentials: {', '.join(missing)}"}
+
     import asyncio
     asyncio.create_task(pipeline.run_pipeline())
     return {"ok": True}
@@ -411,6 +426,83 @@ async def insights():
         "networkHealth": metrics.get_network_health(100),
         "dedup": metrics.get_dedup_status(),
         "totalClicks": metrics.get_total_clicks(),
+    }
+
+
+# ── Circuit breaker management ───────────────────────────────────────────────
+
+@app.post("/api/circuit-breaker/reset")
+async def circuit_breaker_reset(request: Request):
+    body = await request.json()
+    name = body.get("name", "").strip()
+    if name == "all":
+        cb_reset_all()
+        return {"ok": True, "reset": "all"}
+    if name:
+        ok = reset_breaker(name)
+        return {"ok": ok, "reset": name if ok else None,
+                "error": None if ok else f"Unknown circuit breaker: {name}"}
+    cb_reset_all()
+    return {"ok": True, "reset": "all"}
+
+
+# ── Diagnose ────────────────────────────────────────────────────────────────
+
+@app.get("/api/diagnose")
+async def diagnose():
+    """Full pre-flight diagnosis: checks every blocker that prevents a successful post."""
+    s = settings.get_settings()
+    cap = float(s.get("dailyCostCap", 2.0))
+    spend = round(budget.get_daily_spend(), 4)
+    missing = _missing_vars()
+    bsky_enabled = s.get("bskyEnabled", True)
+    sovrn_key = bool(os.environ.get("SOVRN_API_KEY"))
+
+    checks = [
+        {
+            "name": "Bluesky handle",
+            "ok": bool(os.environ.get("BSKY_HANDLE")),
+            "detail": os.environ.get("BSKY_HANDLE", "NOT SET — add BSKY_HANDLE to Space Secrets"),
+        },
+        {
+            "name": "Bluesky app password",
+            "ok": bool(os.environ.get("BSKY_APP_PASSWORD")),
+            "detail": "set" if os.environ.get("BSKY_APP_PASSWORD") else "NOT SET — add BSKY_APP_PASSWORD to Space Secrets",
+        },
+        {
+            "name": "Bluesky enabled",
+            "ok": bsky_enabled,
+            "detail": "enabled" if bsky_enabled else "DISABLED — click Re-enable in Accounts tab",
+        },
+        {
+            "name": "Pipeline not paused",
+            "ok": not pipeline.STATE["paused"],
+            "detail": "not paused" if not pipeline.STATE["paused"] else "PAUSED — click Resume",
+        },
+        {
+            "name": "Daily cost cap",
+            "ok": spend < cap,
+            "detail": f"${spend:.4f} spent of ${cap:.2f} cap",
+        },
+        {
+            "name": "SOVRN product network",
+            "ok": sovrn_key,
+            "detail": "SOVRN_API_KEY set" if sovrn_key else "NOT SET — no product source available (add SOVRN_API_KEY to Space Secrets)",
+        },
+    ]
+
+    last_run = pipeline.STATE["lastRun"]
+    last_error = pipeline.STATE["lastError"]
+    cb = cb_statuses()
+
+    all_ok = all(c["ok"] for c in checks)
+    return {
+        "ready": all_ok,
+        "checks": checks,
+        "lastRun": last_run,
+        "lastError": last_error,
+        "circuitBreakers": cb,
+        "pipelineRunning": pipeline.STATE["running"],
     }
 
 
