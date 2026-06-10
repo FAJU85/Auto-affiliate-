@@ -139,6 +139,9 @@ async def _upload_mastodon_image(instance: str, auth_header: dict, image: bytes)
 
 
 async def _post_mastodon(caption: str, deeplink: str, image: bytes | None = None, product: dict | None = None) -> str:
+    from .utils.settings import get_settings
+    import random
+
     conns = _load_connections()
     c = conns.get("mastodon", {})
     if not c.get("connected") or not c.get("access_token"):
@@ -148,29 +151,33 @@ async def _post_mastodon(caption: str, deeplink: str, image: bytes | None = None
     access_token = c["access_token"]
     auth_header  = {"Authorization": f"Bearer {access_token}"}
 
+    # Pick a CTA phrase from settings (configurable in dashboard → AI & Content)
+    s = get_settings()
+    cta_phrases: list[str] = s.get("ctaPhrases") or ["👉 Shop now"]
+    cta_text = random.choice(cta_phrases)
+
     # Build hashtags from product metadata
     hashtags = " ".join(_pick_hashtags(product or {}))
 
-    # CTA: hide the raw URL behind an HTML anchor — Mastodon renders HTML in status text.
-    # The link text shown to readers will be "Shop Now 🔗" with no raw URL visible.
-    if deeplink:
-        cta = f'<a href="{deeplink}">Shop Now 🔗</a>'
-    else:
-        cta = ""
-
-    # Build HTML status: caption + hashtags on a new line + CTA anchor
-    # Mastodon truncates at 500 chars (visible text, not HTML length)
-    caption_safe = caption.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    parts = [p for p in [caption_safe, hashtags, cta] if p]
+    # mastodon.social does NOT render HTML in posts — use plain text only.
+    # Mastodon automatically shortens any URL to 23 visible chars regardless of real length,
+    # so the tracking URL displays as a short link. Format:
+    #   {caption}
+    #
+    #   {hashtags}
+    #
+    #   {CTA phrase}: {url}
+    cta_line = f"{cta_text}: {deeplink}" if deeplink else cta_text
+    parts = [p for p in [caption, hashtags, cta_line] if p]
     text = "\n\n".join(parts)
 
-    # Trim caption if the full post would exceed 500 visible chars
-    # Visible length ≈ len(caption) + len(hashtags) + len("Shop Now 🔗") + separators
-    visible_len = len(caption) + len(hashtags) + 12 + 6  # 12 = "Shop Now 🔗", 6 = separators
-    if visible_len > 498:
-        trim_to = max(0, 498 - len(hashtags) - 18)
-        caption_safe = (caption[:trim_to] + "…").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-        parts = [p for p in [caption_safe, hashtags, cta] if p]
+    # Trim caption if needed — Mastodon counts URLs as 23 chars regardless of real length
+    url_display_len = 23 if deeplink else 0
+    visible_len = len(caption) + len(hashtags) + len(cta_text) + 2 + url_display_len + 4  # 4 = separators
+    if visible_len > 497:
+        trim_to = max(0, 497 - len(hashtags) - len(cta_text) - url_display_len - 8)
+        caption = caption[:trim_to].rstrip() + "…"
+        parts = [p for p in [caption, hashtags, cta_line] if p]
         text = "\n\n".join(parts)
 
     # Upload image
@@ -180,7 +187,7 @@ async def _post_mastodon(caption: str, deeplink: str, image: bytes | None = None
         if mid:
             media_ids = [mid]
 
-    payload: dict = {"status": text, "visibility": "public", "content_type": "text/html"}
+    payload: dict = {"status": text, "visibility": "public"}
     if media_ids:
         payload["media_ids"] = media_ids
 
@@ -190,19 +197,10 @@ async def _post_mastodon(caption: str, deeplink: str, image: bytes | None = None
             headers=auth_header,
             json=payload,
         )
-    # Some instances don't support content_type — retry as plain text with HTML stripped
-    if r.status_code == 422:
-        import re as _re
-        plain_text = _re.sub(r"<[^>]+>", "", text).strip()
-        plain_text = plain_text.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
-        payload["status"] = plain_text
-        del payload["content_type"]
-        async with httpx.AsyncClient(timeout=POST_TIMEOUT) as client:
-            r = await client.post(f"{instance}/api/v1/statuses", headers=auth_header, json=payload)
     if r.status_code not in (200, 201):
         raise RuntimeError(f"HTTP {r.status_code}: {r.text[:300]}")
     uri = r.json().get("url", "")
-    logger.info(f"Posted {uri}", "mastodon")
+    logger.info(f"Posted {uri} — CTA: {cta_text!r}", "mastodon")
     return uri
 
 

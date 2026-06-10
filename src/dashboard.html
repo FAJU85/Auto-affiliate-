@@ -843,6 +843,7 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
             <div class="card-hdr"><div class="card-title">🤖 AI &amp; Content</div></div>
             <div class="f-group"><label class="f-label">Max Post Length (chars)</label><input class="f-input" id="s-maxlen" type="number" placeholder="280" /><div class="f-hint">Bluesky grapheme limit is 300. Recommended: 280.</div></div>
             <div class="f-group"><label class="f-label">SEO Min Score (0-100)</label><input class="f-input" id="s-seo" type="number" placeholder="50" /><div class="f-hint">Captions below this score are regenerated once</div></div>
+            <div class="f-group"><label class="f-label">CTA Phrases <span style="font-weight:400;color:var(--muted)">(one per line — AI picks randomly per post)</span></label><textarea class="f-textarea" id="s-cta" rows="5" placeholder="🛍️ Grab yours today&#10;💰 Save big now&#10;⚡ Get the deal"></textarea><div class="f-hint">The phrase that appears before the link on every post. Example: "🔥 Shop while it lasts: {url}"</div></div>
             <div class="f-group"><label class="f-label">System Prompt</label><textarea class="f-textarea" id="s-sysprompt" rows="5"></textarea></div>
             <div class="f-group"><label class="f-label">User Template</label><textarea class="f-textarea" id="s-template" rows="4" placeholder="Product: {name} ({category})…"></textarea><div class="f-hint">Variables: {name} {category} {description} {trend} {price}</div></div>
           </div>
@@ -1631,6 +1632,8 @@ async function loadSettingsForm() {
   document.getElementById('s-sysprompt').value = d.postSystemPrompt || '';
   document.getElementById('s-template').value  = d.postUserTemplate || '';
   document.getElementById('s-seo').value       = d.seoMinScore      || 50;
+  const ctaPhrases = Array.isArray(d.ctaPhrases) ? d.ctaPhrases : [];
+  document.getElementById('s-cta').value = ctaPhrases.join('\n');
   const platforms = d.publishPlatforms || ['bluesky'];
   for (const p of ['bluesky','mastodon','threads','tumblr','x','facebook','instagram']) {
     const el = document.getElementById(`p-${p}`);
@@ -1661,6 +1664,7 @@ async function saveSettings() {
     postSystemPrompt: document.getElementById('s-sysprompt').value,
     postUserTemplate: document.getElementById('s-template').value,
     seoMinScore:      parseInt(document.getElementById('s-seo').value)       || 50,
+    ctaPhrases: document.getElementById('s-cta').value.split('\n').map(l=>l.trim()).filter(Boolean),
     publishPlatforms,
   };
   const d = await fetch('/api/settings', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(p)}).then(r=>r.json()).catch(()=>null);

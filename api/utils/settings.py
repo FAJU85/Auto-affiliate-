@@ -18,6 +18,16 @@ DEFAULTS = {
     "postsPerDay": 1,
     "schedulerEnabled": True,
     "publishPlatforms": ["bluesky"],
+    "ctaPhrases": [
+        "🛍️ Grab yours today",
+        "💰 Save big now",
+        "⚡ Get the deal",
+        "🔥 Shop while it lasts",
+        "✨ Treat yourself",
+        "🎯 See it here",
+        "👉 Don't miss out",
+        "🚀 Level up today",
+    ],
     "postSystemPrompt": (
         "You are an expert social media affiliate copywriter. "
         "Write ONE short, punchy affiliate post in ENGLISH ONLY. "
