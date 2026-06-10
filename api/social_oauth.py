@@ -316,7 +316,44 @@ async def store_credentials(platform: str, request: Request):
     save_connections(conns)
     return {"ok": True, "handle": handle}
 
-# ── Unified OAuth callback (called from Node.js /oauth/social/callback) ────────
+# ── Unified OAuth callback — registered at BOTH /api/social/callback
+#    AND /oauth/social/callback (Mastodon redirects to the latter) ─────────────
+
+async def _handle_oauth_callback(
+    platform: str,
+    code: Optional[str],
+    state: Optional[str],
+    error: Optional[str],
+):
+    base = get_base_url()
+    dashboard_url = f"{base}/#accounts" if base else "/"
+
+    if error:
+        return RedirectResponse(url=f"{dashboard_url}?oauth_error={error}", status_code=302)
+    if not code or not state:
+        return RedirectResponse(url=f"{dashboard_url}?oauth_error=missing_code", status_code=302)
+
+    states = load_states()
+    state_data = states.pop(state, None)
+    if not state_data:
+        return RedirectResponse(url=f"{dashboard_url}?oauth_error=expired_state", status_code=302)
+    save_states(states)
+
+    try:
+        if platform == "mastodon":
+            result = await _mastodon_complete(platform, code, state_data)
+        elif platform == "threads":
+            result = await threads_callback(code, state)
+        elif platform == "tumblr":
+            result = await tumblr_callback(code, state)
+        else:
+            return RedirectResponse(url=f"{dashboard_url}?oauth_error=unknown_platform", status_code=302)
+    except Exception as e:
+        return RedirectResponse(url=f"{dashboard_url}?oauth_error={str(e)[:80]}", status_code=302)
+
+    handle = result.get("handle", "") if isinstance(result, dict) else ""
+    return RedirectResponse(url=f"{dashboard_url}?oauth_ok={platform}&handle={handle}", status_code=302)
+
 
 @router.get("/social/callback")
 async def oauth_callback(
@@ -325,25 +362,7 @@ async def oauth_callback(
     state: Optional[str] = Query(None),
     error: Optional[str] = Query(None),
 ):
-    if error:
-        return JSONResponse({"ok": False, "error": error})
-    if not code or not state:
-        return JSONResponse({"ok": False, "error": "Missing code or state"})
-
-    states = load_states()
-    state_data = states.pop(state, None)
-    if not state_data:
-        return JSONResponse({"ok": False, "error": "Invalid or expired state"})
-    save_states(states)
-
-    if platform == "mastodon":
-        return await _mastodon_complete(platform, code, state_data)
-    elif platform == "threads":
-        return await threads_callback(code, state)
-    elif platform == "tumblr":
-        return await tumblr_callback(code, state)
-    else:
-        return JSONResponse({"ok": False, "error": f"Unknown platform: {platform}"})
+    return await _handle_oauth_callback(platform, code, state, error)
 
 async def _mastodon_complete(platform: str, code: str, state_data: dict):
     instance      = state_data["instance"]
