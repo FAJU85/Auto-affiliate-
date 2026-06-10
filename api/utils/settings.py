@@ -17,6 +17,7 @@ DEFAULTS = {
     "postingHours": "8-22",
     "postsPerDay": 1,
     "schedulerEnabled": True,
+    "publishPlatforms": ["bluesky"],
     "postSystemPrompt": (
         "You are a Bluesky social media copywriter. "
         "Write ONE short affiliate post in ENGLISH ONLY. "

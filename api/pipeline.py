@@ -17,6 +17,7 @@ import httpx
 from .ai import text as ai_text
 from .bluesky_client import post_to_bluesky
 from .feeds.sovrn import get_sovrn_product
+from .social_post import post_to_platform
 from .utils import budget as budget_util
 from .utils import logger, metrics, settings
 from .utils.telemetry import Timer
@@ -170,21 +171,27 @@ async def run_pipeline() -> dict:
 async def _execute(started: float) -> dict:
     s = settings.get_settings()
     cap = float(s.get("dailyCostCap", 2.0))
+    platforms = s.get("publishPlatforms", ["bluesky"])
 
     # ── Guard: cost cap ──
     if budget_util.get_daily_spend() >= cap:
         return _record({"success": False, "error": f"Daily cost cap ${cap:.2f} reached"})
 
-    # ── Guard: Bluesky enabled ──
-    if not s.get("bskyEnabled", True):
-        return _record({"success": False, "error": "Bluesky disabled — re-enable in Accounts settings"})
+    # ── Guard: at least one platform selected ──
+    if not platforms:
+        return _record({"success": False, "error": "No publishing platforms selected — enable at least one in Settings"})
 
-    # ── Guard: credentials ──
-    if not os.environ.get("BSKY_HANDLE") or not os.environ.get("BSKY_APP_PASSWORD"):
-        return _record({
-            "success": False,
-            "error": "Bluesky credentials not configured — set BSKY_HANDLE + BSKY_APP_PASSWORD in Space Secrets",
-        })
+    # ── Guard: Bluesky credentials (only if Bluesky is selected) ──
+    if "bluesky" in platforms:
+        if not s.get("bskyEnabled", True):
+            platforms = [p for p in platforms if p != "bluesky"]
+            logger.warn("Bluesky disabled — skipping Bluesky, continuing with other platforms")
+        elif not os.environ.get("BSKY_HANDLE") or not os.environ.get("BSKY_APP_PASSWORD"):
+            platforms = [p for p in platforms if p != "bluesky"]
+            logger.warn("Bluesky credentials missing — skipping Bluesky, continuing with other platforms")
+
+    if not platforms:
+        return _record({"success": False, "error": "No platforms available to post to"})
 
     # ── Phase 1: Product ──
     with Timer("product_fetch"):
@@ -214,23 +221,40 @@ async def _execute(started: float) -> dict:
         return _record({"success": False, "error": "Product has no URL"})
     tracking_id, redirect = _tracking_url(deeplink)
 
-    # ── Phase 5: Post to Bluesky ──
-    with Timer("bluesky_publish") as t:
-        try:
-            uri = await post_to_bluesky(caption, redirect, image, product)
-        except RuntimeError as _bsky_err:
-            _msg = str(_bsky_err)
-            # Auto-pause scheduler when rate-limited so it stops hammering Bluesky
-            if "rate" in _msg.lower() or "429" in _msg.lower():
-                STATE["paused"] = True
-                logger.warn(f"Bluesky rate-limited — scheduler auto-paused: {_msg}")
-            raise
+    # ── Phase 5: Post to all enabled platforms ──
+    uris = {}
+    primary_uri = ""
+    any_success = False
+
+    for platform in platforms:
+        if platform == "bluesky":
+            try:
+                with Timer("bluesky_publish"):
+                    uri = await post_to_bluesky(caption, redirect, image, product)
+                uris["bluesky"] = uri
+                primary_uri = primary_uri or uri
+                any_success = True
+            except RuntimeError as _err:
+                _msg = str(_err)
+                if "rate" in _msg.lower() or "429" in _msg.lower():
+                    STATE["paused"] = True
+                    logger.warn(f"Bluesky rate-limited — scheduler auto-paused: {_msg}")
+                logger.warn(f"Bluesky failed: {_msg}")
+        else:
+            uri = await post_to_platform(platform, caption, redirect)
+            if uri:
+                uris[platform] = uri
+                primary_uri = primary_uri or uri
+                any_success = True
+
+    if not any_success:
+        return _record({"success": False, "error": f"All platforms failed: {list(platforms)}"})
 
     budget_util.add_spend(0.001)
     metrics.mark_posted(product.get("siteUrl"), product.get("name"), product.get("source"))
 
     duration_ms = int((time.time() - started) * 1000)
-    logger.info(f"Pipeline complete in {duration_ms}ms — {uri}")
+    logger.info(f"Pipeline complete in {duration_ms}ms — posted to {list(uris.keys())}")
 
     return _record({
         "success": True,
@@ -238,7 +262,9 @@ async def _execute(started: float) -> dict:
         "productSource": product.get("source"),
         "imageSource": "feed" if image else "none",
         "captionChars": len(caption),
-        "postUri": uri,
+        "postUri": primary_uri,
+        "postUris": uris,
+        "platforms": list(uris.keys()),
         "deeplink": deeplink,
         "trackingId": tracking_id,
         "durationMs": duration_ms,

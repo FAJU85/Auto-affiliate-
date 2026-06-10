@@ -767,6 +767,40 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
       <div class="g2">
         <div>
           <div class="card" style="margin-bottom:16px">
+            <div class="card-hdr"><div class="card-title">📡 Publishing Platforms</div></div>
+            <p style="font-size:12px;color:var(--muted);margin-bottom:14px">Choose which platforms to post to when the scheduler runs. Only platforms with saved credentials will actually post.</p>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px">
+                <input type="checkbox" id="p-bluesky" style="width:16px;height:16px;accent-color:var(--accent)">
+                <span>🦋 Bluesky</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px">
+                <input type="checkbox" id="p-mastodon" style="width:16px;height:16px;accent-color:var(--accent)">
+                <span>🐘 Mastodon</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px">
+                <input type="checkbox" id="p-threads" style="width:16px;height:16px;accent-color:var(--accent)">
+                <span>🧵 Threads</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px">
+                <input type="checkbox" id="p-tumblr" style="width:16px;height:16px;accent-color:var(--accent)">
+                <span>📝 Tumblr</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px">
+                <input type="checkbox" id="p-x" style="width:16px;height:16px;accent-color:var(--accent)">
+                <span>𝕏 X (Twitter)</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px">
+                <input type="checkbox" id="p-facebook" style="width:16px;height:16px;accent-color:var(--accent)">
+                <span>📘 Facebook</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px">
+                <input type="checkbox" id="p-instagram" style="width:16px;height:16px;accent-color:var(--accent)">
+                <span>📸 Instagram</span>
+              </label>
+            </div>
+          </div>
+          <div class="card" style="margin-bottom:16px">
             <div class="card-hdr"><div class="card-title">💸 Budget</div></div>
             <div class="f-group"><label class="f-label">Daily Cost Cap (USD)</label><input class="f-input" id="s-cap" type="number" step="0.01" placeholder="2.00" /></div>
             <div class="f-group"><label class="f-label">Alert Threshold (USD)</label><input class="f-input" id="s-alert" type="number" step="0.01" placeholder="1.50" /></div>
@@ -1352,6 +1386,11 @@ async function loadSettingsForm() {
   document.getElementById('s-sysprompt').value = d.postSystemPrompt || '';
   document.getElementById('s-template').value  = d.postUserTemplate || '';
   document.getElementById('s-seo').value       = d.seoMinScore      || 50;
+  const platforms = d.publishPlatforms || ['bluesky'];
+  for (const p of ['bluesky','mastodon','threads','tumblr','x','facebook','instagram']) {
+    const el = document.getElementById(`p-${p}`);
+    if (el) el.checked = platforms.includes(p);
+  }
 }
 async function loadEnvStatus() {
   const el=document.getElementById('env-status-list');
@@ -1368,6 +1407,8 @@ async function loadEnvStatus() {
 }
 
 async function saveSettings() {
+  const publishPlatforms = ['bluesky','mastodon','threads','tumblr','x','facebook','instagram']
+    .filter(p => document.getElementById(`p-${p}`)?.checked);
   const p = {
     maxPostLength:    parseInt(document.getElementById('s-maxlen').value)    || 280,
     dailyCostCap:     parseFloat(document.getElementById('s-cap').value)     || 2,
@@ -1375,6 +1416,7 @@ async function saveSettings() {
     postSystemPrompt: document.getElementById('s-sysprompt').value,
     postUserTemplate: document.getElementById('s-template').value,
     seoMinScore:      parseInt(document.getElementById('s-seo').value)       || 50,
+    publishPlatforms,
   };
   const d = await fetch('/api/settings', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(p)}).then(r=>r.json()).catch(()=>null);
   const msg = document.getElementById('s-msg');
