@@ -566,6 +566,39 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
     <div class="page" id="page-accounts">
       <div class="sec-hdr" style="margin-bottom:20px"><div class="sec-title">Connected Accounts</div></div>
 
+      <!-- ── Quick Connect Panel ── -->
+      <div class="card" style="margin-bottom:20px;border:1px solid var(--accent)">
+        <div class="card-hdr"><div class="card-title">⚡ Quick Connect — All Platforms</div></div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:16px">Fill in credentials for X, Facebook, Instagram and click <strong>Save All</strong>. For Mastodon, Threads and Tumblr click <strong>Connect OAuth</strong> — each will open in a new tab for you to approve.</p>
+
+        <!-- Credential platforms row -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:16px">
+          <!-- X -->
+          <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px">
+            <div style="font-weight:600;margin-bottom:8px">𝕏 X (Twitter)</div>
+            <input class="f-input" id="qc-x-handle" placeholder="Username" style="margin-bottom:6px" />
+            <input class="f-input" id="qc-x-pass" type="password" placeholder="Password / API key" autocomplete="off" />
+          </div>
+          <!-- Facebook -->
+          <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px">
+            <div style="font-weight:600;margin-bottom:8px">📘 Facebook</div>
+            <input class="f-input" id="qc-facebook-handle" placeholder="Username / Page name" style="margin-bottom:6px" />
+            <input class="f-input" id="qc-facebook-pass" type="password" placeholder="Password / Access token" autocomplete="off" />
+          </div>
+          <!-- Instagram -->
+          <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px">
+            <div style="font-weight:600;margin-bottom:8px">📸 Instagram</div>
+            <input class="f-input" id="qc-instagram-handle" placeholder="Username" style="margin-bottom:6px" />
+            <input class="f-input" id="qc-instagram-pass" type="password" placeholder="Password / Access token" autocomplete="off" />
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <button class="btn btn-primary" onclick="quickSaveAll()" id="btn-qc-save">💾 Save All Credentials</button>
+          <button class="btn btn-secondary" onclick="quickConnectOAuth()">🔑 Connect OAuth (Mastodon · Threads · Tumblr)</button>
+          <span id="qc-msg" style="font-size:12px;color:var(--muted)"></span>
+        </div>
+      </div>
+
       <!-- Connected summary grid -->
       <div id="accounts-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;margin-bottom:24px"></div>
 
@@ -1534,6 +1567,53 @@ async function connectCredentials(platform) {
   if (d?.ok) { toast(`${platform} saved ✓`); await loadAccounts(); }
   else toast(d?.error || d?.detail || 'Failed', 'err');
 }
+async function quickSaveAll() {
+  const btn = document.getElementById('btn-qc-save');
+  const msg = document.getElementById('qc-msg');
+  btn.disabled = true;
+  msg.textContent = 'Saving…';
+
+  const platforms = [
+    { key: 'x',         handleId: 'qc-x-handle',         passId: 'qc-x-pass' },
+    { key: 'facebook',  handleId: 'qc-facebook-handle',   passId: 'qc-facebook-pass' },
+    { key: 'instagram', handleId: 'qc-instagram-handle',  passId: 'qc-instagram-pass' },
+  ];
+
+  const results = [];
+  for (const p of platforms) {
+    const handle   = document.getElementById(p.handleId)?.value.trim();
+    const password = document.getElementById(p.passId)?.value;
+    if (!handle) { results.push(`${p.key}: skipped (no username)`); continue; }
+    const d = await api(`/api/social/${p.key}/credentials`, 'POST', { handle, password });
+    results.push(d?.ok ? `${p.key}: ✓ saved` : `${p.key}: ✗ ${d?.error || 'failed'}`);
+  }
+
+  msg.textContent = results.join(' · ');
+  btn.disabled = false;
+  await loadAccounts();
+}
+
+async function quickConnectOAuth() {
+  const mastoInstance = document.getElementById('mastodon-instance')?.value.trim() || 'https://mastodon.social';
+
+  // Threads
+  const threadsData = await api('/api/social/threads/auth');
+  if (threadsData?.url) window.open(threadsData.url, '_blank');
+  else toast('Threads: ' + (threadsData?.detail || 'THREADS_APP_ID not set — add it in Space secrets'), 'warn');
+
+  // Tumblr
+  const tumblrData = await api('/api/social/tumblr/auth');
+  if (tumblrData?.url) window.open(tumblrData.url, '_blank');
+  else toast('Tumblr: ' + (tumblrData?.detail || 'TUMBLR_CLIENT_ID not set — add it in Space secrets'), 'warn');
+
+  // Mastodon
+  const mastoData = await api('/api/social/mastodon/register', 'POST', { platform: 'mastodon', instance: mastoInstance });
+  if (mastoData?.url) window.open(mastoData.url, '_blank');
+  else toast('Mastodon: ' + (mastoData?.detail || mastoData?.error || 'registration failed'), 'warn');
+
+  toast('OAuth tabs opened — approve each one in the new tabs 🔑');
+}
+
 async function disconnectSocial(platform) {
   if (!confirm(`Disconnect ${platform}?`)) return;
   const d = await api(`/api/social/${platform}/disconnect`, 'DELETE');
