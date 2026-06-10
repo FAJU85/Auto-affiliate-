@@ -301,6 +301,16 @@ async def logs_summary():
     return logger.error_summary()
 
 
+@app.post("/api/logs/analyze")
+async def analyze_logs_ai():
+    from .ai.log_analyzer import analyze_logs
+    entries   = logger.get_recent_logs(200)
+    last_run  = pipeline.STATE.get("lastRun")
+    result    = await analyze_logs(entries, last_run)
+    logger.info(f"AI log analysis complete — status: {result.get('status')} via {result.get('provider')}", "ai")
+    return result
+
+
 def metrics_logs(n: int) -> list:
     return logger.get_recent_logs(n)
 

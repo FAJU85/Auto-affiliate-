@@ -832,9 +832,25 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
       <div class="sec-hdr">
         <div><div class="sec-title">Performance Monitor</div><div class="sec-sub" id="logs-count">Loading…</div></div>
         <div class="sec-ctrl">
+          <button class="btn btn-primary" style="font-size:12px;padding:5px 14px" id="btn-ai-analyze" onclick="runAiAnalysis()">🤖 AI Diagnose</button>
           <button class="btn btn-secondary" style="font-size:12px;padding:5px 12px" id="btn-log-live" onclick="toggleLiveLog()">⏸ Pause</button>
           <button class="btn btn-secondary" style="font-size:12px;padding:5px 12px" onclick="loadLogs()">↻ Refresh</button>
-          <button class="btn btn-secondary" style="font-size:12px;padding:5px 12px" onclick="clearLogs()" style="color:var(--red)">🗑 Clear</button>
+          <button class="btn btn-secondary" style="font-size:12px;padding:5px 12px" onclick="clearLogs()">🗑 Clear</button>
+        </div>
+      </div>
+
+      <!-- AI Analysis panel -->
+      <div id="ai-analysis-panel" style="display:none;margin-bottom:16px">
+        <div class="card" style="border:1px solid var(--accent);padding:18px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <div style="font-size:13px;font-weight:700;color:var(--accent)">🤖 AI Diagnostics <span id="ai-model-tag" style="font-size:11px;font-weight:400;color:var(--muted)"></span></div>
+            <button onclick="document.getElementById('ai-analysis-panel').style.display='none'" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px">&#x2715;</button>
+          </div>
+          <div id="ai-status-badge" style="display:inline-block;padding:3px 12px;border-radius:20px;font-size:12px;font-weight:700;margin-bottom:12px"></div>
+          <div id="ai-summary" style="font-size:13px;color:var(--text);margin-bottom:14px;line-height:1.6"></div>
+          <div id="ai-issues" style="margin-bottom:14px"></div>
+          <div id="ai-insights" style="margin-bottom:14px"></div>
+          <div id="ai-recommendation" style="background:rgba(99,102,241,.08);border-left:3px solid var(--accent);padding:10px 14px;border-radius:4px;font-size:13px;color:var(--text)"></div>
         </div>
       </div>
 
@@ -1011,6 +1027,71 @@ async function loadNetworkStats() {
   S.networkStats = Array.isArray(d) ? d : [];
 }
 // loadAccounts is defined further down (after renderSocialPlatforms)
+async function runAiAnalysis() {
+  const btn = document.getElementById('btn-ai-analyze');
+  const panel = document.getElementById('ai-analysis-panel');
+  btn.disabled = true;
+  btn.textContent = '🤖 Analyzing…';
+  panel.style.display = '';
+  document.getElementById('ai-summary').textContent = 'Sending logs to AI model — this may take 10-20 seconds…';
+  document.getElementById('ai-issues').innerHTML = '';
+  document.getElementById('ai-insights').innerHTML = '';
+  document.getElementById('ai-recommendation').innerHTML = '';
+  document.getElementById('ai-status-badge').textContent = '';
+  document.getElementById('ai-model-tag').textContent = '';
+
+  const d = await api('/api/logs/analyze', 'POST');
+  btn.disabled = false;
+  btn.textContent = '🤖 AI Diagnose';
+
+  if (!d) {
+    document.getElementById('ai-summary').innerHTML = '<span style="color:var(--red)">⚠ AI analysis failed — API unreachable</span>';
+    return;
+  }
+
+  // Status badge
+  const statusColors = { healthy:'var(--green)', warning:'#f59e0b', critical:'var(--red)', unknown:'var(--muted)' };
+  const sb = document.getElementById('ai-status-badge');
+  sb.textContent = (d.status || 'unknown').toUpperCase();
+  sb.style.background = (statusColors[d.status] || 'var(--muted)') + '22';
+  sb.style.color = statusColors[d.status] || 'var(--muted)';
+  sb.style.border = '1px solid ' + (statusColors[d.status] || 'var(--muted)');
+
+  // Model tag
+  if (d.provider) {
+    document.getElementById('ai-model-tag').textContent = `via ${d.provider} · ${d.model || ''}`;
+  }
+
+  // Summary
+  document.getElementById('ai-summary').textContent = d.summary || '';
+
+  // Issues
+  const issues = d.issues || [];
+  const sevColor = { error:'var(--red)', warning:'#f59e0b', info:'var(--muted)' };
+  document.getElementById('ai-issues').innerHTML = issues.length ? `
+    <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:8px">DETECTED ISSUES (${issues.length})</div>
+    ${issues.map(i => `
+      <div style="margin-bottom:10px;padding:10px 14px;border-radius:6px;border-left:3px solid ${sevColor[i.severity]||'var(--muted)'};background:${sevColor[i.severity]||'var(--muted)'}11">
+        <div style="font-size:12px;font-weight:700;color:${sevColor[i.severity]||'var(--text)'}">[${(i.component||'?').toUpperCase()}] ${esc(i.title||'')}</div>
+        <div style="font-size:12px;color:var(--text);margin-top:4px">${esc(i.detail||'')}</div>
+        ${i.fix ? `<div style="font-size:12px;color:var(--green);margin-top:4px">&#x2192; Fix: ${esc(i.fix)}</div>` : ''}
+      </div>`).join('')}` : '<div style="font-size:12px;color:var(--green)">&#x2713; No issues detected</div>';
+
+  // Insights
+  const insights = d.insights || [];
+  if (insights.length) {
+    document.getElementById('ai-insights').innerHTML = `
+      <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:8px">INSIGHTS</div>
+      ${insights.map(s => `<div style="font-size:12px;color:var(--text);padding:3px 0">&#x2022; ${esc(s)}</div>`).join('')}`;
+  }
+
+  // Recommendation
+  if (d.recommendation) {
+    document.getElementById('ai-recommendation').innerHTML =
+      `<span style="font-weight:700;color:var(--accent)">&#x26A1; Recommended action: </span>${esc(d.recommendation)}`;
+  }
+}
+
 let _logLive = true;
 function toggleLiveLog() {
   _logLive = !_logLive;
