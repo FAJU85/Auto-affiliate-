@@ -86,14 +86,55 @@ The auto-affiliate pipeline ran on schedule but produced zero Bluesky posts. Use
 
 ---
 
+## Cycle 2 Findings (2026-06-10 SRE Cycle 2)
+
+### RC-6: Python bluesky_client.py created new session on every run
+**File:** `api/bluesky_client.py`  
+**Code:** `Client().login(handle, password)` called every `_post_sync()` invocation  
+**Impact:** Bluesky `createSession` rate limit hit within first few hours of operation → auth failures → zero posts  
+**Fix:** Session persistence to `/data/bsky-session.json`; in-memory 90-minute TTL; session resume via `login(session_string=...)` on subsequent runs
+
+### RC-7: Dedup store had no TTL — all products blocked after 17 hours
+**File:** `api/utils/metrics.py` — `was_recently_posted()` checked presence only, no timestamp  
+**Impact:** With 17 products at hourly cron, all products exhausted in 17 runs → `"dedup skip"` on every subsequent run  
+**Fix:** 7-day TTL (`DEDUP_TTL_HOURS=168` env var); timestamp comparison in `was_recently_posted()`
+
+### RC-8: Dashboard `st.lastRun` was undefined — Last Run section always blank
+**File:** `api/main.py` — `/api/status` put `lastRun` inside `pipeline` sub-object  
+**Impact:** Dashboard `renderOverview()` reads `st.lastRun` (top-level) → always `undefined` → all Last Run fields showed `—`  
+**Fix:** Also expose `lastRun` at top level of `/api/status` response
+
+### RC-9: Logger returned plain strings; dashboard expected structured objects
+**File:** `api/utils/logger.py` — `get_recent_logs()` returned `["[2026-...] [INFO] msg"]` strings  
+**Impact:** Dashboard `filterLogs()` filters on `l.level === 'error'` → always 0; all log filtering broken  
+**Fix:** Logger now returns `{ts, level, msg}` dicts
+
+### RC-10: SOVRN random selection hit dedup-blocked products, wasting runs
+**File:** `api/feeds/sovrn.py` — `random.choice(PRODUCT_POOL)` with no dedup awareness  
+**Impact:** After several runs, randomly picking blocked products → pipeline aborts at dedup gate; wasted run  
+**Fix:** Smart `_pick_product()` shuffles pool and returns first non-blocked product; pool expanded 17→59
+
+### RC-11: SLO target 99.9% was unreachable by design
+**File:** `api/pipeline.py` — `target = 99.9`  
+**Impact:** Any single transient Bluesky/Groq API error depleted 100% error budget → circuit breaker always triggered → no meaningful error budget signal  
+**Fix:** Target recalibrated to 90%; allows ~2-3 failures per day before budget action
+
+### RC-12: `social_oauth.py` built malformed callback URLs from SPACE_ID
+**File:** `api/social_oauth.py` — `get_base_url()` missing `.hf.space` suffix  
+**Impact:** All OAuth callbacks (Mastodon, Threads, Tumblr) sent to `https://vooom-fast-growth` instead of `https://vooom-fast-growth.hf.space` → OAuth flows fail immediately  
+**Fix:** Added `.hf.space` suffix; matches fix already applied to JS `getSpaceHost()`
+
+---
+
 ## DR Readiness Status
 
 | Item | Status |
 |---|---|
 | Settings backed up to HF Secrets (`PIPELINE_SETTINGS`) | ✓ Implemented |
-| Bluesky OAuth session backed up to HF Secrets | ✓ Implemented |
+| Bluesky session persisted to `/data/bsky-session.json` | ✓ Implemented (Cycle 2) |
 | Metrics/run history (`/data/metrics.json`) | ⚠ Only persisted if HF volume mounted |
 | Rollback: re-push previous commit to HF Space | ✓ Possible via git push |
-| Last DR Game Day | ✗ Never scheduled |
+| CI import gate + health gate | ✓ Implemented (Cycle 1) |
+| Last DR Game Day | ✗ Never conducted |
 
 **Next DR Game Day target:** 2026-06-24 — simulate: volume wipe + credential reset + fresh deploy
