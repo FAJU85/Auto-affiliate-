@@ -107,6 +107,74 @@ async def post_to_x(caption: str, deeplink: str) -> str:
     return uri
 
 
+async def post_to_threads(caption: str, deeplink: str) -> str:
+    conns = _load_connections()
+    c = conns.get("threads", {})
+    if not c.get("connected") or not c.get("access_token"):
+        raise RuntimeError("Threads not connected — connect via OAuth in Accounts")
+
+    access_token = c["access_token"]
+    user_id      = c.get("user_id", "me")
+    text         = f"{caption}\n{deeplink}" if deeplink else caption
+    if len(text) > 500:
+        text = text[:499] + "…"
+
+    base = "https://graph.threads.net/v1.0"
+    async with httpx.AsyncClient(timeout=POST_TIMEOUT) as client:
+        # Step 1: create media container
+        r = await client.post(f"{base}/{user_id}/threads", params={
+            "media_type":    "TEXT",
+            "text":          text,
+            "access_token":  access_token,
+        })
+        if r.status_code not in (200, 201):
+            raise RuntimeError(f"Threads container failed HTTP {r.status_code}: {r.text[:200]}")
+        container_id = r.json().get("id")
+        if not container_id:
+            raise RuntimeError(f"Threads: no container id: {r.text[:200]}")
+
+        # Step 2: publish the container
+        r2 = await client.post(f"{base}/{user_id}/threads_publish", params={
+            "creation_id":  container_id,
+            "access_token": access_token,
+        })
+        if r2.status_code not in (200, 201):
+            raise RuntimeError(f"Threads publish failed HTTP {r2.status_code}: {r2.text[:200]}")
+        post_id = r2.json().get("id", "")
+
+    handle = c.get("handle", "")
+    uri = f"https://www.threads.net/@{handle}/post/{post_id}" if post_id and handle else "https://www.threads.net"
+    logger.info(f"Threads: posted {uri}")
+    return uri
+
+
+async def post_to_tumblr(caption: str, deeplink: str) -> str:
+    conns = _load_connections()
+    c = conns.get("tumblr", {})
+    if not c.get("connected") or not c.get("access_token"):
+        raise RuntimeError("Tumblr not connected — connect via OAuth in Accounts")
+
+    access_token = c["access_token"]
+    blog_name    = c.get("handle", "")
+    if not blog_name:
+        raise RuntimeError("Tumblr handle/blog name missing — reconnect in Accounts")
+
+    text = f"{caption}\n{deeplink}" if deeplink else caption
+
+    async with httpx.AsyncClient(timeout=POST_TIMEOUT) as client:
+        r = await client.post(
+            f"https://api.tumblr.com/v2/blog/{blog_name}/posts",
+            headers={"Authorization": f"Bearer {access_token}"},
+            json={"content": [{"type": "text", "text": text}]},
+        )
+    if r.status_code not in (200, 201):
+        raise RuntimeError(f"Tumblr post failed HTTP {r.status_code}: {r.text[:200]}")
+    post_id = r.json().get("response", {}).get("id", "")
+    uri = f"https://{blog_name}.tumblr.com/post/{post_id}" if post_id else f"https://{blog_name}.tumblr.com"
+    logger.info(f"Tumblr: posted {uri}")
+    return uri
+
+
 async def post_to_platform(platform: str, caption: str, deeplink: str) -> str | None:
     """Post to a single platform. Returns URI on success, logs and returns None on failure."""
     try:
@@ -114,8 +182,14 @@ async def post_to_platform(platform: str, caption: str, deeplink: str) -> str | 
             return await post_to_mastodon(caption, deeplink)
         if platform == "x":
             return await post_to_x(caption, deeplink)
-        # Threads, Tumblr, Facebook, Instagram — credentials stored but posting not yet implemented
-        logger.warn(f"{platform}: posting not yet implemented — skipping")
+        if platform == "threads":
+            return await post_to_threads(caption, deeplink)
+        if platform == "tumblr":
+            return await post_to_tumblr(caption, deeplink)
+        if platform in ("facebook", "instagram"):
+            logger.warn(f"{platform}: Meta Business API requires app review — posting not supported")
+            return None
+        logger.warn(f"{platform}: unknown platform — skipping")
         return None
     except Exception as err:
         logger.warn(f"{platform} post failed (non-fatal): {err}")
