@@ -324,6 +324,33 @@ async def accounts():
     }
 
 
+@app.post("/api/accounts/bluesky/test")
+async def test_bluesky():
+    """Test Bluesky credentials by attempting a real login."""
+    import httpx as _httpx
+    handle   = (os.environ.get("BSKY_HANDLE",        "") or "").strip()
+    password = (os.environ.get("BSKY_APP_PASSWORD", "") or "").strip()
+    if not handle or not password:
+        missing = []
+        if not handle:   missing.append("BSKY_HANDLE")
+        if not password: missing.append("BSKY_APP_PASSWORD")
+        return {"ok": False, "error": f"Missing secrets: {', '.join(missing)}"}
+    try:
+        timeout = _httpx.Timeout(connect=10, read=20, write=20, pool=5)
+        async with _httpx.AsyncClient(timeout=timeout) as client:
+            r = await client.post(
+                "https://bsky.social/xrpc/com.atproto.server.createSession",
+                json={"identifier": handle, "password": password},
+            )
+        if r.status_code == 200:
+            did = r.json().get("did", "")
+            return {"ok": True, "handle": handle, "did": did}
+        body = r.text[:200]
+        return {"ok": False, "error": f"HTTP {r.status_code}: {body}"}
+    except Exception as err:
+        return {"ok": False, "error": str(err)}
+
+
 @app.post("/api/accounts/bluesky/disconnect")
 async def disconnect_bluesky():
     settings.save_settings({"bskyEnabled": False})

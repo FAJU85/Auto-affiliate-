@@ -1,136 +1,110 @@
-"""Bluesky posting via the atproto library (app-password login).
+"""Bluesky posting via direct AT Protocol HTTP calls (async httpx).
+
+No threads, no locks — pure async with explicit per-call timeouts.
 
 Env: BSKY_HANDLE, BSKY_APP_PASSWORD
-
-Reliability:
-  - Circuit breaker: opens after 3 consecutive failures, recovers after 5 min
-  - Retry: up to 3 attempts with exponential back-off
-  - Timeout: 30 s on login + post
-  - Grapheme-safe truncation: always preserves the deeplink
 """
 
 import asyncio
 import json
 import os
-import socket
-import threading
 import time
 import unicodedata
+from datetime import datetime, timezone
 from pathlib import Path
 
-from atproto import Client, models
+import httpx
 
 from .utils import logger
 from .utils.circuit_breaker import bluesky_cb
 from .utils.telemetry import Timer, record_saturation
 
+BSKY_API        = "https://bsky.social/xrpc"
 GRAPHEME_LIMIT  = 300
-LOGIN_TIMEOUT   = 20   # seconds
-POST_TIMEOUT    = 20   # seconds
-LOCK_TIMEOUT    = 25   # seconds — fail fast if a previous thread holds the lock (stuck network call)
+CONNECT_TIMEOUT = 10   # seconds — TCP handshake
+READ_TIMEOUT    = 20   # seconds — waiting for response bytes
 MAX_RETRIES     = 3
-SESSION_TTL     = 90 * 60  # 90 minutes — refresh before Bluesky access token expires
+SESSION_TTL     = 80 * 60  # 80 minutes — refresh before Bluesky access token expires (1h)
 
-# Cap all blocking socket calls at the OS level so atproto's login never hangs indefinitely.
-socket.setdefaulttimeout(LOGIN_TIMEOUT + 2)
+_TIMEOUT = httpx.Timeout(connect=CONNECT_TIMEOUT, read=READ_TIMEOUT,
+                          write=READ_TIMEOUT, pool=5)
 
-DATA_DIR        = Path(os.environ.get("DATA_DIR", "/data"))
-SESSION_FILE    = DATA_DIR / "bsky-session.json"
+DATA_DIR     = Path(os.environ.get("DATA_DIR", "/data"))
+SESSION_FILE = DATA_DIR / "bsky-session.json"
 
-_session_lock   = threading.Lock()
-_cached_client: Client | None = None
-_session_expiry: float = 0.0
-
-
-def _save_session(client: Client) -> None:
-    try:
-        DATA_DIR.mkdir(parents=True, exist_ok=True)
-        sess = client.export_session_string()
-        SESSION_FILE.write_text(json.dumps({"session": sess, "ts": time.time()}))
-    except Exception as err:  # noqa: BLE001
-        logger.warn(f"Bluesky session save failed: {err}")
+# In-memory session cache: {accessJwt, did, expiry}
+_session: dict = {}
 
 
-def _load_session() -> str | None:
+# ── Session management ───────────────────────────────────────────────────────
+
+def _load_cached_session() -> dict | None:
+    if _session.get("expiry", 0) > time.time():
+        return _session
     try:
         data = json.loads(SESSION_FILE.read_text())
-        age = time.time() - float(data.get("ts", 0))
-        if age < SESSION_TTL:
-            return data.get("session")
+        if data.get("expiry", 0) > time.time():
+            _session.update(data)
+            return _session
     except Exception:
         pass
     return None
 
 
-def _invalidate_session() -> None:
-    global _cached_client, _session_expiry
-    _cached_client = None
-    _session_expiry = 0.0
+def _save_session(access_jwt: str, did: str) -> None:
+    expiry = time.time() + SESSION_TTL
+    _session.update({"accessJwt": access_jwt, "did": did, "expiry": expiry})
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        SESSION_FILE.write_text(json.dumps(_session))
+    except Exception as err:
+        logger.warn(f"Bluesky session save failed: {err}")
+
+
+def _clear_session() -> None:
+    _session.clear()
     try:
         SESSION_FILE.unlink(missing_ok=True)
     except Exception:
         pass
 
 
-def _get_or_create_client(handle: str, password: str) -> Client:
-    """Return a live Client, reusing a saved session when possible."""
-    global _cached_client, _session_expiry
+async def _get_session(handle: str, password: str) -> tuple[str, str]:
+    """Return (access_jwt, did), logging in if needed."""
+    cached = _load_cached_session()
+    if cached:
+        logger.info(f"Bluesky: reusing session for @{handle}")
+        return cached["accessJwt"], cached["did"]
 
-    if not _session_lock.acquire(timeout=LOCK_TIMEOUT):
-        # A previous thread is still in a blocking network call — fail fast rather than deadlock
-        logger.warn("Bluesky: session lock timed out — previous login attempt is still running")
-        raise RuntimeError(
-            f"Bluesky session lock timed out after {LOCK_TIMEOUT}s — "
-            "a previous login is still running. Try again shortly."
-        )
-    try:
-        if _cached_client is not None and time.time() < _session_expiry:
-            logger.info("Bluesky: reusing in-memory session")
-            return _cached_client
-
-        client = Client()
-
-        # Try resuming a persisted session first — avoids createSession rate limit
-        saved = _load_session()
-        if saved:
-            try:
-                with Timer("bluesky_resume"):
-                    client.login(session_string=saved)
-                _cached_client = client
-                _session_expiry = time.time() + SESSION_TTL
-                logger.info(f"Bluesky: resumed persisted session for @{handle}")
-                return client
-            except Exception as err:
-                logger.warn(f"Bluesky: session resume failed ({err}) — re-logging in")
-                try:
-                    SESSION_FILE.unlink(missing_ok=True)
-                except Exception:
-                    pass
-
-        # Full login
-        logger.info(f"Bluesky: full login for @{handle}")
+    logger.info(f"Bluesky: logging in as @{handle}")
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         with Timer("bluesky_login"):
-            client.login(handle, password)
-        _save_session(client)
-        _cached_client = client
-        _session_expiry = time.time() + SESSION_TTL
-        logger.info(f"Bluesky: authenticated as @{handle}")
-        return client
-    finally:
-        _session_lock.release()
+            r = await client.post(
+                f"{BSKY_API}/com.atproto.server.createSession",
+                json={"identifier": handle, "password": password},
+            )
+    if r.status_code != 200:
+        body = r.text[:300]
+        raise RuntimeError(
+            f"Bluesky login failed HTTP {r.status_code} — "
+            f"check BSKY_HANDLE/BSKY_APP_PASSWORD. Response: {body}"
+        )
+    data = r.json()
+    access_jwt = data["accessJwt"]
+    did = data["did"]
+    _save_session(access_jwt, did)
+    logger.info(f"Bluesky: authenticated as @{handle} (did={did})")
+    return access_jwt, did
 
 
 # ── Grapheme helpers ─────────────────────────────────────────────────────────
 
 def _grapheme_len(s: str) -> int:
-    """Count Unicode grapheme clusters using unicodedata (no extra deps)."""
-    # Approximate: count non-combining characters (close enough for ASCII + emoji)
     try:
-        import regex  # type: ignore  # optional fast path
+        import regex  # type: ignore
         return len(regex.findall(r"\X", s))
     except ImportError:
         pass
-    # Fallback: strip combining marks and count
     count = 0
     for ch in s:
         if unicodedata.category(ch) not in ("Mn", "Mc", "Me"):
@@ -139,7 +113,6 @@ def _grapheme_len(s: str) -> int:
 
 
 def _truncate_graphemes(text: str, limit: int) -> str:
-    """Truncate `text` to at most `limit` graphemes."""
     try:
         import regex  # type: ignore
         clusters = regex.findall(r"\X", text)
@@ -155,79 +128,114 @@ def _build_post_text(caption: str, deeplink: str) -> str:
     link_part = f"\n{deeplink}" if deeplink else ""
     link_graphemes = _grapheme_len(link_part)
     caption_budget = GRAPHEME_LIMIT - link_graphemes
-    truncated_caption = _truncate_graphemes(caption.strip(), max(0, caption_budget - 1))
+    truncated = _truncate_graphemes(caption.strip(), max(0, caption_budget - 1))
     if len(caption.strip()) > caption_budget:
-        truncated_caption = truncated_caption.rstrip() + "…"
-    return truncated_caption + link_part
+        truncated = truncated.rstrip() + "…"
+    return truncated + link_part
 
 
 # ── Facets ───────────────────────────────────────────────────────────────────
 
-def _link_facets(full_text: str, deeplink: str) -> list | None:
+def _link_facets(full_text: str, deeplink: str) -> list:
     if not deeplink:
-        return None
+        return []
     raw = full_text.encode("utf-8")
     target = deeplink.encode("utf-8")
     start = raw.find(target)
     if start < 0:
-        return None
-    return [
-        models.AppBskyRichtextFacet.Main(
-            index=models.AppBskyRichtextFacet.ByteSlice(
-                byte_start=start, byte_end=start + len(target)
-            ),
-            features=[models.AppBskyRichtextFacet.Link(uri=deeplink)],
-        )
-    ]
+        return []
+    return [{
+        "$type": "app.bsky.richtext.facet",
+        "index": {"byteStart": start, "byteEnd": start + len(target)},
+        "features": [{"$type": "app.bsky.richtext.facet#link", "uri": deeplink}],
+    }]
 
 
-# ── Image embed ──────────────────────────────────────────────────────────────
+# ── Image upload ─────────────────────────────────────────────────────────────
 
-def _build_embed(client: Client, image_bytes: bytes | None, product: dict):
-    if not image_bytes:
-        return None
-    if len(image_bytes) > 1_000_000:
-        logger.warn(f"Bluesky image too large ({len(image_bytes)} bytes) — skipping")
+async def _upload_image(access_jwt: str, image_bytes: bytes) -> dict | None:
+    if not image_bytes or len(image_bytes) > 1_000_000:
+        if image_bytes:
+            logger.warn(f"Bluesky: image too large ({len(image_bytes)} bytes) — skipping")
         return None
     try:
-        upload = client.upload_blob(image_bytes)
-        alt = product.get("name", "Product image")[:280]
-        return models.AppBskyEmbedImages.Main(
-            images=[models.AppBskyEmbedImages.Image(alt=alt, image=upload.blob)]
-        )
-    except Exception as err:  # noqa: BLE001
-        logger.warn(f"Bluesky image upload failed: {err}")
-        return None
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            r = await client.post(
+                f"{BSKY_API}/com.atproto.repo.uploadBlob",
+                headers={
+                    "Authorization": f"Bearer {access_jwt}",
+                    "Content-Type": "image/jpeg",
+                },
+                content=image_bytes,
+            )
+        if r.status_code == 200:
+            return r.json()["blob"]
+        logger.warn(f"Bluesky blob upload HTTP {r.status_code} — skipping image")
+    except Exception as err:
+        logger.warn(f"Bluesky image upload failed (non-fatal): {err}")
+    return None
 
 
-# ── Core sync post (runs in thread pool) ─────────────────────────────────────
+# ── Core async post ───────────────────────────────────────────────────────────
 
-def _post_sync(caption: str, deeplink: str, image_bytes: bytes | None, product: dict) -> str:
+async def _post_async(caption: str, deeplink: str, image_bytes: bytes | None, product: dict) -> str:
     handle   = (os.environ.get("BSKY_HANDLE",        "") or "").strip()
     password = (os.environ.get("BSKY_APP_PASSWORD", "") or "").strip()
     if not handle or not password:
         raise RuntimeError(
-            "Bluesky credentials missing — set BSKY_HANDLE and BSKY_APP_PASSWORD "
-            f"in Space Secrets (BSKY_HANDLE {'set' if handle else 'MISSING'}, "
+            "Bluesky credentials missing — set BSKY_HANDLE and BSKY_APP_PASSWORD in Space Secrets "
+            f"(BSKY_HANDLE {'set' if handle else 'MISSING'}, "
             f"BSKY_APP_PASSWORD {'set' if password else 'MISSING'})"
         )
 
-    client = _get_or_create_client(handle, password)
+    access_jwt, did = await _get_session(handle, password)
 
     full_text = _build_post_text(caption, deeplink)
     facets    = _link_facets(full_text, deeplink)
-    embed     = _build_embed(client, image_bytes, product)
 
-    logger.info(f"Posting to Bluesky as @{handle}: {len(full_text)} chars")
-    with Timer("bluesky_post"):
-        response = client.send_post(text=full_text, facets=facets, embed=embed)
+    embed = None
+    if image_bytes:
+        blob = await _upload_image(access_jwt, image_bytes)
+        if blob:
+            embed = {
+                "$type": "app.bsky.embed.images",
+                "images": [{
+                    "image": blob,
+                    "alt": product.get("name", "Product image")[:300],
+                }],
+            }
 
-    uri = response.uri
-    logger.info(f"Posted to Bluesky: {uri}")
+    record: dict = {
+        "$type": "app.bsky.feed.post",
+        "text": full_text,
+        "createdAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    }
+    if facets:
+        record["facets"] = facets
+    if embed:
+        record["embed"] = embed
+
+    logger.info(f"Bluesky: posting as @{handle} ({len(full_text)} graphemes)")
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        with Timer("bluesky_post"):
+            r = await client.post(
+                f"{BSKY_API}/com.atproto.repo.createRecord",
+                headers={"Authorization": f"Bearer {access_jwt}"},
+                json={"repo": did, "collection": "app.bsky.feed.post", "record": record},
+            )
+
+    if r.status_code != 200:
+        body = r.text[:300]
+        if r.status_code in (401, 403):
+            _clear_session()
+        raise RuntimeError(f"Bluesky createRecord HTTP {r.status_code}: {body}")
+
+    uri = r.json()["uri"]
+    logger.info(f"Bluesky: posted {uri}")
     return uri
 
 
-# ── Public async API ─────────────────────────────────────────────────────────
+# ── Public API with circuit breaker + retry ──────────────────────────────────
 
 async def post_to_bluesky(
     caption: str,
@@ -235,28 +243,24 @@ async def post_to_bluesky(
     image_bytes: bytes | None,
     product: dict,
 ) -> str:
-    """Post to Bluesky with circuit breaker + retry."""
-
-    async def _attempt() -> str:
-        return await asyncio.wait_for(
-            asyncio.to_thread(_post_sync, caption, deeplink, image_bytes, product),
-            timeout=LOGIN_TIMEOUT + POST_TIMEOUT,
-        )
+    """Post to Bluesky. Circuit breaker + up to 3 retries with back-off."""
 
     last_err: Exception = RuntimeError("No attempt made")
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            with Timer("bluesky_total") as t:
-                uri = await bluesky_cb.call(_attempt)
+            with Timer("bluesky_total"):
+                uri = await bluesky_cb.call(_post_async, caption, deeplink, image_bytes, product)
             return uri
-        except asyncio.TimeoutError as e:
+        except asyncio.TimeoutError:
             last_err = TimeoutError(f"Bluesky timed out on attempt {attempt}")
             logger.warn(str(last_err))
         except RuntimeError as e:
-            # Circuit breaker open — don't retry
             if "Circuit breaker" in str(e):
                 raise
             last_err = e
+            msg = str(e).lower()
+            if "401" in msg or "403" in msg or "unauthorized" in msg:
+                _clear_session()
             logger.warn(f"Bluesky attempt {attempt} failed: {e}")
         except Exception as e:  # noqa: BLE001
             last_err = e
@@ -266,13 +270,13 @@ async def post_to_bluesky(
                 wait = 60 * attempt
                 logger.warn(f"Bluesky rate-limited — waiting {wait}s")
                 await asyncio.sleep(wait)
-            elif any(x in msg for x in ("expired", "revoked", "deleted", "unauthorized", "401")):
-                logger.warn(f"Bluesky auth error — invalidating session: {e}")
-                _invalidate_session()
+            elif any(x in msg for x in ("expired", "revoked", "deleted", "unauthorized")):
+                _clear_session()
+                logger.warn(f"Bluesky auth error — session cleared: {e}")
             else:
                 logger.warn(f"Bluesky attempt {attempt} failed: {e}")
 
         if attempt < MAX_RETRIES:
-            await asyncio.sleep(2 ** attempt)  # 2s, 4s
+            await asyncio.sleep(2 ** attempt)
 
     raise last_err
