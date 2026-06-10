@@ -15,7 +15,7 @@ from apscheduler.triggers.cron import CronTrigger
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
