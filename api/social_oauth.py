@@ -313,6 +313,12 @@ async def store_credentials(platform: str, request: Request):
         entry["consumer_secret"] = body.get("consumer_secret", "")
         entry["access_token"]    = body.get("access_token", "")
         entry["access_secret"]   = body.get("access_secret", "")
+    elif platform == "facebook":
+        entry["page_access_token"] = body.get("page_access_token", "") or body.get("password", "")
+        entry["page_id"]           = body.get("page_id", "") or handle
+    elif platform == "instagram":
+        entry["access_token"] = body.get("access_token", "") or body.get("password", "")
+        entry["ig_user_id"]   = body.get("ig_user_id", "") or body.get("page_id", "") or handle
     else:
         entry["password"] = body.get("password", "")
 

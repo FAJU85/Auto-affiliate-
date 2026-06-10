@@ -620,9 +620,10 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
               <span style="font-weight:600">📘 Facebook</span>
               <span id="qc-facebook-badge" class="badge badge-fail" style="font-size:11px">✗</span>
             </div>
-            <input class="f-input" id="qc-facebook-handle" placeholder="Page name" style="margin-bottom:6px" />
+            <input class="f-input" id="qc-facebook-handle" placeholder="Page name or Page ID" style="margin-bottom:6px" />
+            <input class="f-input" id="qc-facebook-page-id" placeholder="Page ID (numeric)" style="margin-bottom:6px" />
             <input class="f-input" id="qc-facebook-pass" type="password" placeholder="Page Access Token" autocomplete="off" />
-            <div style="font-size:11px;color:var(--muted);margin-top:4px">Get token at developers.facebook.com</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:4px">Get at developers.facebook.com → Graph API Explorer → select your Page</div>
           </div>
           <!-- Instagram -->
           <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px">
@@ -631,8 +632,9 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
               <span id="qc-instagram-badge" class="badge badge-fail" style="font-size:11px">✗</span>
             </div>
             <input class="f-input" id="qc-instagram-handle" placeholder="@username" style="margin-bottom:6px" />
-            <input class="f-input" id="qc-instagram-pass" type="password" placeholder="Access Token" autocomplete="off" />
-            <div style="font-size:11px;color:var(--muted);margin-top:4px">Use Instagram Graph API token</div>
+            <input class="f-input" id="qc-instagram-ig-user-id" placeholder="Instagram User ID (numeric)" style="margin-bottom:6px" />
+            <input class="f-input" id="qc-instagram-pass" type="password" placeholder="Access Token (instagram_content_publish scope)" autocomplete="off" />
+            <div style="font-size:11px;color:var(--muted);margin-top:4px">Requires Instagram Business account linked to a Facebook Page</div>
           </div>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
@@ -1869,14 +1871,27 @@ async function quickSaveAll() {
     results.push('x: skipped (no username)');
   }
 
-  // Facebook & Instagram — handle + access token
-  for (const p of ['facebook', 'instagram']) {
-    const handle   = document.getElementById(`qc-${p}-handle`)?.value.trim();
-    const password = document.getElementById(`qc-${p}-pass`)?.value;
-    if (!handle) { results.push(`${p}: skipped (no username)`); continue; }
-    const d = await api(`/api/social/${p}/credentials`, 'POST', { handle, password });
-    results.push(d?.ok ? `${p}: ✓ saved` : `${p}: ✗ ${d?.error || 'failed'}`);
-  }
+  // Facebook
+  const fbHandle = document.getElementById('qc-facebook-handle')?.value.trim();
+  if (fbHandle) {
+    const d = await api('/api/social/facebook/credentials', 'POST', {
+      handle:            fbHandle,
+      page_id:           document.getElementById('qc-facebook-page-id')?.value.trim() || fbHandle,
+      page_access_token: document.getElementById('qc-facebook-pass')?.value.trim(),
+    });
+    results.push(d?.ok ? 'facebook: ✓ saved' : `facebook: ✗ ${d?.error || 'failed'}`);
+  } else { results.push('facebook: skipped (no page name)'); }
+
+  // Instagram
+  const igHandle = document.getElementById('qc-instagram-handle')?.value.trim();
+  if (igHandle) {
+    const d = await api('/api/social/instagram/credentials', 'POST', {
+      handle:       igHandle,
+      ig_user_id:   document.getElementById('qc-instagram-ig-user-id')?.value.trim() || igHandle,
+      access_token: document.getElementById('qc-instagram-pass')?.value.trim(),
+    });
+    results.push(d?.ok ? 'instagram: ✓ saved' : `instagram: ✗ ${d?.error || 'failed'}`);
+  } else { results.push('instagram: skipped (no username)'); }
 
   msg.textContent = results.join(' · ');
   btn.disabled = false;

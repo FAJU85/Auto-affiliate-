@@ -13,7 +13,14 @@ from pathlib import Path
 import httpx
 
 from .utils import logger
-from .utils.circuit_breaker import mastodon_cb as _mastodon_cb, x_cb as _x_cb, threads_cb as _threads_cb, tumblr_cb as _tumblr_cb
+from .utils.circuit_breaker import (
+    mastodon_cb  as _mastodon_cb,
+    x_cb         as _x_cb,
+    threads_cb   as _threads_cb,
+    tumblr_cb    as _tumblr_cb,
+    facebook_cb  as _facebook_cb,
+    instagram_cb as _instagram_cb,
+)
 
 DATA_DIR         = Path(os.environ.get("DATA_DIR", "/data"))
 CONNECTIONS_FILE = DATA_DIR / "social-connections.json"
@@ -195,7 +202,31 @@ async def _post_mastodon(caption: str, deeplink: str, image: bytes | None = None
     return uri
 
 
-async def _post_x(caption: str, deeplink: str) -> str:
+async def _upload_x_image(consumer_key: str, consumer_secret: str,
+                          access_token: str, access_secret: str,
+                          image: bytes) -> str | None:
+    """Upload image to Twitter media upload endpoint, return media_id_string or None."""
+    upload_url = "https://upload.twitter.com/1/media/upload.json"
+    # Media upload uses multipart form — OAuth header must NOT include form params
+    auth = _oauth1_header("POST", upload_url, consumer_key, consumer_secret, access_token, access_secret)
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10, read=60, write=60, pool=5)) as client:
+            r = await client.post(
+                upload_url,
+                headers={"Authorization": auth},
+                files={"media": ("image.jpg", image, "image/jpeg")},
+            )
+        if r.status_code in (200, 201):
+            media_id = r.json().get("media_id_string")
+            logger.info(f"X image uploaded: {media_id}", "x")
+            return media_id
+        logger.warn(f"X image upload HTTP {r.status_code}: {r.text[:200]} — posting without image", "x")
+    except Exception as err:
+        logger.warn(f"X image upload error (non-fatal): {err}", "x")
+    return None
+
+
+async def _post_x(caption: str, deeplink: str, image: bytes | None = None) -> str:
     conns = _load_connections()
     c = conns.get("x", {})
     if not c.get("connected"):
@@ -213,14 +244,22 @@ async def _post_x(caption: str, deeplink: str) -> str:
     if len(text) > 280:
         text = text[:279] + "…"
 
+    # Upload image first if provided
+    media_id = None
+    if image:
+        media_id = await _upload_x_image(consumer_key, consumer_secret, access_token, access_secret, image)
+
     url    = "https://api.twitter.com/2/tweets"
     header = _oauth1_header("POST", url, consumer_key, consumer_secret, access_token, access_secret)
+    body: dict = {"text": text}
+    if media_id:
+        body["media"] = {"media_ids": [media_id]}
 
     async with httpx.AsyncClient(timeout=POST_TIMEOUT) as client:
         r = await client.post(
             url,
             headers={"Authorization": header, "Content-Type": "application/json"},
-            json={"text": text},
+            json=body,
         )
     if r.status_code == 403:
         raise RuntimeError(
@@ -234,6 +273,110 @@ async def _post_x(caption: str, deeplink: str) -> str:
     handle   = c.get("handle", "").lstrip("@")
     uri = f"https://twitter.com/{handle}/status/{tweet_id}" if tweet_id else "https://twitter.com"
     logger.info(f"Posted {uri}", "x")
+    return uri
+
+
+async def _post_facebook(caption: str, deeplink: str, image_url: str | None = None) -> str:
+    """Post to a Facebook Page via Graph API.
+
+    Credentials stored in social-connections.json under 'facebook':
+      page_id, page_access_token (long-lived page token), connected
+    """
+    conns = _load_connections()
+    c = conns.get("facebook", {})
+    if not c.get("connected") or not c.get("page_access_token"):
+        raise RuntimeError("Facebook not connected — add Page Access Token in Accounts")
+
+    page_id    = c.get("page_id", "me")
+    page_token = c["page_access_token"]
+    base       = "https://graph.facebook.com/v19.0"
+
+    # Build post message: caption + CTA already in caption, append link for Facebook card
+    message = f"{caption}\n\n{deeplink}" if deeplink else caption
+    if len(message) > 2000:
+        message = message[:1999] + "…"
+
+    async with httpx.AsyncClient(timeout=POST_TIMEOUT) as client:
+        if image_url:
+            # Photo post — includes image preview and message
+            r = await client.post(f"{base}/{page_id}/photos", params={
+                "url":          image_url,
+                "message":      message,
+                "access_token": page_token,
+            })
+        else:
+            # Link post — Facebook generates a link preview card from the URL
+            r = await client.post(f"{base}/{page_id}/feed", params={
+                "message":      caption,
+                "link":         deeplink or "",
+                "access_token": page_token,
+            })
+
+    if r.status_code not in (200, 201):
+        raise RuntimeError(f"Facebook API HTTP {r.status_code}: {r.text[:300]}")
+    post_id = r.json().get("id", "")
+    uri = f"https://facebook.com/{post_id}" if post_id else "https://facebook.com"
+    logger.info(f"Posted {uri}", "facebook")
+    return uri
+
+
+async def _post_instagram(caption: str, deeplink: str, image_url: str | None = None) -> str:
+    """Post to Instagram Business account via Meta Graph API.
+
+    Credentials stored under 'instagram':
+      ig_user_id, access_token (page token with instagram_content_publish scope)
+
+    Instagram Graph API requires a PUBLIC image URL — binary upload is not supported.
+    We use the product's original imageUrl (not our downloaded bytes).
+    If no image URL is available, posts as a text-only Reel caption (not supported
+    for feed — skipped with a warning).
+    """
+    conns = _load_connections()
+    c = conns.get("instagram", {})
+    if not c.get("connected") or not c.get("access_token"):
+        raise RuntimeError("Instagram not connected — add credentials in Accounts")
+
+    ig_user_id   = c.get("ig_user_id", "")
+    access_token = c["access_token"]
+    if not ig_user_id:
+        raise RuntimeError("Instagram ig_user_id missing — reconnect in Accounts")
+
+    if not image_url:
+        raise RuntimeError(
+            "Instagram feed posts require an image URL. "
+            "No product image available for this product — skipping Instagram."
+        )
+
+    base = "https://graph.facebook.com/v19.0"
+    full_caption = f"{caption}\n\n{deeplink}" if deeplink else caption
+    if len(full_caption) > 2200:
+        full_caption = full_caption[:2199] + "…"
+
+    async with httpx.AsyncClient(timeout=POST_TIMEOUT) as client:
+        # Step 1: create media container
+        r1 = await client.post(f"{base}/{ig_user_id}/media", params={
+            "image_url":    image_url,
+            "caption":      full_caption,
+            "access_token": access_token,
+        })
+        if r1.status_code not in (200, 201):
+            raise RuntimeError(f"Instagram container HTTP {r1.status_code}: {r1.text[:300]}")
+        container_id = r1.json().get("id")
+        if not container_id:
+            raise RuntimeError(f"Instagram: no container id returned: {r1.text[:200]}")
+
+        # Step 2: publish
+        r2 = await client.post(f"{base}/{ig_user_id}/media_publish", params={
+            "creation_id":  container_id,
+            "access_token": access_token,
+        })
+        if r2.status_code not in (200, 201):
+            raise RuntimeError(f"Instagram publish HTTP {r2.status_code}: {r2.text[:300]}")
+        media_id = r2.json().get("id", "")
+
+    handle = c.get("handle", "").lstrip("@")
+    uri = f"https://instagram.com/p/{media_id}" if media_id else "https://instagram.com"
+    logger.info(f"Posted {uri}", "instagram")
     return uri
 
 
@@ -309,8 +452,16 @@ async def post_to_mastodon(caption: str, deeplink: str, image: bytes | None = No
     return await _mastodon_cb.call(_post_mastodon, caption, deeplink, image, product)
 
 
-async def post_to_x(caption: str, deeplink: str) -> str:
-    return await _x_cb.call(_post_x, caption, deeplink)
+async def post_to_x(caption: str, deeplink: str, image: bytes | None = None) -> str:
+    return await _x_cb.call(_post_x, caption, deeplink, image)
+
+
+async def post_to_facebook(caption: str, deeplink: str, image_url: str | None = None) -> str:
+    return await _facebook_cb.call(_post_facebook, caption, deeplink, image_url)
+
+
+async def post_to_instagram(caption: str, deeplink: str, image_url: str | None = None) -> str:
+    return await _instagram_cb.call(_post_instagram, caption, deeplink, image_url)
 
 
 async def post_to_threads(caption: str, deeplink: str) -> str:
@@ -328,14 +479,17 @@ async def post_to_platform(platform: str, caption: str, deeplink: str,
         if platform == "mastodon":
             return await post_to_mastodon(caption, deeplink, image, product)
         if platform == "x":
-            return await post_to_x(caption, deeplink)
+            return await post_to_x(caption, deeplink, image)
         if platform == "threads":
             return await post_to_threads(caption, deeplink)
         if platform == "tumblr":
             return await post_to_tumblr(caption, deeplink)
-        if platform in ("facebook", "instagram"):
-            logger.warn("Meta Business API requires app review — posting not supported", platform)
-            return None
+        if platform == "facebook":
+            image_url = (product or {}).get("imageUrl")
+            return await post_to_facebook(caption, deeplink, image_url)
+        if platform == "instagram":
+            image_url = (product or {}).get("imageUrl")
+            return await post_to_instagram(caption, deeplink, image_url)
         logger.warn("Unknown platform — skipping", platform)
         return None
     except RuntimeError as err:

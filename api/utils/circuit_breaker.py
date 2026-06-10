@@ -78,20 +78,24 @@ bluesky_cb  = CircuitBreaker("bluesky",  failure_threshold=3, recovery_timeout=6
 groq_cb     = CircuitBreaker("groq",     failure_threshold=5, recovery_timeout=60)
 mistral_cb  = CircuitBreaker("mistral",  failure_threshold=5, recovery_timeout=60)
 sovrn_cb    = CircuitBreaker("sovrn",    failure_threshold=5, recovery_timeout=120)
-mastodon_cb = CircuitBreaker("mastodon", failure_threshold=3, recovery_timeout=120)
-x_cb        = CircuitBreaker("x",        failure_threshold=3, recovery_timeout=120)
-threads_cb  = CircuitBreaker("threads",  failure_threshold=3, recovery_timeout=120)
-tumblr_cb   = CircuitBreaker("tumblr",   failure_threshold=3, recovery_timeout=120)
+mastodon_cb  = CircuitBreaker("mastodon",  failure_threshold=3, recovery_timeout=120)
+x_cb         = CircuitBreaker("x",         failure_threshold=3, recovery_timeout=120)
+threads_cb   = CircuitBreaker("threads",   failure_threshold=3, recovery_timeout=120)
+tumblr_cb    = CircuitBreaker("tumblr",    failure_threshold=3, recovery_timeout=120)
+facebook_cb  = CircuitBreaker("facebook",  failure_threshold=3, recovery_timeout=120)
+instagram_cb = CircuitBreaker("instagram", failure_threshold=3, recovery_timeout=120)
 
 _ALL: dict[str, CircuitBreaker] = {
-    "bluesky":  bluesky_cb,
-    "groq":     groq_cb,
-    "mistral":  mistral_cb,
-    "sovrn":    sovrn_cb,
-    "mastodon": mastodon_cb,
-    "x":        x_cb,
-    "threads":  threads_cb,
-    "tumblr":   tumblr_cb,
+    "bluesky":   bluesky_cb,
+    "groq":      groq_cb,
+    "mistral":   mistral_cb,
+    "sovrn":     sovrn_cb,
+    "mastodon":  mastodon_cb,
+    "x":         x_cb,
+    "threads":   threads_cb,
+    "tumblr":    tumblr_cb,
+    "facebook":  facebook_cb,
+    "instagram": instagram_cb,
 }
 
 
