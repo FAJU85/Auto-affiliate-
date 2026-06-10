@@ -328,6 +328,7 @@ async def accounts():
 async def test_bluesky():
     """Test Bluesky credentials by attempting a real login."""
     import httpx as _httpx
+    from datetime import datetime, timezone
     handle   = (os.environ.get("BSKY_HANDLE",        "") or "").strip()
     password = (os.environ.get("BSKY_APP_PASSWORD", "") or "").strip()
     if not handle or not password:
@@ -345,6 +346,23 @@ async def test_bluesky():
         if r.status_code == 200:
             did = r.json().get("did", "")
             return {"ok": True, "handle": handle, "did": did}
+        if r.status_code == 429:
+            reset_ts = r.headers.get("RateLimit-Reset") or r.headers.get("X-RateLimit-Reset")
+            retry_after = r.headers.get("Retry-After")
+            reset_info = ""
+            if reset_ts:
+                try:
+                    reset_dt = datetime.fromtimestamp(int(reset_ts), tz=timezone.utc)
+                    reset_info = f" Resets at {reset_dt.strftime('%H:%M:%S')} UTC."
+                except Exception:
+                    pass
+            elif retry_after:
+                reset_info = f" Retry after {retry_after}s."
+            return {
+                "ok": False,
+                "rateLimited": True,
+                "error": f"Bluesky is rate-limiting login attempts (429).{reset_info} Wait a few minutes and try again — do not keep clicking Test.",
+            }
         body = r.text[:200]
         return {"ok": False, "error": f"HTTP {r.status_code}: {body}"}
     except Exception as err:
