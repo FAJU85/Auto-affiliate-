@@ -142,18 +142,21 @@ def _stats() -> dict:
 async def status():
     s = settings.get_settings()
     cap = float(s.get("dailyCostCap", 2.0))
+    last_run = pipeline.STATE["lastRun"]
     return {
         "pipeline": {
             "running": pipeline.STATE["running"],
             "paused": pipeline.STATE["paused"],
             "schedule": _cron(),
             "nextRun": None if pipeline.STATE["paused"] else _next_run(),
-            "lastRun": pipeline.STATE["lastRun"],
+            "lastRun": last_run,
         },
         "budget": {"spent": round(budget.get_daily_spend(), 4), "cap": cap},
         "stats": _stats(),
         "runs": metrics.get_recent_runs(20),
         "missingVars": _missing_vars(),
+        # top-level lastRun for dashboard compatibility
+        "lastRun": last_run,
     }
 
 
