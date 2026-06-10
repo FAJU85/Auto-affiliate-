@@ -18,17 +18,29 @@ DEFAULTS = {
     "postsPerDay": 1,
     "schedulerEnabled": True,
     "postSystemPrompt": (
-        "Write a short, persuasive affiliate post for social media. Max 200 chars. "
-        "Use power words (deal, save, exclusive, limited). Natural, conversational tone. "
-        "Do not include URLs or hashtags — those are added automatically."
+        "You are a Bluesky social media copywriter. "
+        "Write ONE short affiliate post in ENGLISH ONLY. "
+        "Rules: max 200 characters, no markdown (no **, no ##), no emojis unless essential, "
+        "no hashtags, no URLs, no ALL CAPS words, conversational tone, one clear call-to-action. "
+        "Reply with only the post text — nothing else."
     ),
     "postUserTemplate": (
-        'Product: "{name}" ({category}). Description: {description}. Price: {price}. '
-        "Trending topic: {trend}. Write a punchy post with a clear CTA. No URLs, no hashtags."
+        'Write a Bluesky post for this product in English: "{name}" — {category}, priced at {price}. '
+        "Keep it under 200 characters. One sentence. No markdown, no hashtags, no URLs."
     ),
 }
 
 _cache: dict | None = None
+
+
+def _prompt_looks_broken(prompt: str) -> bool:
+    """True if the prompt was clearly saved in a bad state."""
+    if not prompt or len(prompt) < 20:
+        return True
+    # Very short generic prompts from old defaults
+    if prompt.strip() in ("Write a short affiliate post.", "{name}"):
+        return True
+    return False
 
 
 def get_settings() -> dict:
@@ -37,6 +49,11 @@ def get_settings() -> dict:
         return _cache
     try:
         raw = json.loads(SETTINGS_FILE.read_text())
+        # Reset prompts to current defaults if they look broken/stale
+        if _prompt_looks_broken(raw.get("postSystemPrompt", "")):
+            raw.pop("postSystemPrompt", None)
+        if _prompt_looks_broken(raw.get("postUserTemplate", "")):
+            raw.pop("postUserTemplate", None)
         _cache = {**DEFAULTS, **raw}
     except Exception:
         _cache = dict(DEFAULTS)
