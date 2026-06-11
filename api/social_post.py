@@ -21,6 +21,7 @@ from .utils.circuit_breaker import (
     facebook_cb  as _facebook_cb,
     instagram_cb as _instagram_cb,
 )
+from .utils.platform_guardian import enforce_hashtags, disclosure_tag
 
 DATA_DIR         = Path(os.environ.get("DATA_DIR", "/data"))
 CONNECTIONS_FILE = DATA_DIR / "social-connections.json"
@@ -158,7 +159,12 @@ async def _post_mastodon(caption: str, deeplink: str, image: bytes | None = None
     # The AI already embedded the CTA phrase inside the caption (chosen by product type).
     # We just add hashtags and the URL on separate lines.
     # mastodon.social is plain-text only — Mastodon auto-shortens any URL to 23 visible chars.
-    hashtags = " ".join(_pick_hashtags(product or {}))
+    raw_tags = _pick_hashtags(product or {})
+    raw_tags = enforce_hashtags(raw_tags, "mastodon")
+    disc = disclosure_tag("mastodon")
+    if disc and disc not in raw_tags:
+        raw_tags = [disc] + raw_tags
+    hashtags = " ".join(raw_tags)
 
     # Format:
     #   {caption with AI-chosen CTA at the end}
@@ -185,7 +191,7 @@ async def _post_mastodon(caption: str, deeplink: str, image: bytes | None = None
         if mid:
             media_ids = [mid]
 
-    payload: dict = {"status": text, "visibility": "public"}
+    payload: dict = {"status": text, "visibility": "unlisted"}  # unlisted avoids flooding public timeline
     if media_ids:
         payload["media_ids"] = media_ids
 
@@ -402,7 +408,15 @@ async def _post_threads(caption: str, deeplink: str,
     base         = "https://graph.threads.net/v1.0"
 
     # Build post text: caption (with AI CTA) + hashtags + link
-    hashtags = " ".join(_pick_hashtags(product or {}))
+    # Threads API hard limit: max 1 hashtag per post
+    raw_tags = _pick_hashtags(product or {})
+    raw_tags = enforce_hashtags(raw_tags, "threads")  # trims to 1
+    disc = disclosure_tag("threads")
+    if disc and raw_tags:
+        raw_tags[0] = disc  # replace single tag with #ad
+    elif disc:
+        raw_tags = [disc]
+    hashtags = " ".join(raw_tags)
     parts    = [p for p in [caption, hashtags, deeplink] if p]
     text     = "\n\n".join(parts)
     if len(text) > 498:

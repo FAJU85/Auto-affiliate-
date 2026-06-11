@@ -629,6 +629,19 @@ async def finops():
     }
 
 
+@app.get("/api/platform-rules")
+async def platform_rules():
+    """Return the anti-ban posting protocol for all platforms."""
+    from .utils.platform_guardian import all_rules_summary, check_allowed
+    runs = metrics.get_recent_runs(500)
+    rules = all_rules_summary()
+    for r in rules:
+        allowed, reason = check_allowed(r["platform"], runs)
+        r["currentlyAllowed"] = allowed
+        r["guardianStatus"] = reason
+    return {"ok": True, "rules": rules}
+
+
 @app.get("/api/insights")
 async def insights():
     return {

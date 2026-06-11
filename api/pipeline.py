@@ -18,6 +18,7 @@ from .ai import text as ai_text
 from .bluesky_client import post_to_bluesky
 from .feeds.sovrn import get_sovrn_product
 from .social_post import post_to_platform
+from .utils.platform_guardian import check_allowed
 from .utils import budget as budget_util
 from .utils import logger, metrics, settings
 from .utils.telemetry import Timer
@@ -270,11 +271,18 @@ async def _execute(started: float) -> dict:
     tracking_id, redirect = _tracking_url(deeplink)
 
     # ── Phase 5: Post to all enabled platforms ──
+    recent_runs = metrics.get_recent_runs(500)
     uris = {}
     primary_uri = ""
     any_success = False
 
     for platform in platforms:
+        # Anti-ban guardian: check daily limit, interval, and posting hours
+        allowed, reason = check_allowed(platform, recent_runs)
+        if not allowed:
+            logger.info(f"Skipped by guardian: {reason}", platform)
+            continue
+
         if platform == "bluesky":
             try:
                 with Timer("bluesky_publish"):
