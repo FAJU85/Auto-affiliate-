@@ -1,0 +1,6 @@
+# docs/agent-state/overrides.yaml
+# Human-edited only. Agent reads at Phase 0.5.0; never writes.
+# Override a GATE-HIGH finding to allow deployment.
+# Both fields required. GATE-CRITICAL overrides are never accepted.
+
+gate_overrides: []

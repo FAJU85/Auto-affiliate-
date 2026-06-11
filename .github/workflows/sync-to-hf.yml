@@ -44,7 +44,15 @@ jobs:
 
       - name: Run Python unit tests
         run: |
-          DATA_DIR=/tmp/ci-data python -m pytest api/tests/ -v --tb=short
+          DATA_DIR=/tmp/ci-data python -m pytest api/tests/ -v --tb=short \
+            --html=test-report.html --self-contained-html
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: test-report.html
 
       - name: Dockerfile syntax check
         run: docker build --check . || true
