@@ -173,6 +173,8 @@ async def health():
         "missing_vars": missing,
         "circuit_breakers": cb_statuses(),
         "pipeline_running": pipeline.STATE["running"],
+        "pipeline_paused": pipeline.STATE["paused"],
+        "pipeline_paused_until": pipeline.STATE.get("pausedUntil"),
     }
 
 
@@ -208,6 +210,7 @@ async def status():
         "pipeline": {
             "running": pipeline.STATE["running"],
             "paused": pipeline.STATE["paused"],
+            "pausedUntil": pipeline.STATE.get("pausedUntil"),
             "schedule": _cron(),
             "nextRun": None if pipeline.STATE["paused"] else _next_run(),
             "lastRun": last_run,
@@ -287,6 +290,7 @@ async def pause():
 @app.post("/api/schedule/resume")
 async def resume():
     pipeline.STATE["paused"] = False
+    pipeline.STATE["pausedUntil"] = None
     scheduler.resume()
     return {"ok": True, "paused": False}
 

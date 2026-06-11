@@ -35,11 +35,14 @@ IMAGE_TIMEOUT    = 15   # seconds to download image
 STATE: dict = {
     "running": False,
     "paused": False,
+    "pausedUntil": None,   # epoch float — auto-resume after this time (None = manual pause)
     "lastRun": None,
     "lastError": None,
     "runCount": 0,
     "successCount": 0,
 }
+
+RATE_LIMIT_COOLDOWN = 3600  # 1h auto-resume after rate-limit pause
 
 # Short tracking id -> destination deeplink (in-memory; also persisted via metrics)
 _REDIRECTS: dict = {}
@@ -192,7 +195,16 @@ async def run_pipeline() -> dict:
     if STATE["running"]:
         return {"ok": False, "error": "Pipeline already running"}
     if STATE["paused"]:
-        return {"ok": False, "error": "Pipeline is paused"}
+        # Auto-resume if the timed cooldown has expired
+        until = STATE.get("pausedUntil")
+        if until and time.time() >= until:
+            STATE["paused"] = False
+            STATE["pausedUntil"] = None
+            logger.info("Rate-limit cooldown expired — auto-resuming pipeline", "pipeline")
+        else:
+            wait = int(until - time.time()) if until else 0
+            msg = f"Pipeline is paused — auto-resumes in {wait}s" if until else "Pipeline is paused"
+            return {"ok": False, "error": msg}
 
     STATE["running"] = True
     started = time.time()
@@ -295,7 +307,8 @@ async def _execute(started: float) -> dict:
                 _msg = str(_err)
                 if "rate" in _msg.lower() or "429" in _msg.lower():
                     STATE["paused"] = True
-                    logger.warn(f"Rate-limited — scheduler auto-paused: {_msg}", "bluesky")
+                    STATE["pausedUntil"] = time.time() + RATE_LIMIT_COOLDOWN
+                    logger.warn(f"Rate-limited — auto-paused for {RATE_LIMIT_COOLDOWN}s: {_msg}", "bluesky")
                 logger.error(f"Post failed: {_msg}", "bluesky")
         else:
             logger.info(f"Attempting post…", platform)
