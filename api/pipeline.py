@@ -77,18 +77,63 @@ async def get_trends() -> list:
 # ── Image ────────────────────────────────────────────────────────────────────
 
 async def _find_image(product: dict) -> bytes | None:
+    # Try explicit imageUrl first
     url = product.get("imageUrl")
-    if not url:
-        return None
+    if url:
+        try:
+            with Timer("image_download"):
+                async with httpx.AsyncClient(timeout=IMAGE_TIMEOUT, follow_redirects=True) as client:
+                    r = await client.get(url)
+                if r.status_code == 200 and r.headers.get("content-type", "").startswith("image"):
+                    return r.content
+        except Exception as err:  # noqa: BLE001
+            logger.warn(f"Image download failed: {err}")
+
+    # Fall back: extract og:image from Amazon product page
+    site_url = product.get("siteUrl") or product.get("deeplink") or ""
+    if "amazon.com" in site_url:
+        try:
+            img_bytes = await _fetch_amazon_og_image(site_url)
+            if img_bytes:
+                return img_bytes
+        except Exception as err:  # noqa: BLE001
+            logger.warn(f"Amazon image scrape failed (non-fatal): {err}")
+
+    logger.warn("No image available for product — posting without image")
+    return None
+
+
+async def _fetch_amazon_og_image(product_url: str) -> bytes | None:
+    """Scrape Amazon product page for og:image URL, then download it."""
+    import re
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        ),
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept": "text/html,application/xhtml+xml",
+    }
     try:
-        with Timer("image_download"):
-            async with httpx.AsyncClient(timeout=IMAGE_TIMEOUT, follow_redirects=True) as client:
-                r = await client.get(url)
-            if r.status_code == 200 and r.headers.get("content-type", "").startswith("image"):
-                return r.content
-            logger.warn(f"Image fetch non-200 ({r.status_code}) or non-image content-type")
+        async with httpx.AsyncClient(timeout=IMAGE_TIMEOUT, follow_redirects=True, headers=headers) as client:
+            r = await client.get(product_url)
+        if r.status_code != 200:
+            logger.warn(f"Amazon page fetch HTTP {r.status_code} — no image")
+            return None
+        m = re.search(r'"og:image"[^>]*content="([^"]+)"', r.text)
+        if not m:
+            m = re.search(r'content="(https://m\.media-amazon\.com/images/I/[^"]+)"', r.text)
+        if not m:
+            logger.warn("og:image not found in Amazon page")
+            return None
+        img_url = m.group(1).replace("&amp;", "&")
+        async with httpx.AsyncClient(timeout=IMAGE_TIMEOUT, follow_redirects=True) as client:
+            ir = await client.get(img_url)
+        if ir.status_code == 200 and ir.headers.get("content-type", "").startswith("image"):
+            return ir.content
     except Exception as err:  # noqa: BLE001
-        logger.warn(f"Image download failed (non-fatal): {err}")
+        logger.warn(f"Amazon og:image fetch error: {err}")
     return None
 
 
