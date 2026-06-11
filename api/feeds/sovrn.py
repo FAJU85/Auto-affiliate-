@@ -12,7 +12,6 @@ Env: SOVRN_API_KEY
 import base64
 import os
 import random
-from datetime import datetime, timezone
 from urllib.parse import quote
 
 import httpx

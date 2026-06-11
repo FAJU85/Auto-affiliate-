@@ -1,7 +1,7 @@
 """Unit tests for pipeline core logic (PF-01, PF-02, PF-06)."""
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 from api import pipeline
 
 
@@ -98,7 +98,7 @@ class TestRunPipelineGuards:
             "api.pipeline._execute",
             AsyncMock(return_value={"success": True})
         )
-        result = await pipeline.run_pipeline()
+        await pipeline.run_pipeline()
         assert pipeline.STATE["paused"] is False
         assert pipeline.STATE["pausedUntil"] is None
 

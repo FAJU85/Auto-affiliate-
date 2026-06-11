@@ -1,6 +1,5 @@
 """Unit tests for platform guardian enforcement (PF-03)."""
 
-import pytest
 from datetime import datetime, timezone, timedelta
 from api.utils.platform_guardian import (
     check_allowed,
@@ -52,7 +51,6 @@ class TestCheckAllowed:
         assert "daily limit" in reason
 
     def test_blocks_when_interval_too_short(self):
-        rules = get_rules("bluesky")
         # One post 5 minutes ago — well within 90m interval
         recent = datetime.now(timezone.utc) - timedelta(minutes=5)
         runs = [_run("bluesky", recent)]

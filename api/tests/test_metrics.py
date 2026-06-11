@@ -1,9 +1,7 @@
 """Unit + integration tests for product dedup and SLO metrics (PF-04, PF-06)."""
 
-import json
-import time
 import pytest
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 
 
 @pytest.fixture()
@@ -24,12 +22,8 @@ class TestWasPostedWithin:
         metrics_mod.mark_posted("https://example.com/product", "Widget", "sovrn")
         assert metrics_mod.was_posted_within("https://example.com/product", "Widget", hours=1) is True
 
-    def test_not_duplicate_after_ttl(self, metrics_mod):
-        # Post 2 hours ago — should not count within 1h window
-        metrics_mod.mark_posted("https://example.com/old", "OldWidget", "sovrn")
-        # Manually backdate the entry
-        data = json.loads((tmp_path / "metrics.json").read_text()) if False else {}
-        # Since we can't easily backdate, verify the positive case passes
+    def test_unknown_url_not_duplicate(self, metrics_mod):
+        # A URL that was never posted should not be flagged as a duplicate
         assert metrics_mod.was_posted_within("https://example.com/never", "Unknown", hours=1) is False
 
     def test_dedup_key_is_url_and_name_combined(self, metrics_mod):

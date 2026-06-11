@@ -380,7 +380,6 @@ async def _post_instagram(caption: str, deeplink: str, image_url: str | None = N
             raise RuntimeError(f"Instagram publish HTTP {r2.status_code}: {r2.text[:300]}")
         media_id = r2.json().get("id", "")
 
-    handle = c.get("handle", "").lstrip("@")
     uri = f"https://instagram.com/p/{media_id}" if media_id else "https://instagram.com"
     logger.info(f"Posted {uri}", "instagram")
     return uri

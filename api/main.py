@@ -7,7 +7,7 @@ import os
 import time
 from collections import defaultdict
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -75,7 +75,7 @@ async def lifespan(_: FastAPI):
     _schedule_job()
     scheduler.start()
     logger.info(f"Scheduler started (cron={_cron()})", "scheduler")
-    logger.info(f"Platform circuit breakers armed: bluesky, mastodon, x, threads, tumblr, sovrn, groq, mistral", "system")
+    logger.info("Platform circuit breakers armed: bluesky, mastodon, x, threads, tumblr, sovrn, groq, mistral", "system")
     yield
     scheduler.shutdown(wait=False)
     logger.info("Scheduler stopped", "scheduler")
@@ -156,7 +156,6 @@ async def home():
 async def health():
     slo = pipeline.calculate_slo(500)
     missing = _missing_vars()
-    bsky_ok = not missing
     # Degraded if SLO < 95% or credentials missing; down if SLO < 50%
     slo_pct = slo.get("slo_pct")
     if slo_pct is not None and slo_pct < 50:
@@ -496,10 +495,12 @@ async def test_bluesky():
     handle   = (os.environ.get("BSKY_HANDLE",        "") or "").strip()
     password = (os.environ.get("BSKY_APP_PASSWORD", "") or "").strip()
     if not handle or not password:
-        missing = []
-        if not handle:   missing.append("BSKY_HANDLE")
-        if not password: missing.append("BSKY_APP_PASSWORD")
-        return {"ok": False, "error": f"Missing secrets: {', '.join(missing)}"}
+        creds_missing = []
+        if not handle:
+            creds_missing.append("BSKY_HANDLE")
+        if not password:
+            creds_missing.append("BSKY_APP_PASSWORD")
+        return {"ok": False, "error": f"Missing secrets: {', '.join(creds_missing)}"}
 
     _last_bsky_test = time.time()
     try:
@@ -680,7 +681,6 @@ async def diagnose():
     s = settings.get_settings()
     cap = float(s.get("dailyCostCap", 2.0))
     spend = round(budget.get_daily_spend(), 4)
-    missing = _missing_vars()
     bsky_enabled = s.get("bskyEnabled", True)
     sovrn_key = bool(os.environ.get("SOVRN_API_KEY"))
 

@@ -46,7 +46,7 @@ def _build_prompt(logs: list[dict], last_run: dict | None) -> str:
     lines = []
 
     if last_run:
-        lines.append(f"=== LAST PIPELINE RUN ===")
+        lines.append("=== LAST PIPELINE RUN ===")
         lines.append(f"Success: {last_run.get('success')}")
         lines.append(f"Platforms: {last_run.get('platforms', [])}")
         if last_run.get('error'):
@@ -55,9 +55,9 @@ def _build_prompt(logs: list[dict], last_run: dict | None) -> str:
 
     lines.append(f"=== RECENT LOGS ({len(logs)} entries) ===")
     # Focus on errors and warnings, but include some info for context
-    errors   = [l for l in logs if l.get('level') == 'error']
-    warns    = [l for l in logs if l.get('level') == 'warn']
-    infos    = [l for l in logs if l.get('level') == 'info'][-10:]
+    errors   = [e for e in logs if e.get('level') == 'error']
+    warns    = [e for e in logs if e.get('level') == 'warn']
+    infos    = [e for e in logs if e.get('level') == 'info'][-10:]
 
     for entry in errors[-20:]:
         lines.append(f"[ERROR][{entry.get('component','?')}] {entry.get('msg','')}")

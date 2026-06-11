@@ -8,7 +8,6 @@ Usage:
         await external_call()
 """
 
-import asyncio
 import time
 from dataclasses import dataclass, field
 from typing import Callable

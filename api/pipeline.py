@@ -311,7 +311,7 @@ async def _execute(started: float) -> dict:
                     logger.warn(f"Rate-limited — auto-paused for {RATE_LIMIT_COOLDOWN}s: {_msg}", "bluesky")
                 logger.error(f"Post failed: {_msg}", "bluesky")
         else:
-            logger.info(f"Attempting post…", platform)
+            logger.info("Attempting post…", platform)
             uri = await post_to_platform(platform, caption, redirect, image=image, product=product)
             if uri:
                 uris[platform] = uri
@@ -319,7 +319,7 @@ async def _execute(started: float) -> dict:
                 any_success = True
                 logger.info(f"Posted OK → {uri}", platform)
             else:
-                logger.error(f"Post returned no URI — check connection in Accounts", platform)
+                logger.error("Post returned no URI — check connection in Accounts", platform)
 
     if not any_success:
         return _record({"success": False, "error": f"All platforms failed: {list(platforms)}"})
