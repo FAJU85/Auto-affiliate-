@@ -64,7 +64,9 @@ jobs:
 
       - name: Run Python unit tests
         run: |
+          pip install -q pytest-cov
           DATA_DIR=/tmp/ci-data python -m pytest api/tests/ -v --tb=short \
+            --cov=api --cov-fail-under=65 \
             --html=test-report.html --self-contained-html
 
       - name: Upload test report

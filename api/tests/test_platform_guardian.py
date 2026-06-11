@@ -1,6 +1,7 @@
 """Unit tests for platform guardian enforcement (PF-03)."""
 
 from datetime import datetime, timezone, timedelta
+from unittest.mock import patch
 from api.utils.platform_guardian import (
     check_allowed,
     enforce_hashtags,
@@ -41,12 +42,15 @@ class TestCheckAllowed:
     def test_blocks_when_daily_limit_reached(self):
         rules = get_rules("bluesky")
         limit = rules["daily_limit"]
-        # All runs today
-        today = datetime.now(timezone.utc).replace(
-            hour=rules["posting_hours"][0] + 1, minute=0, second=0, microsecond=0
+        # Pin "now" to 10:00 UTC — always within bluesky's 7–23 window
+        fake_now = datetime.now(timezone.utc).replace(
+            hour=10, minute=0, second=0, microsecond=0
         )
-        runs = [_run("bluesky", today - timedelta(minutes=i * 10)) for i in range(limit)]
-        allowed, reason = check_allowed("bluesky", runs)
+        runs = [_run("bluesky", fake_now - timedelta(minutes=i * 10)) for i in range(limit)]
+        with patch("api.utils.platform_guardian.datetime") as mock_dt:
+            mock_dt.now.return_value = fake_now
+            mock_dt.fromisoformat.side_effect = datetime.fromisoformat
+            allowed, reason = check_allowed("bluesky", runs)
         assert allowed is False
         assert "daily limit" in reason
 
