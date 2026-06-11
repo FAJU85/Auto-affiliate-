@@ -3,7 +3,7 @@
 Maintained by: SRE duty cycle  
 Space URL: https://vooom-fast-growth.hf.space  
 Branch: claude/zealous-carson-oMr43  
-Last updated: 2026-06-10
+Last updated: 2026-06-11
 
 ---
 
@@ -192,3 +192,82 @@ curl https://vooom-fast-growth.hf.space/api/history/csv \
 **Fix time (MTTR):** <30 minutes once root cause identified
 
 **Toil reduction:** Added `/api/slo/reset` endpoint so future systematic failures can be recovered with a single API call instead of manual `/data/metrics.json` surgery.
+
+---
+
+## 9. Post-Mortem — Images Missing + Amazon CS11 Errors 2026-06-11
+
+**Incident:** 100% of posts missing product images. Clicking affiliate links on Amazon led to CS11 "something went wrong" error pages.
+
+**Impact:** Every post appeared as text-only (reduced engagement). Every click-through converted to a dead error page (zero affiliate revenue).
+
+**Root cause 1 (no images):** `sovrn._get_sovrn_product()` always returned `imageUrl: None`. The pipeline's `_find_image()` only tried `imageUrl` — it never tried alternative image sources. The `imageSearch` key present in every product was never used.
+
+**Root cause 2 (CS11 errors):** Product URLs were in short `/dp/ASIN` format (e.g. `amazon.com/dp/B09XS7JWHH`). When routed through the SOVRN VigLink redirect chain, Amazon's bot detection classified the landing as automated traffic and served the CS11 error page. Full product slug URLs (e.g. `amazon.com/Sony-WH-1000XM5.../dp/B09XS7JWHH`) pass through correctly.
+
+**Fix (deployed 2026-06-11 commit 16b313b):**
+1. Added `_fetch_amazon_og_image()` — scrapes Amazon product page for `og:image` meta tag using a Chrome User-Agent header; downloads and returns the image bytes
+2. `_find_image()` now falls back to `_fetch_amazon_og_image()` when `imageUrl` is None and the product URL is on amazon.com
+3. All 52 product URLs in `PRODUCT_POOL` updated from short `/dp/ASIN` to full slug format
+
+**Action items:**
+- [ ] Monitor image success rate in next 10 runs — owner: SRE — deadline: 2026-06-12
+- [ ] Add `imageUrl` to product records if SOVRN feed starts returning images natively — owner: product — deadline: next quarter
+
+**Detection time (MTTD):** Immediate (user reported via screenshot)
+**Fix time (MTTR):** ~45 minutes
+
+---
+
+## 10. Post-Mortem — Mastodon Account Blocked 2026-06-11
+
+**Incident:** Mastodon account flagged and blocked by mastodon.social moderators.
+
+**Impact:** All future Mastodon posts blocked. Existing posts may have been removed.
+
+**Root cause:** Posts were published with `public` visibility, which places every post on the public Federated timeline. Repeated commercial/affiliate posts on public timelines trigger spam classifiers and user reports on Mastodon. Additionally, posts did not include FTC `#ad` disclosure (required by law for affiliate content).
+
+**Fix (deployed 2026-06-11 commit 6bac485):**
+1. Changed Mastodon post visibility from `public` to `unlisted` — posts appear to followers but not on public timelines
+2. FTC `#ad` tag now prepended to all Mastodon posts
+3. Platform guardian enforces 4 posts/day max, 120-minute intervals, 08:00–22:00 UTC posting hours
+4. Hashtag count capped at 4 per post
+
+**Operator action required:**
+- Remove `mastodon` from `publishPlatforms` in Settings immediately (account is blocked)
+- Appeal to mastodon.social moderators or create a new account
+- When creating a new account: add "Automated bot — affiliate content" to bio, set `bot: true` flag in profile settings
+- Re-add mastodon to `publishPlatforms` only after account is in good standing
+
+**Action items:**
+- [ ] Operator: disable Mastodon in Settings — owner: operator — deadline: immediate
+- [ ] Operator: create new Mastodon account with bot disclosure in bio — owner: operator — deadline: this week
+- [ ] Add SLO alert when any platform circuit breaker opens — owner: SRE — deadline: next cycle
+
+**Detection time (MTTD):** ~1 day (no alerting on posting failures per platform)
+**Fix time (MTTR):** 30 minutes for code fix; operator account action pending
+
+---
+
+## 11. Anti-Ban Protocol — Platform Rules Summary
+
+All platforms are governed by `api/utils/platform_guardian.py`. Rules are enforced automatically before every post.
+
+| Platform | Daily limit | Min interval | Max hashtags | Posting hours (UTC) | Disclosure |
+|----------|-------------|--------------|--------------|---------------------|------------|
+| Bluesky | 6 | 90 min | 3 | 07:00–23:00 | #ad |
+| X (Twitter) | 3 | 120 min | 2 | 08:00–22:00 | #ad |
+| Threads | 6 | 90 min | **1** (API hard limit) | 07:00–23:00 | #ad |
+| Facebook | 3 | 30 min | 3 | 08:00–21:00 | #ad |
+| Instagram | 3 | 120 min | 20 | 08:00–21:00 | #ad |
+| Mastodon | 4 | 120 min | 4 | 08:00–22:00 | #ad |
+| Tumblr | 4 | 90 min | 10 | 08:00–22:00 | #ad |
+
+**X Twitter recovery steps (circuit breaker at 2/3 failures):**
+1. developer.twitter.com → your app → Settings → User authentication settings
+2. Enable OAuth 1.0a with Read + Write permissions
+3. Regenerate Access Token & Secret
+4. Update `X_ACCESS_TOKEN` and `X_ACCESS_TOKEN_SECRET` in HF Space secrets
+5. Call `POST /api/circuit-breakers/x/reset` to close the breaker
+
+**FTC compliance note:** Every post must include `#ad` or equivalent disclosure. Penalty for non-disclosure: up to $53,088 per post under FTC 16 CFR Part 255 (2026). The guardian enforces this automatically — do not remove `disclosure_tag` from rules.
