@@ -15,6 +15,7 @@ Run with:  pytest api/tests/test_qa_suite.py -v
 """
 
 import os
+import allure
 import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import patch, AsyncMock
@@ -54,7 +55,9 @@ def qa(tmp_path_factory):
 # 1. CORE HEALTH & STATUS
 # ─────────────────────────────────────────────────────────────────────────────
 
+@allure.feature("Core Health & Status")
 class TestCoreHealth:
+    @allure.story("Endpoints reachable")
     def test_root_returns_html(self, qa):
         r = qa["client"].get("/")
         assert r.status_code == 200
@@ -166,6 +169,7 @@ class TestCoreHealth:
 # 2. SETTINGS ROUND-TRIP — every field must survive save → reload
 # ─────────────────────────────────────────────────────────────────────────────
 
+@allure.feature("Settings Persistence")
 class TestSettingsRoundTrip:
     """Silent bug class: field saved but not returned, or silently reset."""
 
@@ -246,6 +250,7 @@ class TestSettingsRoundTrip:
 # 3. SOCIAL CREDENTIALS ROUND-TRIP — the page-refresh bug class
 # ─────────────────────────────────────────────────────────────────────────────
 
+@allure.feature("Social Credentials Round-Trip")
 class TestSocialCredentialsRoundTrip:
     """Every credential field must be visible in GET /api/accounts after saving."""
 
@@ -341,6 +346,7 @@ class TestSocialCredentialsRoundTrip:
 # 4. SCHEDULE CONFIG ROUND-TRIP
 # ─────────────────────────────────────────────────────────────────────────────
 
+@allure.feature("Schedule Config")
 class TestScheduleRoundTrip:
     def test_get_schedule_config_shape(self, qa):
         r = qa["client"].get("/api/schedule/config")
@@ -363,6 +369,7 @@ class TestScheduleRoundTrip:
 # 5. RUN GUARDS — pipeline must reject invalid states cleanly
 # ─────────────────────────────────────────────────────────────────────────────
 
+@allure.feature("Run Guards")
 class TestRunGuards:
     def test_run_without_bluesky_creds_returns_error(self, qa):
         os.environ.pop("BSKY_HANDLE", None)
@@ -410,6 +417,7 @@ class TestRunGuards:
 # 6. CIRCUIT BREAKERS
 # ─────────────────────────────────────────────────────────────────────────────
 
+@allure.feature("Circuit Breakers")
 class TestCircuitBreakers:
     def test_reset_named_circuit_breaker(self, qa):
         r = qa["client"].post("/api/circuit-breakers/groq/reset")
@@ -435,6 +443,7 @@ class TestCircuitBreakers:
 # 7. DATA INTEGRITY — files written atomically, survive corrupt data
 # ─────────────────────────────────────────────────────────────────────────────
 
+@allure.feature("Data Integrity")
 class TestDataIntegrity:
     def test_settings_survives_corrupt_file(self, qa):
         """Corrupt settings.json must not crash GET /api/settings."""
@@ -484,6 +493,7 @@ class TestDataIntegrity:
 # 8. BLUESKY ACCOUNT ACTIONS
 # ─────────────────────────────────────────────────────────────────────────────
 
+@allure.feature("Bluesky Account")
 class TestBlueskyAccount:
     def test_bsky_test_no_handle_returns_error(self, qa):
         os.environ.pop("BSKY_HANDLE", None)
@@ -525,6 +535,7 @@ class TestBlueskyAccount:
 # 9. AI GENERATE ENDPOINT
 # ─────────────────────────────────────────────────────────────────────────────
 
+@allure.feature("AI Generate")
 class TestAIGenerate:
     def test_ai_generate_missing_fields_returns_error(self, qa):
         r = qa["client"].post("/api/ai/generate", json={})
@@ -546,6 +557,7 @@ class TestAIGenerate:
 # 10. TRACKING REDIRECT
 # ─────────────────────────────────────────────────────────────────────────────
 
+@allure.feature("Tracking class TestTracking: Redirects")
 class TestTracking:
     def test_redirect_unknown_id_returns_404_or_redirect(self, qa):
         r = qa["client"].get("/r/nonexistent_id", follow_redirects=False)
@@ -567,6 +579,7 @@ class TestTracking:
 # 11. SOCIAL OAUTH ENDPOINTS — shape and error handling
 # ─────────────────────────────────────────────────────────────────────────────
 
+@allure.feature("Social OAuth")
 class TestSocialOAuth:
     def test_social_status_returns_dict(self, qa):
         r = qa["client"].get("/api/social/status")
@@ -606,6 +619,7 @@ class TestSocialOAuth:
 # 12. AUTH MIDDLEWARE — unauthenticated access patterns
 # ─────────────────────────────────────────────────────────────────────────────
 
+@allure.feature("Auth Middleware")
 class TestAuthMiddleware:
     def test_no_password_set_allows_all(self, qa):
         os.environ.pop("DASHBOARD_PASSWORD", None)
@@ -651,6 +665,7 @@ class TestAuthMiddleware:
 # 13. RESPONSE CONTRACT — no silent field stripping
 # ─────────────────────────────────────────────────────────────────────────────
 
+@allure.feature("Response Contracts")
 class TestResponseContracts:
     """Snapshot the shape of key responses. Any missing field is a regression."""
 
