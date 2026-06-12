@@ -296,7 +296,57 @@ async def resume():
 
 @app.get("/api/schedule/config")
 async def schedule_config():
-    return {"cron": _cron(), "nextRun": _next_run(), "paused": pipeline.STATE["paused"]}
+    s = settings.get_settings()
+    return {
+        "cron":             _cron(),
+        "nextRun":          _next_run(),
+        "paused":           pipeline.STATE["paused"],
+        "schedulerEnabled": s.get("schedulerEnabled", True),
+        "postsPerDay":      s.get("postsPerDay", 1),
+        "postingHours":     s.get("postingHours", "8-22"),
+    }
+
+
+@app.post("/api/schedule/config")
+async def save_schedule_config(request: Request):
+    """Save schedule settings (postsPerDay, postingHours, schedulerEnabled)."""
+    try:
+        body = await request.json()
+        allowed = {k: body[k] for k in ("postsPerDay", "postingHours", "schedulerEnabled") if k in body}
+        if not allowed:
+            return {"ok": False, "error": "No valid schedule fields provided"}
+        err = _validate_settings(allowed)
+        if err:
+            return {"ok": False, "error": err}
+        settings.save_settings(allowed)
+        if "schedulerEnabled" in allowed:
+            _schedule_job()
+        return {"ok": True}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/api/schedule/suggest")
+async def schedule_suggest(n: int = 1):
+    """Return AI-suggested posting times based on posting hours setting."""
+    s = settings.get_settings()
+    hours = s.get("postingHours", "8-22")
+    try:
+        start, end = [int(x) for x in str(hours).split("-")]
+    except Exception:  # noqa: BLE001
+        start, end = 8, 22
+    window = (end - start) if end > start else (end + 24 - start)
+    step = max(1, window // max(n, 1))
+    suggested = []
+    for i in range(min(n, 8)):
+        h = (start + step * i) % 24
+        suggested.append({"label": f"{h:02d}:00 UTC", "hour": h})
+    return {
+        "ok": True,
+        "suggestedTimes": suggested,
+        "message": f"Based on your posting window ({hours}), spread {n} post(s) evenly.",
+        "basedOn": "posting-hours",
+    }
 
 
 # ── Logs & debug ────────────────────────────────────────────────────────────
@@ -409,6 +459,7 @@ async def debug():
 
 
 @app.get("/api/env")
+@app.get("/api/env-status")
 async def env_status():
     return {k: bool(os.environ.get(k)) for k in ENV_KEYS}
 
@@ -427,6 +478,7 @@ _SETTINGS_VALIDATORS: dict[str, tuple] = {
     "alertThreshold": ((int, float), 0.01, 1000),
     "postsPerDay":    ((int, float), 1,    100),
     "rateLimitWaitMs":((int, float), 1000, 86_400_000),
+    "seoMinScore":    ((int, float), 0,    100),
 }
 
 
@@ -605,7 +657,15 @@ async def networks():
 
 
 @app.get("/api/network/test")
-async def network_test(network: str = ""):
+@app.post("/api/network/test")
+async def network_test(request: Request, network: str = ""):
+    # Accept network from query param (GET) or JSON body (POST)
+    if request.method == "POST":
+        try:
+            body = await request.json()
+            network = body.get("network", network)
+        except Exception:  # noqa: BLE001
+            pass
     found = next((n for n in NETWORKS if n["key"] == network), None)
     if not found:
         return {"ok": False, "error": "Unknown network"}

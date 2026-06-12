@@ -17,6 +17,7 @@ DEFAULTS = {
     "postingHours": "8-22",
     "postsPerDay": 1,
     "schedulerEnabled": True,
+    "seoMinScore": 50,
     "publishPlatforms": ["bluesky"],
     "ctaPhrases": [
         "🛍️ Grab yours today",
