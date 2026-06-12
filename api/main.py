@@ -329,6 +329,21 @@ async def api_slo():
     return slo
 
 
+@app.post("/api/circuit-breakers/reset-all")
+async def reset_all_circuit_breakers():
+    cb_reset_all()
+    logger.info("All circuit breakers manually reset", "system")
+    return {"ok": True}
+
+
+@app.post("/api/circuit-breakers/all/reset")
+async def reset_all_circuit_breakers_alias():
+    """Alias for /reset-all — tolerates the intuitive /all/reset path."""
+    cb_reset_all()
+    logger.info("All circuit breakers manually reset", "system")
+    return {"ok": True}
+
+
 @app.post("/api/circuit-breakers/{name}/reset")
 async def reset_circuit_breaker(name: str):
     ok = reset_breaker(name)
@@ -336,13 +351,6 @@ async def reset_circuit_breaker(name: str):
         raise HTTPException(404, f"No circuit breaker named '{name}'")
     logger.info(f"Circuit breaker '{name}' manually reset", "system")
     return {"ok": True, "name": name}
-
-
-@app.post("/api/circuit-breakers/reset-all")
-async def reset_all_circuit_breakers():
-    cb_reset_all()
-    logger.info("All circuit breakers manually reset", "system")
-    return {"ok": True}
 
 
 @app.get("/api/logs")
@@ -412,10 +420,44 @@ async def get_settings_route():
     return settings.get_settings()
 
 
+_SETTINGS_VALIDATORS: dict[str, tuple] = {
+    # key: (type_or_types, min_val, max_val)  — None means no bound
+    "maxPostLength":  ((int, float), 1,    5000),
+    "dailyCostCap":   ((int, float), 0.01, 1000),
+    "alertThreshold": ((int, float), 0.01, 1000),
+    "postsPerDay":    ((int, float), 1,    100),
+    "rateLimitWaitMs":((int, float), 1000, 86_400_000),
+}
+
+
+def _validate_settings(body: dict) -> str | None:
+    """Return an error string if any field fails validation, else None."""
+    for key, (types, lo, hi) in _SETTINGS_VALIDATORS.items():
+        if key not in body:
+            continue
+        v = body[key]
+        if not isinstance(v, types):
+            return f"'{key}' must be a number (got {type(v).__name__})"
+        if lo is not None and v < lo:
+            return f"'{key}' must be >= {lo} (got {v})"
+        if hi is not None and v > hi:
+            return f"'{key}' must be <= {hi} (got {v})"
+    if "postingHours" in body:
+        ph = str(body["postingHours"])
+        import re as _re
+        m = _re.fullmatch(r"(\d{1,2})-(\d{1,2})", ph)
+        if not m or not (0 <= int(m.group(1)) <= 23) or not (0 <= int(m.group(2)) <= 23):
+            return f"'postingHours' must be HH-HH with hours 0-23 (got '{ph}')"
+    return None
+
+
 @app.post("/api/settings")
 async def post_settings(request: Request):
     try:
         body = await request.json()
+        err = _validate_settings(body)
+        if err:
+            return {"ok": False, "error": err}
         saved = settings.save_settings(body)
         if "cronSchedule" in body:
             _schedule_job()

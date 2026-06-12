@@ -1,0 +1,109 @@
+{
+  "failures": [],
+  "learned_shapes": {
+    "/api/status": {
+      "keys": [
+        "budget",
+        "circuit_breakers",
+        "lastRun",
+        "missingVars",
+        "pipeline",
+        "runs",
+        "stats"
+      ]
+    },
+    "/api/settings": {
+      "keys": [
+        "alertThreshold",
+        "cronSchedule",
+        "ctaPhrases",
+        "dailyCostCap",
+        "maxPostLength",
+        "postSystemPrompt",
+        "postUserTemplate",
+        "postingHours",
+        "postsPerDay",
+        "publishPlatforms",
+        "rateLimitWaitMs",
+        "schedulerEnabled",
+        "spaceHost"
+      ]
+    },
+    "/api/accounts": {
+      "keys": [
+        "bluesky",
+        "social"
+      ]
+    },
+    "/api/slo": {
+      "keys": [
+        "action",
+        "circuit_breaker_active",
+        "error_budget_remaining_pct",
+        "slo_pct",
+        "slo_target",
+        "total"
+      ]
+    },
+    "/api/clicks": {
+      "keys": [
+        "daily",
+        "total"
+      ]
+    },
+    "/api/dedup/stats": {
+      "keys": [
+        "activeCount",
+        "bySource",
+        "count",
+        "ttlHours"
+      ]
+    },
+    "/api/finops": {
+      "keys": [
+        "cap_usd",
+        "forecast",
+        "today_usd"
+      ]
+    },
+    "/api/schedule/config": {
+      "keys": [
+        "cron",
+        "nextRun",
+        "paused"
+      ]
+    },
+    "/api/health": {
+      "keys": [
+        "ok"
+      ]
+    }
+  },
+  "run_count": 7,
+  "known_routes": [
+    "/",
+    "/api/accounts",
+    "/api/clicks",
+    "/api/debug",
+    "/api/dedup/stats",
+    "/api/diagnose",
+    "/api/env",
+    "/api/finops",
+    "/api/health",
+    "/api/history",
+    "/api/history.csv",
+    "/api/insights",
+    "/api/logs",
+    "/api/logs/summary",
+    "/api/metrics",
+    "/api/networks",
+    "/api/platform-rules",
+    "/api/schedule/config",
+    "/api/settings",
+    "/api/slo",
+    "/api/social/status",
+    "/api/stats",
+    "/api/status",
+    "/health"
+  ]
+}
