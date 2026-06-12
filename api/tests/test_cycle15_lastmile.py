@@ -273,7 +273,7 @@ class TestPipelineNoDeeplink:
         with patch.object(pipeline, "_get_product", AsyncMock(return_value=product)):
             with patch("api.utils.metrics.was_posted_within", return_value=False):
                 with patch("api.ai.text.generate_post_text", AsyncMock(return_value="Amazing!")):
-                    with patch.object(pipeline, "_find_image", AsyncMock(return_value=None)):
+                    with patch.object(pipeline, "_find_image", AsyncMock(return_value=(None, None))):
                         result = await pipeline.run_pipeline()
         assert result["success"] is False
         assert "url" in result["error"].lower() or "deeplink" in result["error"].lower() or "url" in result.get("error", "").lower()

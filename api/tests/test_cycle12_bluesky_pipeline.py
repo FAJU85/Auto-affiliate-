@@ -160,7 +160,7 @@ class TestPipelineRateLimitPause:
         with patch.object(pipeline, "_get_product", AsyncMock(return_value=product)):
             with patch("api.utils.metrics.was_posted_within", return_value=False):
                 with patch("api.ai.text.generate_post_text", AsyncMock(return_value="Great deal!")):
-                    with patch.object(pipeline, "_find_image", AsyncMock(return_value=None)):
+                    with patch.object(pipeline, "_find_image", AsyncMock(return_value=(None, None))):
                         with patch.object(pipeline, "check_allowed", return_value=(True, "allowed")):
                             with patch.object(pipeline, "post_to_bluesky",
                                               AsyncMock(side_effect=RuntimeError("rate-limited (429)"))):
@@ -198,7 +198,7 @@ class TestPipelineRateLimitPause:
         with patch.object(pipeline, "_get_product", AsyncMock(return_value=product)):
             with patch("api.utils.metrics.was_posted_within", return_value=False):
                 with patch("api.ai.text.generate_post_text", AsyncMock(return_value="Good stuff!")):
-                    with patch.object(pipeline, "_find_image", AsyncMock(return_value=None)):
+                    with patch.object(pipeline, "_find_image", AsyncMock(return_value=(None, None))):
                         with patch.object(pipeline, "check_allowed", return_value=(True, "allowed")):
                             with patch("api.social_post.post_to_platform", AsyncMock(return_value=None)):
                                 result = await pipeline.run_pipeline()
