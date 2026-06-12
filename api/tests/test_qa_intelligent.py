@@ -404,51 +404,139 @@ class TestRegressionMemory:
 
     def test_known_regressions_still_fixed(self, iq):
         """
-        Hard-coded regression replay for every bug that was found via the QA suite.
-        When a new bug is fixed, a replay case is added here permanently.
+        Hard-coded regression replay for every bug found and fixed across all cycles.
+        Entries are added permanently and NEVER removed — this is the project's
+        full institutional memory. Each entry maps to a git commit that introduced the fix.
         """
         client = iq["client"]
-        replays: list[tuple[str, Any, bool]] = [
-            # (description, payload_that_should_be_rejected, expected_ok)
-            # Cycle-24 bug: X credentials silently dropped after save
-            # Fixed: /api/accounts now returns masked credentials
-            ("x-credentials-not-dropped-after-save", None, None),
-            # Cycle-24 bug: negative cost cap accepted — broke all runs
-            ("negative-dailyCostCap-rejected",
-             {"dailyCostCap": -1.0}, False),
-            # Cycle-24 bug: zero postsPerDay accepted — disabled posting
-            ("zero-postsPerDay-rejected",
-             {"postsPerDay": 0}, False),
-            # Cycle-24 bug: string maxPostLength accepted — corrupt data
-            ("string-maxPostLength-rejected",
-             {"maxPostLength": "oops"}, False),
-            # Cycle-24 bug: invalid postingHours accepted
-            ("out-of-range-postingHours-rejected",
-             {"postingHours": "25-99"}, False),
-        ]
-
         failures = []
-        for desc, payload, expected_ok in replays:
-            if payload is None:
-                # Shape test — just ensure endpoint responds
-                r = client.get("/api/accounts")
-                if r.status_code != 200:
-                    failures.append(f"{desc}: GET /api/accounts → {r.status_code}")
-                else:
-                    x = r.json().get("social", {}).get("x", {})
-                    # After credentials are saved, connected should be readable
-                    if "connected" not in x:
-                        failures.append(f"{desc}: 'connected' field missing from social.x")
-            else:
-                r = client.post("/api/settings", json=payload)
-                if r.status_code >= 500:
-                    failures.append(f"{desc}: server crashed (5xx)")
-                elif r.json().get("ok") is not expected_ok:
-                    failures.append(
-                        f"{desc}: expected ok={expected_ok}, got {r.json().get('ok')} | {r.json().get('error','')}"
-                    )
 
-        assert not failures, "Known regressions re-appeared:\n" + "\n".join(failures)
+        # ── Settings validation bugs (cycle-24) ─────────────────────────────
+        # Bug: negative cost cap accepted — caused all pipeline runs to fail
+        r = client.post("/api/settings", json={"dailyCostCap": -1.0})
+        if r.json().get("ok") is not False:
+            failures.append("negative-dailyCostCap-rejected: accepted when it should be rejected")
+
+        # Bug: zero postsPerDay accepted — silently disabled posting forever
+        r = client.post("/api/settings", json={"postsPerDay": 0})
+        if r.json().get("ok") is not False:
+            failures.append("zero-postsPerDay-rejected: accepted when it should be rejected")
+
+        # Bug: string maxPostLength accepted — stored corrupt data, crashed AI calls
+        r = client.post("/api/settings", json={"maxPostLength": "oops"})
+        if r.json().get("ok") is not False:
+            failures.append("string-maxPostLength-rejected: accepted when it should be rejected")
+
+        # Bug: postingHours '25-99' accepted — hours outside 0-23 caused cron crashes
+        r = client.post("/api/settings", json={"postingHours": "25-99"})
+        if r.json().get("ok") is not False:
+            failures.append("out-of-range-postingHours-rejected: accepted when it should be rejected")
+
+        # Bug: zero alertThreshold accepted — triggered alerts constantly
+        r = client.post("/api/settings", json={"alertThreshold": 0})
+        if r.json().get("ok") is not False:
+            failures.append("zero-alertThreshold-rejected: accepted when it should be rejected")
+
+        # ── Missing response fields (cycle-24) ──────────────────────────────
+        # Bug: seoMinScore not in DEFAULTS — reset to undefined after Space rebuild
+        r = client.get("/api/settings")
+        settings = r.json()
+        for field in ("seoMinScore", "bskyEnabled", "schedulerEnabled", "postsPerDay",
+                      "postingHours", "dailyCostCap", "maxPostLength", "rateLimitWaitMs"):
+            if field not in settings:
+                failures.append(f"settings-missing-field: '{field}' absent from GET /api/settings")
+
+        # ── Endpoint existence regressions (cycle-24) ───────────────────────
+        # Bug: /api/env-status 404 — frontend called this path, backend only had /api/env
+        r = client.get("/api/env-status")
+        if r.status_code != 200:
+            failures.append(f"env-status-404: GET /api/env-status → {r.status_code}")
+
+        # Bug: GET /api/schedule/suggest 404 — Suggest Times button was broken
+        r = client.get("/api/schedule/suggest")
+        if r.status_code != 200:
+            failures.append(f"schedule-suggest-404: GET /api/schedule/suggest → {r.status_code}")
+        else:
+            body = r.json()
+            if "suggestedTimes" not in body:
+                failures.append("schedule-suggest-missing-field: 'suggestedTimes' absent from response")
+
+        # Bug: POST /api/schedule/config 405 — Save Schedule button did nothing
+        r = client.post("/api/schedule/config", json={"postsPerDay": 2})
+        if r.status_code >= 500:
+            failures.append(f"schedule-config-post-500: POST /api/schedule/config → {r.status_code}")
+        elif r.status_code == 405:
+            failures.append("schedule-config-post-405: POST /api/schedule/config not accepted")
+
+        # Bug: POST /api/network/test 405 — frontend sends POST, was GET-only
+        r = client.post("/api/network/test", json={})
+        if r.status_code == 405:
+            failures.append("network-test-post-405: POST /api/network/test returned 405")
+
+        # Bug: POST /api/circuit-breakers/all/reset 404 — {name} wildcard caught 'all'
+        r = client.post("/api/circuit-breakers/all/reset")
+        if r.status_code == 404:
+            failures.append("circuit-breaker-reset-all-404: POST /api/circuit-breakers/all/reset returned 404")
+
+        # ── Schedule config fields (cycle-24) ───────────────────────────────
+        # Bug: GET /api/schedule/config only returned cron+nextRun+paused
+        #      frontend also reads schedulerEnabled, postsPerDay, postingHours
+        r = client.get("/api/schedule/config")
+        sched = r.json()
+        for field in ("schedulerEnabled", "postsPerDay", "postingHours", "cron", "paused"):
+            if field not in sched:
+                failures.append(f"schedule-config-missing-field: '{field}' absent from GET /api/schedule/config")
+
+        # ── Accounts shape (cycle-24) ────────────────────────────────────────
+        # Bug: X credentials silently dropped after page refresh
+        r = client.get("/api/accounts")
+        if r.status_code != 200:
+            failures.append(f"accounts-404: GET /api/accounts → {r.status_code}")
+        else:
+            social = r.json().get("social", {})
+            for platform in ("x", "facebook", "instagram", "mastodon"):
+                if platform not in social:
+                    failures.append(f"accounts-missing-platform: '{platform}' absent from social")
+                elif "connected" not in social[platform]:
+                    failures.append(f"accounts-missing-connected: social.{platform} missing 'connected' field")
+
+        # ── Dedup TTL regression (SRE cycle) ────────────────────────────────
+        # Bug: dedup TTL was 168h — all products blocked for a week, SLO collapsed to 58%
+        r = client.get("/api/dedup/stats")
+        if r.status_code == 200:
+            ttl = r.json().get("ttlHours", 999)
+            if ttl > 48:
+                failures.append(f"dedup-ttl-too-long: ttlHours={ttl} > 48 — risk of SLO collapse")
+
+        # ── AuthError circuit breaker bypass (cycle-25) ──────────────────────
+        # Bug: X 403 raised RuntimeError → tripped circuit breaker → all posts halted
+        # Verify: AuthError is importable and is a subclass of RuntimeError (not BaseException)
+        try:
+            from api.utils.circuit_breaker import AuthError as _AE
+            assert issubclass(_AE, RuntimeError), "AuthError must subclass RuntimeError"
+        except ImportError:
+            failures.append("auth-error-missing: AuthError not importable from circuit_breaker")
+
+        # ── Health always available (startup regression) ─────────────────────
+        # Bug: server crashed on startup when env vars missing — space was unreachable
+        r = client.get("/api/health")
+        if r.status_code != 200:
+            failures.append(f"health-always-200: GET /api/health → {r.status_code} (should never fail)")
+
+        # ── Diagnose endpoint shape ──────────────────────────────────────────
+        r = client.get("/api/diagnose")
+        if r.status_code != 200:
+            failures.append(f"diagnose-404: GET /api/diagnose → {r.status_code}")
+        else:
+            diag = r.json()
+            for field in ("ready", "checks", "circuitBreakers", "lastRun", "lastError"):
+                if field not in diag:
+                    failures.append(f"diagnose-missing-field: '{field}' absent from GET /api/diagnose")
+
+        assert not failures, (
+            f"Known regressions re-appeared ({len(failures)} failures):\n"
+            + "\n".join(f"  ✗ {f}" for f in failures)
+        )
 
     def test_memory_summary(self):
         """Print a summary of accumulated memory — visible in Allure / -v output."""
