@@ -18,6 +18,7 @@ DEFAULTS = {
     "postsPerDay": 1,
     "schedulerEnabled": True,
     "seoMinScore": 50,
+    "bskyEnabled": True,
     "publishPlatforms": ["bluesky"],
     "ctaPhrases": [
         "🛍️ Grab yours today",

@@ -1,5 +1,41 @@
 {
-  "failures": [],
+  "failures": [
+    {
+      "test": "shape:/api/settings",
+      "detail": "lost keys {'bskyEnabled'}",
+      "ts": "2026-06-12T16:31:13Z"
+    },
+    {
+      "test": "wrong-method:/api/network/test:POST",
+      "detail": "{'GET'}",
+      "ts": "2026-06-12T16:31:18Z"
+    },
+    {
+      "test": "wrong-method:/api/schedule/config:GET",
+      "detail": "{'POST'}",
+      "ts": "2026-06-12T16:31:18Z"
+    },
+    {
+      "test": "wrong-method:/api/settings:GET",
+      "detail": "{'POST'}",
+      "ts": "2026-06-12T16:31:18Z"
+    },
+    {
+      "test": "missing-route:/api/social/facebook/credentials",
+      "detail": "methods={'POST'}",
+      "ts": "2026-06-12T16:31:18Z"
+    },
+    {
+      "test": "missing-route:/api/social/instagram/credentials",
+      "detail": "methods={'POST'}",
+      "ts": "2026-06-12T16:31:18Z"
+    },
+    {
+      "test": "missing-route:/api/social/x/credentials",
+      "detail": "methods={'POST'}",
+      "ts": "2026-06-12T16:31:18Z"
+    }
+  ],
   "learned_shapes": {
     "/api/status": {
       "keys": [
@@ -15,6 +51,7 @@
     "/api/settings": {
       "keys": [
         "alertThreshold",
+        "bskyEnabled",
         "cronSchedule",
         "ctaPhrases",
         "dailyCostCap",
@@ -26,6 +63,7 @@
         "publishPlatforms",
         "rateLimitWaitMs",
         "schedulerEnabled",
+        "seoMinScore",
         "spaceHost"
       ]
     },
@@ -70,16 +108,86 @@
       "keys": [
         "cron",
         "nextRun",
-        "paused"
+        "paused",
+        "postingHours",
+        "postsPerDay",
+        "schedulerEnabled"
       ]
     },
     "/api/health": {
       "keys": [
         "ok"
       ]
+    },
+    "/api/diagnose": {
+      "keys": [
+        "checks",
+        "circuitBreakers",
+        "lastError",
+        "lastRun",
+        "pipelineRunning",
+        "ready"
+      ]
+    },
+    "/api/env": {
+      "keys": [
+        "ADMITAD_CLIENT_ID",
+        "BSKY_APP_PASSWORD",
+        "BSKY_HANDLE",
+        "CRON_SCHEDULE",
+        "GROQ_API_KEY",
+        "MISTRAL_API_KEY",
+        "SOVRN_API_KEY",
+        "SPACE_HOST",
+        "TAKEADS_API_KEY",
+        "TRAVELPAYOUTS_TOKEN"
+      ]
+    },
+    "/api/env-status": {
+      "keys": [
+        "ADMITAD_CLIENT_ID",
+        "BSKY_APP_PASSWORD",
+        "BSKY_HANDLE",
+        "CRON_SCHEDULE",
+        "GROQ_API_KEY",
+        "MISTRAL_API_KEY",
+        "SOVRN_API_KEY",
+        "SPACE_HOST",
+        "TAKEADS_API_KEY",
+        "TRAVELPAYOUTS_TOKEN"
+      ]
+    },
+    "/api/insights": {
+      "keys": [
+        "dedup",
+        "networkHealth",
+        "totalClicks"
+      ]
+    },
+    "/api/logs/summary": {
+      "keys": [
+        "byComponent",
+        "lastError",
+        "totalErrors",
+        "totalWarns"
+      ]
+    },
+    "/api/platform-rules": {
+      "keys": [
+        "ok",
+        "rules"
+      ]
+    },
+    "/api/schedule/suggest": {
+      "keys": [
+        "basedOn",
+        "message",
+        "ok",
+        "suggestedTimes"
+      ]
     }
   },
-  "run_count": 16,
+  "run_count": 20,
   "known_routes": [
     "/",
     "/api/accounts",
@@ -88,6 +196,7 @@
     "/api/dedup/stats",
     "/api/diagnose",
     "/api/env",
+    "/api/env-status",
     "/api/finops",
     "/api/health",
     "/api/history",
@@ -99,6 +208,7 @@
     "/api/networks",
     "/api/platform-rules",
     "/api/schedule/config",
+    "/api/schedule/suggest",
     "/api/settings",
     "/api/slo",
     "/api/social/status",
