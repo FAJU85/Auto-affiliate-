@@ -6,11 +6,18 @@ Usage:
     cb = CircuitBreaker("bluesky", failure_threshold=3, recovery_timeout=120)
     async with cb:
         await external_call()
+
+AuthError is a permanent credential/permission failure — it is re-raised but
+does NOT count as a circuit-breaking failure (so the breaker stays closed).
 """
 
 import time
 from dataclasses import dataclass, field
 from typing import Callable
+
+
+class AuthError(RuntimeError):
+    """Permanent auth/permission failure — should not trip the circuit breaker."""
 
 
 @dataclass
@@ -52,6 +59,9 @@ class CircuitBreaker:
             result = await fn(*args, **kwargs)
             self.record_success()
             return result
+        except AuthError:
+            # Permanent auth failure — don't penalise the breaker; just re-raise
+            raise
         except Exception:
             self.record_failure()
             raise

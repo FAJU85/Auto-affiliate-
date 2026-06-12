@@ -14,6 +14,7 @@ import httpx
 
 from .utils import logger
 from .utils.circuit_breaker import (
+    AuthError,
     mastodon_cb  as _mastodon_cb,
     x_cb         as _x_cb,
     threads_cb   as _threads_cb,
@@ -150,7 +151,7 @@ async def _post_mastodon(caption: str, deeplink: str, image: bytes | None = None
     conns = _load_connections()
     c = conns.get("mastodon", {})
     if not c.get("connected") or not c.get("access_token"):
-        raise RuntimeError("Mastodon not connected — add credentials in Accounts")
+        raise AuthError("Mastodon not connected — add credentials in Accounts")
 
     instance     = c.get("instance", "https://mastodon.social").rstrip("/")
     access_token = c["access_token"]
@@ -236,7 +237,7 @@ async def _post_x(caption: str, deeplink: str, image: bytes | None = None) -> st
     conns = _load_connections()
     c = conns.get("x", {})
     if not c.get("connected"):
-        raise RuntimeError("X (Twitter) not connected — add credentials in Accounts")
+        raise AuthError("X (Twitter) not connected — add credentials in Accounts")
 
     consumer_key    = c.get("consumer_key", "")
     consumer_secret = c.get("consumer_secret", "")
@@ -244,7 +245,7 @@ async def _post_x(caption: str, deeplink: str, image: bytes | None = None) -> st
     access_secret   = c.get("access_secret", "")
 
     if not all([consumer_key, consumer_secret, access_token, access_secret]):
-        raise RuntimeError("X credentials incomplete — add all 4 API keys in Accounts")
+        raise AuthError("X credentials incomplete — add all 4 API keys in Accounts")
 
     text = f"{caption}\n{deeplink}" if deeplink else caption
     if len(text) > 280:
@@ -268,7 +269,7 @@ async def _post_x(caption: str, deeplink: str, image: bytes | None = None) -> st
             json=body,
         )
     if r.status_code == 403:
-        raise RuntimeError(
+        raise AuthError(
             "X post blocked (403) — app needs 'Read and Write' OAuth 1.0a permissions. "
             "Fix: developer.twitter.com → your app → Settings → User authentication settings → "
             "enable OAuth 1.0a with Read+Write → regenerate and re-enter your Access Token & Secret."
@@ -291,7 +292,7 @@ async def _post_facebook(caption: str, deeplink: str, image_url: str | None = No
     conns = _load_connections()
     c = conns.get("facebook", {})
     if not c.get("connected") or not c.get("page_access_token"):
-        raise RuntimeError("Facebook not connected — add Page Access Token in Accounts")
+        raise AuthError("Facebook not connected — add Page Access Token in Accounts")
 
     page_id    = c.get("page_id", "me")
     page_token = c["page_access_token"]
@@ -340,12 +341,12 @@ async def _post_instagram(caption: str, deeplink: str, image_url: str | None = N
     conns = _load_connections()
     c = conns.get("instagram", {})
     if not c.get("connected") or not c.get("access_token"):
-        raise RuntimeError("Instagram not connected — add credentials in Accounts")
+        raise AuthError("Instagram not connected — add credentials in Accounts")
 
     ig_user_id   = c.get("ig_user_id", "")
     access_token = c["access_token"]
     if not ig_user_id:
-        raise RuntimeError("Instagram ig_user_id missing — reconnect in Accounts")
+        raise AuthError("Instagram ig_user_id missing — reconnect in Accounts")
 
     if not image_url:
         raise RuntimeError(
@@ -400,7 +401,7 @@ async def _post_threads(caption: str, deeplink: str,
     conns = _load_connections()
     c = conns.get("threads", {})
     if not c.get("connected") or not c.get("access_token"):
-        raise RuntimeError("Threads not connected — connect via OAuth in Accounts")
+        raise AuthError("Threads not connected — connect via OAuth in Accounts")
 
     access_token = c["access_token"]
     user_id      = c.get("user_id", "me")
@@ -476,12 +477,12 @@ async def _post_tumblr(caption: str, deeplink: str) -> str:
     conns = _load_connections()
     c = conns.get("tumblr", {})
     if not c.get("connected") or not c.get("access_token"):
-        raise RuntimeError("Tumblr not connected — connect via OAuth in Accounts")
+        raise AuthError("Tumblr not connected — connect via OAuth in Accounts")
 
     access_token = c["access_token"]
     blog_name    = c.get("handle", "")
     if not blog_name:
-        raise RuntimeError("Tumblr handle/blog name missing — reconnect in Accounts")
+        raise AuthError("Tumblr handle/blog name missing — reconnect in Accounts")
 
     text = f"{caption}\n{deeplink}" if deeplink else caption
 
