@@ -17,6 +17,8 @@ import httpx
 from .ai import text as ai_text
 from .bluesky_client import post_to_bluesky
 from .feeds.sovrn import get_sovrn_product
+from .social_post import post_to_platform
+from .utils.platform_guardian import check_allowed
 from .utils import budget as budget_util
 from .utils import logger, metrics, settings
 from .utils.telemetry import Timer
@@ -33,11 +35,14 @@ IMAGE_TIMEOUT    = 15   # seconds to download image
 STATE: dict = {
     "running": False,
     "paused": False,
+    "pausedUntil": None,   # epoch float — auto-resume after this time (None = manual pause)
     "lastRun": None,
     "lastError": None,
     "runCount": 0,
     "successCount": 0,
 }
+
+RATE_LIMIT_COOLDOWN = 3600  # 1h auto-resume after rate-limit pause
 
 # Short tracking id -> destination deeplink (in-memory; also persisted via metrics)
 _REDIRECTS: dict = {}
@@ -52,7 +57,7 @@ async def _try_sovrn() -> dict | None:
         with Timer("sovrn_fetch"):
             return await get_sovrn_product()
     except Exception as err:  # noqa: BLE001
-        logger.warn(f"SOVRN fetch failed: {err}")
+        logger.warn(f"SOVRN fetch failed: {err}", "sovrn")
         return None
 
 
@@ -63,7 +68,7 @@ async def _get_product() -> dict | None:
     if product:
         return product
 
-    logger.warn("All product networks failed or unconfigured — no product available")
+    logger.warn("All product networks failed or unconfigured — no product available", "pipeline")
     return None
 
 
@@ -76,18 +81,63 @@ async def get_trends() -> list:
 # ── Image ────────────────────────────────────────────────────────────────────
 
 async def _find_image(product: dict) -> bytes | None:
+    # Try explicit imageUrl first
     url = product.get("imageUrl")
-    if not url:
-        return None
+    if url:
+        try:
+            with Timer("image_download"):
+                async with httpx.AsyncClient(timeout=IMAGE_TIMEOUT, follow_redirects=True) as client:
+                    r = await client.get(url)
+                if r.status_code == 200 and r.headers.get("content-type", "").startswith("image"):
+                    return r.content
+        except Exception as err:  # noqa: BLE001
+            logger.warn(f"Image download failed: {err}")
+
+    # Fall back: extract og:image from Amazon product page
+    site_url = product.get("siteUrl") or product.get("deeplink") or ""
+    if "amazon.com" in site_url:
+        try:
+            img_bytes = await _fetch_amazon_og_image(site_url)
+            if img_bytes:
+                return img_bytes
+        except Exception as err:  # noqa: BLE001
+            logger.warn(f"Amazon image scrape failed (non-fatal): {err}")
+
+    logger.warn("No image available for product — posting without image")
+    return None
+
+
+async def _fetch_amazon_og_image(product_url: str) -> bytes | None:
+    """Scrape Amazon product page for og:image URL, then download it."""
+    import re
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        ),
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept": "text/html,application/xhtml+xml",
+    }
     try:
-        with Timer("image_download"):
-            async with httpx.AsyncClient(timeout=IMAGE_TIMEOUT, follow_redirects=True) as client:
-                r = await client.get(url)
-            if r.status_code == 200 and r.headers.get("content-type", "").startswith("image"):
-                return r.content
-            logger.warn(f"Image fetch non-200 ({r.status_code}) or non-image content-type")
+        async with httpx.AsyncClient(timeout=IMAGE_TIMEOUT, follow_redirects=True, headers=headers) as client:
+            r = await client.get(product_url)
+        if r.status_code != 200:
+            logger.warn(f"Amazon page fetch HTTP {r.status_code} — no image")
+            return None
+        m = re.search(r'"og:image"[^>]*content="([^"]+)"', r.text)
+        if not m:
+            m = re.search(r'content="(https://m\.media-amazon\.com/images/I/[^"]+)"', r.text)
+        if not m:
+            logger.warn("og:image not found in Amazon page")
+            return None
+        img_url = m.group(1).replace("&amp;", "&")
+        async with httpx.AsyncClient(timeout=IMAGE_TIMEOUT, follow_redirects=True) as client:
+            ir = await client.get(img_url)
+        if ir.status_code == 200 and ir.headers.get("content-type", "").startswith("image"):
+            return ir.content
     except Exception as err:  # noqa: BLE001
-        logger.warn(f"Image download failed (non-fatal): {err}")
+        logger.warn(f"Amazon og:image fetch error: {err}")
     return None
 
 
@@ -145,7 +195,16 @@ async def run_pipeline() -> dict:
     if STATE["running"]:
         return {"ok": False, "error": "Pipeline already running"}
     if STATE["paused"]:
-        return {"ok": False, "error": "Pipeline is paused"}
+        # Auto-resume if the timed cooldown has expired
+        until = STATE.get("pausedUntil")
+        if until and time.time() >= until:
+            STATE["paused"] = False
+            STATE["pausedUntil"] = None
+            logger.info("Rate-limit cooldown expired — auto-resuming pipeline", "pipeline")
+        else:
+            wait = int(until - time.time()) if until else 0
+            msg = f"Pipeline is paused — auto-resumes in {wait}s" if until else "Pipeline is paused"
+            return {"ok": False, "error": msg}
 
     STATE["running"] = True
     started = time.time()
@@ -156,11 +215,11 @@ async def run_pipeline() -> dict:
         )
     except asyncio.TimeoutError:
         err = f"Pipeline timed out after {PIPELINE_TIMEOUT}s"
-        logger.error(err)
+        logger.error(err, "pipeline")
         return _record({"success": False, "error": err,
                         "durationMs": int((time.time() - started) * 1000)})
     except Exception as err:  # noqa: BLE001
-        logger.error(f"Pipeline uncaught error: {err}")
+        logger.error(f"Pipeline uncaught error: {err}", "pipeline")
         return _record({"success": False, "error": str(err),
                         "durationMs": int((time.time() - started) * 1000)})
     finally:
@@ -170,30 +229,39 @@ async def run_pipeline() -> dict:
 async def _execute(started: float) -> dict:
     s = settings.get_settings()
     cap = float(s.get("dailyCostCap", 2.0))
+    platforms = s.get("publishPlatforms", ["bluesky"])
 
     # ── Guard: cost cap ──
     if budget_util.get_daily_spend() >= cap:
         return _record({"success": False, "error": f"Daily cost cap ${cap:.2f} reached"})
 
-    # ── Guard: Bluesky enabled ──
-    if not s.get("bskyEnabled", True):
-        return _record({"success": False, "error": "Bluesky disabled — re-enable in Accounts settings"})
+    # ── Guard: at least one platform selected ──
+    if not platforms:
+        return _record({"success": False, "error": "No publishing platforms selected — enable at least one in Settings"})
 
-    # ── Guard: credentials ──
-    if not os.environ.get("BSKY_HANDLE") or not os.environ.get("BSKY_APP_PASSWORD"):
-        return _record({
-            "success": False,
-            "error": "Bluesky credentials not configured — set BSKY_HANDLE + BSKY_APP_PASSWORD in Space Secrets",
-        })
+    # ── Guard: Bluesky credentials (only if Bluesky is selected) ──
+    if "bluesky" in platforms:
+        if not s.get("bskyEnabled", True):
+            platforms = [p for p in platforms if p != "bluesky"]
+            logger.warn("Bluesky disabled — skipping, continuing with other platforms", "bluesky")
+        elif not os.environ.get("BSKY_HANDLE") or not os.environ.get("BSKY_APP_PASSWORD"):
+            platforms = [p for p in platforms if p != "bluesky"]
+            logger.warn("Bluesky credentials missing — skipping, continuing with other platforms", "bluesky")
+
+    if not platforms:
+        return _record({"success": False, "error": "No platforms available to post to"})
+
+    logger.info(f"Pipeline starting — platforms: {platforms}", "pipeline")
 
     # ── Phase 1: Product ──
     with Timer("product_fetch"):
         product = await _get_product()
     if not product:
         return _record({"success": False, "error": "No product available from any network"})
+    logger.info(f"Product: {product.get('name', '?')!r} via {product.get('source', '?')}", "pipeline")
 
-    # ── Guard: dedup ──
-    if metrics.was_recently_posted(product.get("siteUrl"), product.get("name")):
+    # ── Guard: dedup (1h hard block — prevents exact repeat within same session) ──
+    if metrics.was_posted_within(product.get("siteUrl"), product.get("name"), hours=1):
         return _record({
             "success": False, "error": "Product already posted recently (dedup skip)",
             "product": product.get("name"), "productSource": product.get("source"),
@@ -203,7 +271,7 @@ async def _execute(started: float) -> dict:
     trends = await get_trends()
     with Timer("caption_gen"):
         caption = await ai_text.generate_post_text(product, trends)
-    logger.info(f"Caption ({len(caption)} chars): {caption[:80]}…")
+    logger.info(f"Caption ({len(caption)} chars): {caption[:80]}…", "ai")
 
     # ── Phase 3: Image (non-blocking — failure is fine) ──
     image = await _find_image(product)
@@ -214,15 +282,53 @@ async def _execute(started: float) -> dict:
         return _record({"success": False, "error": "Product has no URL"})
     tracking_id, redirect = _tracking_url(deeplink)
 
-    # ── Phase 5: Post to Bluesky ──
-    with Timer("bluesky_publish") as t:
-        uri = await post_to_bluesky(caption, redirect, image, product)
+    # ── Phase 5: Post to all enabled platforms ──
+    recent_runs = metrics.get_recent_runs(500)
+    uris = {}
+    primary_uri = ""
+    any_success = False
+
+    for platform in platforms:
+        # Anti-ban guardian: check daily limit, interval, and posting hours
+        allowed, reason = check_allowed(platform, recent_runs)
+        if not allowed:
+            logger.info(f"Skipped by guardian: {reason}", platform)
+            continue
+
+        if platform == "bluesky":
+            try:
+                with Timer("bluesky_publish"):
+                    uri = await post_to_bluesky(caption, redirect, image, product)
+                uris["bluesky"] = uri
+                primary_uri = primary_uri or uri
+                any_success = True
+                logger.info(f"Posted OK → {uri}", "bluesky")
+            except RuntimeError as _err:
+                _msg = str(_err)
+                if "rate" in _msg.lower() or "429" in _msg.lower():
+                    STATE["paused"] = True
+                    STATE["pausedUntil"] = time.time() + RATE_LIMIT_COOLDOWN
+                    logger.warn(f"Rate-limited — auto-paused for {RATE_LIMIT_COOLDOWN}s: {_msg}", "bluesky")
+                logger.error(f"Post failed: {_msg}", "bluesky")
+        else:
+            logger.info("Attempting post…", platform)
+            uri = await post_to_platform(platform, caption, redirect, image=image, product=product)
+            if uri:
+                uris[platform] = uri
+                primary_uri = primary_uri or uri
+                any_success = True
+                logger.info(f"Posted OK → {uri}", platform)
+            else:
+                logger.error("Post returned no URI — check connection in Accounts", platform)
+
+    if not any_success:
+        return _record({"success": False, "error": f"All platforms failed: {list(platforms)}"})
 
     budget_util.add_spend(0.001)
     metrics.mark_posted(product.get("siteUrl"), product.get("name"), product.get("source"))
 
     duration_ms = int((time.time() - started) * 1000)
-    logger.info(f"Pipeline complete in {duration_ms}ms — {uri}")
+    logger.info(f"Pipeline complete in {duration_ms}ms — posted to {list(uris.keys())}", "pipeline")
 
     return _record({
         "success": True,
@@ -230,7 +336,9 @@ async def _execute(started: float) -> dict:
         "productSource": product.get("source"),
         "imageSource": "feed" if image else "none",
         "captionChars": len(caption),
-        "postUri": uri,
+        "postUri": primary_uri,
+        "postUris": uris,
+        "platforms": list(uris.keys()),
         "deeplink": deeplink,
         "trackingId": tracking_id,
         "durationMs": duration_ms,

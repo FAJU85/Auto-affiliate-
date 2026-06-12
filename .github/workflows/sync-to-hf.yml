@@ -25,6 +25,26 @@ jobs:
       - name: Install dependencies
         run: pip install -q -r api/requirements.txt
 
+      - name: Install quality tools
+        run: pip install -q ruff detect-secrets
+
+      - name: Lint (ruff)
+        run: ruff check api/ --output-format=concise
+
+      - name: Secret scan (detect-secrets)
+        run: |
+          detect-secrets scan api/ --all-files | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          findings = data.get('results', {})
+          if findings:
+            for f, hits in findings.items():
+              for h in hits:
+                print(f'SECRET FOUND: {f}:{h[\"line_number\"]} type={h[\"type\"]}')
+            sys.exit(1)
+          print('Secret scan: CLEAN')
+          "
+
       - name: Import check (catches syntax + missing deps)
         run: |
           DATA_DIR=/tmp/ci-data python -c "
@@ -44,7 +64,17 @@ jobs:
 
       - name: Run Python unit tests
         run: |
-          DATA_DIR=/tmp/ci-data python -m pytest api/tests/ -v --tb=short
+          pip install -q pytest-cov
+          DATA_DIR=/tmp/ci-data python -m pytest api/tests/ -v --tb=short \
+            --cov=api --cov-fail-under=65 \
+            --html=test-report.html --self-contained-html
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: test-report.html
 
       - name: Dockerfile syntax check
         run: docker build --check . || true
@@ -136,7 +166,7 @@ jobs:
           echo "Checking $URL"
           # HF Spaces can take 2-5 min to rebuild Docker containers
           for i in $(seq 1 15); do
-            BODY=$(curl -s -w "\nHTTP_STATUS:%{http_code}" "$URL")
+            BODY=$(curl -s -w "\nHTTP_STATUS:%{http_code}" "$URL" || echo "HTTP_STATUS:000")
             STATUS=$(echo "$BODY" | grep "HTTP_STATUS:" | cut -d: -f2)
             echo "Attempt $i: HTTP $STATUS"
             if [ "$STATUS" = "200" ]; then

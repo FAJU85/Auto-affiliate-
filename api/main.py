@@ -1,19 +1,25 @@
 """FastAPI backend for the affiliate-posting bot (HuggingFace Spaces, port 7860)."""
 
+import asyncio
 import csv
 import io
 import os
+import time
 from collections import defaultdict
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from fastapi import FastAPI, Request
+from typing import Optional
+
+from fastapi import FastAPI, HTTPException, Query, Request
+from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
+    JSONResponse,
     PlainTextResponse,
     RedirectResponse,
 )
@@ -32,7 +38,7 @@ ENV_KEYS = [
     "MISTRAL_API_KEY", "ADMITAD_CLIENT_ID", "TAKEADS_API_KEY",
     "TRAVELPAYOUTS_TOKEN", "SPACE_HOST", "CRON_SCHEDULE",
 ]
-REQUIRED_VARS = ["BSKY_HANDLE", "BSKY_APP_PASSWORD"]
+REQUIRED_VARS: list[str] = []  # Bluesky is optional when other platforms are selected
 
 NETWORKS = [
     {"key": "sovrn", "name": "SOVRN Commerce", "env": "SOVRN_API_KEY"},
@@ -68,21 +74,76 @@ def _next_run() -> str | None:
 async def lifespan(_: FastAPI):
     _schedule_job()
     scheduler.start()
-    logger.info(f"Scheduler started (cron={_cron()})")
+    logger.info(f"Scheduler started (cron={_cron()})", "scheduler")
+    logger.info("Platform circuit breakers armed: bluesky, mastodon, x, threads, tumblr, sovrn, groq, mistral", "system")
     yield
     scheduler.shutdown(wait=False)
+    logger.info("Scheduler stopped", "scheduler")
 
 
 app = FastAPI(title="Affiliate Bot", lifespan=lifespan)
 
+
+# ── Dashboard auth middleware ────────────────────────────────────────────────
+# Protects all /api/* routes with a bearer token derived from DASHBOARD_PASSWORD.
+# Public routes (no auth): /, /health, /r/{id}, /oauth/*, /api/social/*/callback
+_PUBLIC_PREFIXES = ("/r/", "/health", "/oauth/", "/api/social/")
+_PUBLIC_EXACT    = {"/", "/health"}
+
+class DashboardAuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        password = os.environ.get("DASHBOARD_PASSWORD", "")
+        # No password set → Space is in open/dev mode, allow everything
+        if not password:
+            return await call_next(request)
+
+        path = request.url.path
+
+        # Always allow: redirect links, health check, OAuth callbacks, social OAuth flows
+        if path in _PUBLIC_EXACT:
+            return await call_next(request)
+        if any(path.startswith(p) for p in _PUBLIC_PREFIXES):
+            return await call_next(request)
+
+        # Check Authorization header: "Bearer {DASHBOARD_PASSWORD}"
+        auth = request.headers.get("Authorization", "")
+        token = auth.removeprefix("Bearer ").strip()
+        if token == password:
+            return await call_next(request)
+
+        # Unauthenticated API call
+        if path.startswith("/api/"):
+            return JSONResponse({"ok": False, "error": "Unauthorized"}, status_code=401)
+
+        # Unauthenticated dashboard page — serve the HTML (login form handles it client-side)
+        return await call_next(request)
+
+app.add_middleware(DashboardAuthMiddleware)
+
+
 try:
-    from .social_oauth import router as social_router
+    from .social_oauth import router as social_router, _handle_oauth_callback
     app.include_router(social_router, prefix="/api")
 except Exception as err:  # noqa: BLE001
     logger.warn(f"social_oauth router not mounted: {err}")
+    _handle_oauth_callback = None  # type: ignore
 
 
-# ── Pages & health ──────────────────────────────────────────────────────────
+# Mastodon redirects to /oauth/social/callback (not /api/social/callback)
+@app.get("/oauth/social/callback")
+async def oauth_social_callback(
+    request: Request,
+    platform: str = "",
+    code: Optional[str] = Query(None),
+    state: Optional[str] = Query(None),
+    error: Optional[str] = Query(None),
+):
+    if _handle_oauth_callback is None:
+        raise HTTPException(503, "OAuth not available")
+    return await _handle_oauth_callback(platform, code, state, error)
+
+
+# ── Pages & health ───────────────────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
 async def home():
@@ -95,7 +156,6 @@ async def home():
 async def health():
     slo = pipeline.calculate_slo(500)
     missing = _missing_vars()
-    bsky_ok = not missing
     # Degraded if SLO < 95% or credentials missing; down if SLO < 50%
     slo_pct = slo.get("slo_pct")
     if slo_pct is not None and slo_pct < 50:
@@ -112,6 +172,8 @@ async def health():
         "missing_vars": missing,
         "circuit_breakers": cb_statuses(),
         "pipeline_running": pipeline.STATE["running"],
+        "pipeline_paused": pipeline.STATE["paused"],
+        "pipeline_paused_until": pipeline.STATE.get("pausedUntil"),
     }
 
 
@@ -147,6 +209,7 @@ async def status():
         "pipeline": {
             "running": pipeline.STATE["running"],
             "paused": pipeline.STATE["paused"],
+            "pausedUntil": pipeline.STATE.get("pausedUntil"),
             "schedule": _cron(),
             "nextRun": None if pipeline.STATE["paused"] else _next_run(),
             "lastRun": last_run,
@@ -195,11 +258,16 @@ async def run():
     cap = float(s.get("dailyCostCap", 2.0))
     if budget.get_daily_spend() >= cap:
         return {"ok": False, "error": f"Daily cost cap ${cap:.2f} reached"}
-    if not s.get("bskyEnabled", True):
-        return {"ok": False, "error": "Bluesky is disabled — re-enable it in Accounts"}
-    missing = _missing_vars()
-    if missing:
-        return {"ok": False, "error": f"Missing credentials: {', '.join(missing)}"}
+    platforms = s.get("publishPlatforms", ["bluesky"])
+    if not platforms:
+        return {"ok": False, "error": "No publishing platforms selected — enable at least one in Settings"}
+    # Only enforce Bluesky credential check when Bluesky is actually selected
+    if "bluesky" in platforms:
+        if not s.get("bskyEnabled", True):
+            return {"ok": False, "error": "Bluesky is disabled — re-enable it in Accounts or deselect it in Settings"}
+        missing = [v for v in ["BSKY_HANDLE", "BSKY_APP_PASSWORD"] if not os.environ.get(v)]
+        if missing:
+            return {"ok": False, "error": f"Bluesky credentials missing: {', '.join(missing)}"}
 
     import asyncio
     asyncio.create_task(pipeline.run_pipeline())
@@ -221,6 +289,7 @@ async def pause():
 @app.post("/api/schedule/resume")
 async def resume():
     pipeline.STATE["paused"] = False
+    pipeline.STATE["pausedUntil"] = None
     scheduler.resume()
     return {"ok": True, "paused": False}
 
@@ -246,18 +315,66 @@ async def api_metrics():
 async def api_slo():
     """SLO compliance and error budget status."""
     slo = pipeline.calculate_slo(500)
-    # Circuit breaker: if error budget is 0%, signal halt
-    if slo.get("error_budget_remaining_pct", 100) <= 0:
+    budget_remaining = slo.get("error_budget_remaining_pct", 100)
+    if budget_remaining <= 0:
         slo["circuit_breaker_active"] = True
         slo["action"] = "HALT_FEATURE_DEPLOYS — redirect all capacity to stability"
+        logger.warn("Error budget exhausted — circuit breaker active, feature deploys halted", "system")
+    elif budget_remaining <= 20:
+        slo["circuit_breaker_active"] = False
+        slo["action"] = "WARNING — error budget below 20%, monitor closely"
     else:
         slo["circuit_breaker_active"] = False
+        slo["action"] = "nominal"
     return slo
 
 
+@app.post("/api/circuit-breakers/{name}/reset")
+async def reset_circuit_breaker(name: str):
+    ok = reset_breaker(name)
+    if not ok:
+        raise HTTPException(404, f"No circuit breaker named '{name}'")
+    logger.info(f"Circuit breaker '{name}' manually reset", "system")
+    return {"ok": True, "name": name}
+
+
+@app.post("/api/circuit-breakers/reset-all")
+async def reset_all_circuit_breakers():
+    cb_reset_all()
+    logger.info("All circuit breakers manually reset", "system")
+    return {"ok": True}
+
+
 @app.get("/api/logs")
-async def logs(n: int = 100):
-    return metrics_logs(n)
+async def logs(n: int = 200, level: str = "", component: str = ""):
+    entries = logger.get_recent_logs(n)
+    if level:
+        entries = [e for e in entries if e.get("level") == level.lower()]
+    if component:
+        entries = [e for e in entries if e.get("component") == component.lower()]
+    return entries
+
+
+@app.post("/api/logs/clear")
+async def clear_logs():
+    n = logger.clear_logs()
+    logger.info("Logs cleared by user", "system")
+    return {"ok": True, "cleared": n}
+
+
+@app.get("/api/logs/summary")
+async def logs_summary():
+    return logger.error_summary()
+
+
+@app.post("/api/logs/analyze")
+async def analyze_logs_ai():
+    from .ai.log_analyzer import analyze_logs
+    entries   = logger.get_recent_logs(200)
+    last_run  = pipeline.STATE.get("lastRun")
+    result    = await analyze_logs(entries, last_run)
+    logger.info(f"AI log analysis complete — status: {result.get('status')} via {result.get('provider')}", "ai")
+    return result
 
 
 def metrics_logs(n: int) -> list:
@@ -311,31 +428,81 @@ async def post_settings(request: Request):
 
 @app.get("/api/accounts")
 async def accounts():
+    import json as _json
+    from pathlib import Path as _Path
     has_creds = bool(os.environ.get("BSKY_HANDLE") and os.environ.get("BSKY_APP_PASSWORD"))
     bsky_enabled = settings.get_settings().get("bskyEnabled", True)
     connected = has_creds and bsky_enabled
+
+    # Load social platform connections
+    data_dir = _Path(os.environ.get("DATA_DIR", "/data"))
+    try:
+        social_raw = _json.loads((data_dir / "social-connections.json").read_text())
+    except Exception:
+        social_raw = {}
+
+    social = {}
+    for key in ("mastodon", "threads", "tumblr", "x", "facebook", "instagram"):
+        c = social_raw.get(key, {})
+        social[key] = {
+            "connected": bool(c.get("connected")),
+            "handle":    c.get("handle", ""),
+            "instance":  c.get("instance", ""),
+        }
+
     return {
         "bluesky": {
             "connected": connected,
             "handle": os.environ.get("BSKY_HANDLE", "") if connected else "",
             "method": "app-password",
             "hasCreds": has_creds,
-        }
+        },
+        "social": social,
     }
 
 
+_last_bsky_test: float = 0.0
+_TEST_COOLDOWN  = 60  # seconds between Test button calls
+_test_lock      = asyncio.Lock()  # prevent concurrent test calls racing the cooldown
+
 @app.post("/api/accounts/bluesky/test")
 async def test_bluesky():
-    """Test Bluesky credentials by attempting a real login."""
+    """Test Bluesky credentials. Enforces 60s cooldown and respects persistent rate-limit guard."""
     import httpx as _httpx
     from datetime import datetime, timezone
+    from .bluesky_client import get_ratelimit_reset, _save_ratelimit
+
+    global _last_bsky_test
+
+    async with _test_lock:
+        # Server-side cooldown — prevents rapid repeated clicks and races
+        since = time.time() - _last_bsky_test
+        if since < _TEST_COOLDOWN:
+            wait = int(_TEST_COOLDOWN - since)
+            return {"ok": False, "error": f"Please wait {wait}s before testing again."}
+
+    # Persistent rate-limit guard — no login if we know we're blocked
+    rl_until = get_ratelimit_reset()
+    if rl_until:
+        reset_dt = datetime.fromtimestamp(rl_until, tz=timezone.utc)
+        wait_s = int(rl_until - time.time())
+        return {
+            "ok": False,
+            "rateLimited": True,
+            "error": f"Bluesky rate limit active until {reset_dt.strftime('%H:%M:%S')} UTC ({wait_s}s). Login blocked automatically — no need to retry.",
+        }
+
     handle   = (os.environ.get("BSKY_HANDLE",        "") or "").strip()
     password = (os.environ.get("BSKY_APP_PASSWORD", "") or "").strip()
     if not handle or not password:
-        missing = []
-        if not handle:   missing.append("BSKY_HANDLE")
-        if not password: missing.append("BSKY_APP_PASSWORD")
-        return {"ok": False, "error": f"Missing secrets: {', '.join(missing)}"}
+        creds_missing = []
+        if not handle:
+            creds_missing.append("BSKY_HANDLE")
+        if not password:
+            creds_missing.append("BSKY_APP_PASSWORD")
+        return {"ok": False, "error": f"Missing secrets: {', '.join(creds_missing)}"}
+
+    _last_bsky_test = time.time()
     try:
         timeout = _httpx.Timeout(connect=10, read=20, write=20, pool=5)
         async with _httpx.AsyncClient(timeout=timeout) as client:
@@ -347,21 +514,15 @@ async def test_bluesky():
             did = r.json().get("did", "")
             return {"ok": True, "handle": handle, "did": did}
         if r.status_code == 429:
-            reset_ts = r.headers.get("RateLimit-Reset") or r.headers.get("X-RateLimit-Reset")
-            retry_after = r.headers.get("Retry-After")
-            reset_info = ""
-            if reset_ts:
-                try:
-                    reset_dt = datetime.fromtimestamp(int(reset_ts), tz=timezone.utc)
-                    reset_info = f" Resets at {reset_dt.strftime('%H:%M:%S')} UTC."
-                except Exception:
-                    pass
-            elif retry_after:
-                reset_info = f" Retry after {retry_after}s."
+            reset_ts_hdr = r.headers.get("RateLimit-Reset") or r.headers.get("X-RateLimit-Reset")
+            retry_after  = int(r.headers.get("Retry-After", 300))
+            reset_epoch  = float(reset_ts_hdr) if reset_ts_hdr else time.time() + retry_after
+            _save_ratelimit(reset_epoch)  # persist so restarts respect it
+            reset_dt = datetime.fromtimestamp(reset_epoch, tz=timezone.utc)
             return {
                 "ok": False,
                 "rateLimited": True,
-                "error": f"Bluesky is rate-limiting login attempts (429).{reset_info} Wait a few minutes and try again — do not keep clicking Test.",
+                "error": f"Bluesky rate-limited (429). Resets at {reset_dt.strftime('%H:%M:%S')} UTC. Login blocked automatically — do not retry.",
             }
         body = r.text[:200]
         return {"ok": False, "error": f"HTTP {r.status_code}: {body}"}
@@ -451,6 +612,14 @@ async def dedup_reset():
     return {"ok": True, "cleared": cleared}
 
 
+@app.post("/api/slo/reset")
+async def slo_reset():
+    """Purge run history to reset SLO baseline after fixing a systematic failure."""
+    cleared = metrics.clear_run_history()
+    logger.info(f"SLO run history cleared ({cleared} records) — baseline reset", "system")
+    return {"ok": True, "cleared": cleared}
+
+
 # ── Insights ────────────────────────────────────────────────────────────────
 
 @app.get("/api/finops")
@@ -463,6 +632,19 @@ async def finops():
         "cap_usd":    cap,
         "forecast":   budget.get_monthly_forecast(cap),
     }
+
+
+@app.get("/api/platform-rules")
+async def platform_rules():
+    """Return the anti-ban posting protocol for all platforms."""
+    from .utils.platform_guardian import all_rules_summary, check_allowed
+    runs = metrics.get_recent_runs(500)
+    rules = all_rules_summary()
+    for r in rules:
+        allowed, reason = check_allowed(r["platform"], runs)
+        r["currentlyAllowed"] = allowed
+        r["guardianStatus"] = reason
+    return {"ok": True, "rules": rules}
 
 
 @app.get("/api/insights")
@@ -499,7 +681,6 @@ async def diagnose():
     s = settings.get_settings()
     cap = float(s.get("dailyCostCap", 2.0))
     spend = round(budget.get_daily_spend(), 4)
-    missing = _missing_vars()
     bsky_enabled = s.get("bskyEnabled", True)
     sovrn_key = bool(os.environ.get("SOVRN_API_KEY"))
 

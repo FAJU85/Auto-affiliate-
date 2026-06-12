@@ -2,7 +2,7 @@ import http from 'http';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { getDailySpend } from './utils/budget.js';
-import { getRecentRuns, getDedupStatus, clearPostedStore, wasRecentlyPosted, getDailyNetworkStats, purgePostedBySource, getDedupBySource, getTopPosts, getNetworkHealth, recordClick, getTotalClicks, getDailyClicks } from './utils/metrics.js';
+import { getRecentRuns, getDedupStatus, clearPostedStore, wasRecentlyPosted, getDailyNetworkStats, purgePostedBySource, getDedupBySource, getTopPosts, getNetworkHealth, recordClick, getTotalClicks, getDailyClicks, getSloStats } from './utils/metrics.js';
 import { logger, getRecentLogs } from './utils/logger.js';
 import { getSettings, saveSettings, getSpaceHost } from './config/settings.js';
 import { getOAuthClient, getConnectedDid, disconnectBluesky } from './auth/bluesky-oauth.js';
@@ -14,7 +14,11 @@ const FASTAPI_BASE = 'http://127.0.0.1:8000';
 
 async function proxyToFastAPI(method, fapiPath, body = null) {
   const { default: fetch } = await import('node-fetch');
-  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  const opts = {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    signal: AbortSignal.timeout(10_000), // 10 s — prevents hanging if FastAPI is down
+  };
   if (body) opts.body = body;
   const res = await fetch(`${FASTAPI_BASE}${fapiPath}`, opts);
   return res.json();

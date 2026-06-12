@@ -164,6 +164,9 @@ export async function runPipeline() {
   runMeta.durationMs    = Date.now() - startTime;
   runMeta.dailySpendUsd = getDailySpend();
   runMeta.qualityScore  = computeQualityScore(runMeta);
+  if (runMeta.durationMs > 5 * 60 * 1000) {
+    logger.warn(`SLOW RUN: pipeline took ${(runMeta.durationMs / 1000).toFixed(1)}s — check image download/upscale or AI latency.`);
+  }
   recordRun(runMeta);
   notifyWebhook(runMeta);
   if (runMeta.success && runMeta.postUri) {

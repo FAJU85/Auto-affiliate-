@@ -4,9 +4,7 @@ Tests the _grapheme_len, _truncate_graphemes, and _build_post_text helpers
 directly, without importing atproto (which requires native deps).
 """
 
-import sys
 import unicodedata
-import pytest
 
 # ── Inline the helpers under test so we don't need atproto ──────────────────
 

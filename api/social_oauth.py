@@ -10,6 +10,8 @@ import time
 from pathlib import Path
 from typing import Optional
 
+from .utils import logger as _log
+
 import httpx
 from fastapi import APIRouter, HTTPException, Request, Query
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -65,18 +67,12 @@ def get_base_url() -> str:
 # ── Platform registry ──────────────────────────────────────────────────────────
 
 PLATFORMS = {
-    "mastodon":     {"name": "Mastodon",      "icon": "🐘", "auth": "oauth2",   "needs_instance": True},
-    "threads":      {"name": "Threads",        "icon": "🧵", "auth": "oauth2"},
-    "tumblr":       {"name": "Tumblr",         "icon": "📝", "auth": "oauth2"},
-    "plurk":        {"name": "Plurk",          "icon": "📣", "auth": "oauth1"},
-    "nostr":        {"name": "Nostr",          "icon": "⚡", "auth": "keypair"},
-    "truth_social": {"name": "Truth Social",   "icon": "🇺🇸", "auth": "mastodon", "needs_instance": True, "default_instance": "https://truthsocial.com"},
-    "counter":      {"name": "CounterSocial",  "icon": "🛡️", "auth": "mastodon", "needs_instance": True, "default_instance": "https://counter.social"},
-    "pillowfort":   {"name": "Pillowfort",     "icon": "🐾", "auth": "credentials"},
-    "squabblr":     {"name": "Squabblr",       "icon": "💬", "auth": "credentials"},
-    "spill":        {"name": "Spill",          "icon": "🫗",  "auth": "credentials"},
-    "substack":     {"name": "Substack",       "icon": "📰", "auth": "credentials"},
-    "semble":       {"name": "Semble",         "icon": "🔗", "auth": "credentials"},
+    "mastodon":  {"name": "Mastodon",    "icon": "🐘", "auth": "oauth2",      "needs_instance": True},
+    "threads":   {"name": "Threads",     "icon": "🧵", "auth": "oauth2"},
+    "tumblr":    {"name": "Tumblr",      "icon": "📝", "auth": "oauth2"},
+    "x":         {"name": "X (Twitter)", "icon": "𝕏",  "auth": "credentials"},
+    "facebook":  {"name": "Facebook",    "icon": "📘", "auth": "credentials"},
+    "instagram": {"name": "Instagram",   "icon": "📸", "auth": "credentials"},
 }
 
 # ── Status ─────────────────────────────────────────────────────────────────────
@@ -113,10 +109,18 @@ async def disconnect(platform: str):
 async def mastodon_register(request: Request):
     """Register an OAuth app on the Mastodon instance and return auth URL."""
     body = await request.json()
-    instance = body.get("instance", "").rstrip("/")
+    raw = body.get("instance", "").strip().rstrip("/")
     platform = body.get("platform", "mastodon")
-    if not instance:
+    if not raw:
         raise HTTPException(400, "instance URL required")
+
+    # Strip any path/username — keep only scheme + host
+    # e.g. https://mastodon.social/@user  →  https://mastodon.social
+    from urllib.parse import urlparse
+    parsed = urlparse(raw if "://" in raw else "https://" + raw)
+    instance = f"{parsed.scheme}://{parsed.netloc}"
+    if not parsed.netloc:
+        raise HTTPException(400, f"Could not parse instance URL: {raw}")
 
     base = get_base_url()
     if not base:
@@ -191,7 +195,8 @@ async def threads_callback(code: str, state: str):
     base = get_base_url()
     callback = f"{base}/oauth/social/callback?platform=threads"
 
-    async with httpx.AsyncClient() as client:
+    _timeout = httpx.Timeout(connect=10, read=20, write=20, pool=5)
+    async with httpx.AsyncClient(timeout=_timeout) as client:
         r = await client.post("https://graph.threads.net/oauth/access_token", data={
             "client_id":     client_id,
             "client_secret": client_secret,
@@ -205,7 +210,23 @@ async def threads_callback(code: str, state: str):
     if not access_token:
         raise HTTPException(502, f"No access_token: {token_data}")
 
-    async with httpx.AsyncClient() as client:
+    # Exchange short-lived token (1h) for long-lived token (60 days)
+    async with httpx.AsyncClient(timeout=_timeout) as client:
+        ll = await client.get(
+            "https://graph.threads.net/access_token",
+            params={
+                "grant_type":    "th_exchange_token",
+                "client_secret": client_secret,
+                "access_token":  access_token,
+            }
+        )
+    if ll.status_code == 200 and ll.json().get("access_token"):
+        access_token = ll.json()["access_token"]
+        _log.info("Threads: exchanged for long-lived token (60 days)", "threads")
+    else:
+        _log.warn(f"Threads: long-lived token exchange failed ({ll.status_code}) — using short-lived", "threads")
+
+    async with httpx.AsyncClient(timeout=_timeout) as client:
         me = (await client.get(
             "https://graph.threads.net/v1.0/me",
             params={"fields": "id,username", "access_token": access_token}
@@ -253,7 +274,8 @@ async def tumblr_callback(code: str, state: str):
     base = get_base_url()
     callback = f"{base}/oauth/social/callback?platform=tumblr"
 
-    async with httpx.AsyncClient() as client:
+    _timeout = httpx.Timeout(connect=10, read=20, write=20, pool=5)
+    async with httpx.AsyncClient(timeout=_timeout) as client:
         r = await client.post("https://api.tumblr.com/v2/oauth2/token", data={
             "grant_type":    "authorization_code",
             "code":          code,
@@ -267,7 +289,7 @@ async def tumblr_callback(code: str, state: str):
     if not access_token:
         raise HTTPException(502, f"No access_token: {token_data}")
 
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=_timeout) as client:
         me = (await client.get(
             "https://api.tumblr.com/v2/user/info",
             headers={"Authorization": f"Bearer {access_token}"}
@@ -285,52 +307,80 @@ async def tumblr_callback(code: str, state: str):
     save_connections(conns)
     return {"ok": True, "handle": handle}
 
-# ── Nostr (keypair) ────────────────────────────────────────────────────────────
-
-@router.post("/social/nostr/connect")
-async def nostr_connect(request: Request):
-    body = await request.json()
-    nsec = body.get("nsec", "").strip()
-    npub = body.get("npub", "").strip()
-    if not nsec:
-        raise HTTPException(400, "nsec (private key) required")
-
-    conns = load_connections()
-    conns["nostr"] = {
-        "connected":   True,
-        "handle":      npub or "nostr",
-        "nsec":        nsec,
-        "connectedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
-    }
-    save_connections(conns)
-    return {"ok": True}
-
-# ── Credentials store (Pillowfort, Squabblr, Spill, Substack, Semble) ─────────
+# ── Credentials store (X, Facebook, Instagram) ────────────────────────────────
 
 @router.post("/social/{platform}/credentials")
 async def store_credentials(platform: str, request: Request):
     if platform not in PLATFORMS:
         raise HTTPException(404, "Unknown platform")
-    if PLATFORMS[platform]["auth"] != "credentials":
+    if PLATFORMS[platform].get("auth") != "credentials":
         raise HTTPException(400, "This platform uses OAuth, not credentials")
 
     body = await request.json()
-    handle   = body.get("handle", "")
-    password = body.get("password", "")
+    handle = body.get("handle", "")
     if not handle:
         raise HTTPException(400, "handle required")
 
     conns = load_connections()
-    conns[platform] = {
-        "connected":   True,
-        "handle":      handle,
-        "password":    password,
-        "connectedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
-    }
+    entry: dict = {"connected": True, "handle": handle, "connectedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ")}
+
+    if platform == "x":
+        entry["consumer_key"]    = body.get("consumer_key", "")
+        entry["consumer_secret"] = body.get("consumer_secret", "")
+        entry["access_token"]    = body.get("access_token", "")
+        entry["access_secret"]   = body.get("access_secret", "")
+    elif platform == "facebook":
+        entry["page_access_token"] = body.get("page_access_token", "") or body.get("password", "")
+        entry["page_id"]           = body.get("page_id", "") or handle
+    elif platform == "instagram":
+        entry["access_token"] = body.get("access_token", "") or body.get("password", "")
+        entry["ig_user_id"]   = body.get("ig_user_id", "") or body.get("page_id", "") or handle
+    else:
+        entry["password"] = body.get("password", "")
+
+    conns[platform] = entry
     save_connections(conns)
     return {"ok": True, "handle": handle}
 
-# ── Unified OAuth callback (called from Node.js /oauth/social/callback) ────────
+# ── Unified OAuth callback — registered at BOTH /api/social/callback
+#    AND /oauth/social/callback (Mastodon redirects to the latter) ─────────────
+
+async def _handle_oauth_callback(
+    platform: str,
+    code: Optional[str],
+    state: Optional[str],
+    error: Optional[str],
+):
+    base = get_base_url()
+    dashboard_url = f"{base}/#accounts" if base else "/"
+
+    if error:
+        return RedirectResponse(url=f"{dashboard_url}?oauth_error={error}", status_code=302)
+    if not code or not state:
+        return RedirectResponse(url=f"{dashboard_url}?oauth_error=missing_code", status_code=302)
+
+    states = load_states()
+    state_data = states.pop(state, None)
+    if not state_data:
+        return RedirectResponse(url=f"{dashboard_url}?oauth_error=expired_state", status_code=302)
+    save_states(states)
+
+    try:
+        if platform == "mastodon":
+            result = await _mastodon_complete(platform, code, state_data)
+        elif platform == "threads":
+            result = await threads_callback(code, state)
+        elif platform == "tumblr":
+            result = await tumblr_callback(code, state)
+        else:
+            return RedirectResponse(url=f"{dashboard_url}?oauth_error=unknown_platform", status_code=302)
+    except Exception as e:
+        _log.error(f"OAuth callback error [{platform}]: {e}", "oauth")
+        return RedirectResponse(url=f"{dashboard_url}?oauth_error={str(e)[:80]}", status_code=302)
+
+    handle = result.get("handle", "") if isinstance(result, dict) else ""
+    return RedirectResponse(url=f"{dashboard_url}?oauth_ok={platform}&handle={handle}", status_code=302)
+
 
 @router.get("/social/callback")
 async def oauth_callback(
@@ -339,25 +389,7 @@ async def oauth_callback(
     state: Optional[str] = Query(None),
     error: Optional[str] = Query(None),
 ):
-    if error:
-        return JSONResponse({"ok": False, "error": error})
-    if not code or not state:
-        return JSONResponse({"ok": False, "error": "Missing code or state"})
-
-    states = load_states()
-    state_data = states.pop(state, None)
-    if not state_data:
-        return JSONResponse({"ok": False, "error": "Invalid or expired state"})
-    save_states(states)
-
-    if platform in ("mastodon", "truth_social", "counter"):
-        return await _mastodon_complete(platform, code, state_data)
-    elif platform == "threads":
-        return await threads_callback(code, state)
-    elif platform == "tumblr":
-        return await tumblr_callback(code, state)
-    else:
-        return JSONResponse({"ok": False, "error": f"Unknown platform: {platform}"})
+    return await _handle_oauth_callback(platform, code, state, error)
 
 async def _mastodon_complete(platform: str, code: str, state_data: dict):
     instance      = state_data["instance"]
@@ -398,76 +430,6 @@ async def _mastodon_complete(platform: str, code: str, state_data: dict):
     }
     save_connections(conns)
     return {"ok": True, "handle": conns[platform]["handle"]}
-
-# ── Plurk OAuth1 ───────────────────────────────────────────────────────────────
-
-@router.get("/social/plurk/auth")
-async def plurk_auth():
-    consumer_key    = os.environ.get("PLURK_CONSUMER_KEY", "")
-    consumer_secret = os.environ.get("PLURK_CONSUMER_SECRET", "")
-    if not consumer_key:
-        raise HTTPException(503, "PLURK_CONSUMER_KEY not set")
-    base = get_base_url()
-    callback = f"{base}/oauth/social/callback?platform=plurk"
-
-    from requests_oauthlib import OAuth1Session
-    oauth = OAuth1Session(consumer_key, client_secret=consumer_secret, callback_uri=callback)
-    fetch_response = oauth.fetch_request_token("https://www.plurk.com/OAuth/request_token")
-    resource_owner_key    = fetch_response.get("oauth_token")
-    resource_owner_secret = fetch_response.get("oauth_token_secret")
-
-    states = load_states()
-    temp_state = secrets.token_urlsafe(16)
-    states[resource_owner_key] = {
-        "platform":              "plurk",
-        "resource_owner_key":    resource_owner_key,
-        "resource_owner_secret": resource_owner_secret,
-        "temp_state":            temp_state,
-        "ts":                    time.time(),
-    }
-    save_states(states)
-
-    auth_url = f"https://www.plurk.com/OAuth/authorize?oauth_token={resource_owner_key}"
-    return {"url": auth_url}
-
-@router.post("/social/plurk/callback")
-async def plurk_callback(oauth_token: str, oauth_verifier: str):
-    consumer_key    = os.environ.get("PLURK_CONSUMER_KEY", "")
-    consumer_secret = os.environ.get("PLURK_CONSUMER_SECRET", "")
-
-    states = load_states()
-    state_data = states.pop(oauth_token, None)
-    if not state_data:
-        raise HTTPException(400, "Invalid OAuth token")
-    save_states(states)
-
-    from requests_oauthlib import OAuth1Session
-    oauth = OAuth1Session(
-        consumer_key, client_secret=consumer_secret,
-        resource_owner_key=state_data["resource_owner_key"],
-        resource_owner_secret=state_data["resource_owner_secret"],
-        verifier=oauth_verifier,
-    )
-    tokens = oauth.fetch_access_token("https://www.plurk.com/OAuth/access_token")
-
-    oauth2 = OAuth1Session(
-        consumer_key, client_secret=consumer_secret,
-        resource_owner_key=tokens["oauth_token"],
-        resource_owner_secret=tokens["oauth_token_secret"],
-    )
-    me = oauth2.get("https://www.plurk.com/APP/Users/me").json()
-    handle = me.get("nick_name", me.get("display_name", ""))
-
-    conns = load_connections()
-    conns["plurk"] = {
-        "connected":             True,
-        "handle":                handle,
-        "oauth_token":           tokens["oauth_token"],
-        "oauth_token_secret":    tokens["oauth_token_secret"],
-        "connectedAt":           time.strftime("%Y-%m-%dT%H:%M:%SZ"),
-    }
-    save_connections(conns)
-    return {"ok": True, "handle": handle}
 
 # ── Health ─────────────────────────────────────────────────────────────────────
 

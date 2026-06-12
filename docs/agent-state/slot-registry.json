@@ -1,0 +1,46 @@
+{
+  "surface": "HYBRID",
+  "surface_notes": "Primary: API (FastAPI affiliate pipeline). Secondary: WEB (HF Spaces dashboard).",
+  "language": "Python 3.12",
+  "framework": "FastAPI + APScheduler",
+  "slots": {
+    "UI_DRIVER": {
+      "status": "N/A",
+      "notes": "Dashboard is operator-only; no user-facing E2E web flows require automation. API surface is primary."
+    },
+    "API_CLIENT": {
+      "status": "FILLED",
+      "tool": "httpx",
+      "notes": "Already in requirements.txt; used throughout api/ for external calls."
+    },
+    "STATE_INSPECTOR": {
+      "status": "PARTIAL",
+      "tool": "pathlib + json",
+      "notes": "State lives in /data/*.json files (metrics.json, budget.json, settings.json). No DB. Direct FS reads sufficient.",
+      "install": "stdlib — no install needed"
+    },
+    "TEST_RUNNER": {
+      "status": "FILLED",
+      "tool": "pytest>=8.0",
+      "notes": "In requirements.txt; CI runs pytest api/tests/"
+    },
+    "REPORTER": {
+      "status": "EMPTY",
+      "tool": "pytest-html",
+      "install": "pip install pytest-html",
+      "notes": "CI produces no test artifact. JUnit XML not configured."
+    },
+    "STATIC_ANALYSER": {
+      "status": "EMPTY",
+      "tool": "ruff",
+      "install": "pip install ruff",
+      "notes": "No linter configured in CI or repo."
+    },
+    "SECRET_SCANNER": {
+      "status": "PARTIAL",
+      "tool": "grep-based manual scan",
+      "install": "pip install detect-secrets",
+      "notes": "No automated scanner installed. Manual grep scan was CLEAN this cycle."
+    }
+  }
+}

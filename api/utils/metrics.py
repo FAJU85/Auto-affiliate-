@@ -13,7 +13,7 @@ import os
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-DEDUP_TTL_HOURS = int(os.environ.get("DEDUP_TTL_HOURS", "168"))  # 7 days default
+DEDUP_TTL_HOURS = int(os.environ.get("DEDUP_TTL_HOURS", "24"))   # 24h default — 55 products × 24h cycles cleanly at hourly cadence
 
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data"))
 METRICS_FILE = DATA_DIR / "metrics.json"
@@ -83,12 +83,16 @@ def _dedup_key(url: str | None, name: str | None) -> str:
 
 
 def was_recently_posted(url: str | None, name: str | None) -> bool:
+    return was_posted_within(url, name, hours=DEDUP_TTL_HOURS)
+
+
+def was_posted_within(url: str | None, name: str | None, hours: float = DEDUP_TTL_HOURS) -> bool:
     entry = _load().get("posted", {}).get(_dedup_key(url, name))
     if entry is None:
         return False
     try:
         posted_at = datetime.fromisoformat(entry.get("ts", ""))
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=DEDUP_TTL_HOURS)
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
         return posted_at > cutoff
     except Exception:
         return False  # malformed ts → allow re-post
@@ -151,3 +155,12 @@ def record_click(tracking_id: str) -> dict | None:
 
 def get_total_clicks() -> int:
     return sum(int(r.get("clicks", 0)) for r in _load().get("runs", []))
+
+
+def clear_run_history() -> int:
+    """Purge all run records — resets SLO baseline. Use after fixing a systematic failure."""
+    data = _load()
+    n = len(data.get("runs", []))
+    data["runs"] = []
+    _save(data)
+    return n

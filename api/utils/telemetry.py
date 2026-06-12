@@ -6,9 +6,7 @@ without requiring an external monitoring system.
 
 import time
 from collections import deque
-from dataclasses import dataclass, field
 from threading import Lock
-from typing import Optional
 
 
 _lock = Lock()

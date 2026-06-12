@@ -16,6 +16,7 @@ const DEFAULTS = {
   postingHours:     '8-22',
   postsPerDay:      1,
   schedulerEnabled: true,
+  sloTarget:        90.0, // % success rate target; configurable from dashboard
   postSystemPrompt: 'Write a short, persuasive affiliate post for social media. Max 200 chars. Use power words (deal, save, exclusive, limited). Natural, conversational tone. Do not include URLs or hashtags — those are added automatically.',
   postUserTemplate: 'Product: "{name}" ({category}). Description: {description}. Price: {price}. Trending topic: {trend}. Extra context: {highlights}. Write a punchy post with a clear CTA. No URLs, no hashtags.',
 };

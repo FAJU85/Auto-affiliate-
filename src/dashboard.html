@@ -275,7 +275,28 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
 </style>
 </head>
 <body>
-<div id="app">
+
+<!-- ═══════════ LOGIN SCREEN ═══════════ -->
+<div id="login-screen" style="display:none;position:fixed;inset:0;z-index:9999;background:var(--bg);display:flex;align-items:center;justify-content:center">
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:40px 36px;width:100%;max-width:380px;box-shadow:0 8px 40px rgba(0,0,0,.35)">
+    <div style="text-align:center;margin-bottom:28px">
+      <div style="font-size:36px;margin-bottom:10px">🤖</div>
+      <div style="font-size:20px;font-weight:700;color:var(--text)">Shop Smart Dashboard</div>
+      <div style="font-size:13px;color:var(--muted);margin-top:6px">Enter your dashboard password to continue</div>
+    </div>
+    <div id="login-error" style="display:none;background:rgba(239,68,68,.12);border:1px solid var(--red);border-radius:8px;padding:10px 14px;font-size:13px;color:var(--red);margin-bottom:16px"></div>
+    <input id="login-pw" type="password" class="f-input" placeholder="Dashboard password"
+      style="width:100%;margin-bottom:14px;font-size:15px;padding:12px 14px"
+      onkeydown="if(event.key==='Enter')doLogin()" autocomplete="current-password" />
+    <button class="btn btn-primary" style="width:100%;padding:12px;font-size:15px" onclick="doLogin()">🔓 Unlock Dashboard</button>
+    <div style="font-size:11px;color:var(--dim);text-align:center;margin-top:18px">
+      Set <code>DASHBOARD_PASSWORD</code> in your HuggingFace Space secrets.<br>
+      Affiliate redirect links always work publicly.
+    </div>
+  </div>
+</div>
+
+<div id="app" style="display:none">
 
 <!-- ═══════════ SIDEBAR ═══════════ -->
 <nav id="sidebar">
@@ -365,6 +386,34 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
           <div class="kpi-sub" id="kpi-spend-sub">of $2.00 cap</div>
           <div class="kpi-bar"><div class="kpi-fill" id="kpi-spend-bar" style="background:var(--green);width:0%"></div></div>
         </div>
+      </div>
+
+      <!-- Golden Signals + SLO -->
+      <div class="card" style="margin-bottom:16px" id="golden-signals-card">
+        <div class="card-hdr">
+          <div class="card-title">⚡ Four Golden Signals</div>
+          <span id="slo-badge" style="font-size:12px;padding:2px 10px;border-radius:12px;font-weight:600"></span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px" id="golden-signals-grid">
+          <div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:4px">LATENCY (pipeline p99)</div>
+            <div style="font-size:18px;font-weight:700" id="gs-latency">—</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:4px">TRAFFIC (total runs)</div>
+            <div style="font-size:18px;font-weight:700" id="gs-traffic">—</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:4px">ERROR RATE (30-day SLO)</div>
+            <div style="font-size:18px;font-weight:700" id="gs-errors">—</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:4px">ERROR BUDGET REMAINING</div>
+            <div style="font-size:18px;font-weight:700" id="gs-budget">—</div>
+            <div class="kpi-bar" style="margin-top:4px"><div class="kpi-fill" id="gs-budget-bar" style="background:var(--green);width:0%"></div></div>
+          </div>
+        </div>
+        <div id="slo-alert" style="display:none;margin-top:12px;padding:8px 12px;border-radius:6px;font-size:12px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);color:var(--red)"></div>
       </div>
 
       <div class="g2" style="margin-bottom:24px">
@@ -566,6 +615,56 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
     <div class="page" id="page-accounts">
       <div class="sec-hdr" style="margin-bottom:20px"><div class="sec-title">Connected Accounts</div></div>
 
+      <!-- ── Quick Connect Panel ── -->
+      <div class="card" style="margin-bottom:20px;border:1px solid var(--accent)">
+        <div class="card-hdr"><div class="card-title">⚡ Quick Connect — All Platforms</div></div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:16px">Fill in credentials for X, Facebook, Instagram and click <strong>Save All</strong>. For Mastodon, Threads and Tumblr click <strong>Connect OAuth</strong> — each will open in a new tab for you to approve.</p>
+
+        <!-- Credential platforms row -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:16px">
+          <!-- X -->
+          <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+              <span style="font-weight:600">𝕏 X (Twitter)</span>
+              <span id="qc-x-badge" class="badge badge-fail" style="font-size:11px">✗</span>
+            </div>
+            <input class="f-input" id="qc-x-handle" placeholder="@username" style="margin-bottom:6px" />
+            <input class="f-input" id="qc-x-consumer-key" type="password" placeholder="Consumer Key (API Key)" autocomplete="off" style="margin-bottom:6px" />
+            <input class="f-input" id="qc-x-consumer-secret" type="password" placeholder="Consumer Secret (API Secret)" autocomplete="off" style="margin-bottom:6px" />
+            <input class="f-input" id="qc-x-access-token" type="password" placeholder="Access Token" autocomplete="off" style="margin-bottom:6px" />
+            <input class="f-input" id="qc-x-access-secret" type="password" placeholder="Access Token Secret" autocomplete="off" />
+            <div style="font-size:11px;color:var(--muted);margin-top:4px">developer.twitter.com → your app → Keys and tokens</div>
+          </div>
+          <!-- Facebook -->
+          <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+              <span style="font-weight:600">📘 Facebook</span>
+              <span id="qc-facebook-badge" class="badge badge-fail" style="font-size:11px">✗</span>
+            </div>
+            <input class="f-input" id="qc-facebook-handle" placeholder="Page name or Page ID" style="margin-bottom:6px" />
+            <input class="f-input" id="qc-facebook-page-id" placeholder="Page ID (numeric)" style="margin-bottom:6px" />
+            <input class="f-input" id="qc-facebook-pass" type="password" placeholder="Page Access Token" autocomplete="off" />
+            <div style="font-size:11px;color:var(--muted);margin-top:4px">Get at developers.facebook.com → Graph API Explorer → select your Page</div>
+          </div>
+          <!-- Instagram -->
+          <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+              <span style="font-weight:600">📸 Instagram</span>
+              <span id="qc-instagram-badge" class="badge badge-fail" style="font-size:11px">✗</span>
+            </div>
+            <input class="f-input" id="qc-instagram-handle" placeholder="@username" style="margin-bottom:6px" />
+            <input class="f-input" id="qc-instagram-ig-user-id" placeholder="Instagram User ID (numeric)" style="margin-bottom:6px" />
+            <input class="f-input" id="qc-instagram-pass" type="password" placeholder="Access Token (instagram_content_publish scope)" autocomplete="off" />
+            <div style="font-size:11px;color:var(--muted);margin-top:4px">Requires Instagram Business account linked to a Facebook Page</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <button class="btn btn-primary" onclick="quickSaveAll()" id="btn-qc-save">💾 Save All Credentials</button>
+          <button class="btn btn-secondary" onclick="quickConnectOAuth()">🔑 Connect OAuth (Mastodon · Threads · Tumblr)</button>
+          <span id="qc-msg" style="font-size:12px;color:var(--muted)"></span>
+        </div>
+      </div>
+
       <!-- Connected summary grid -->
       <div id="accounts-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;margin-bottom:24px"></div>
 
@@ -583,23 +682,16 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
         <div id="bsky-status-msg" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
       </div>
 
-      <!-- Mastodon family card -->
+      <!-- Mastodon card -->
       <div class="card" style="margin-top:14px" id="card-mastodon">
-        <div class="card-hdr"><div class="card-title" style="display:flex;gap:10px;align-items:center">
-          <span>🐘 Mastodon / Fediverse</span>
-          <span style="font-size:11px;color:var(--muted)">— also Truth Social, CounterSocial</span>
-        </div></div>
-        <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Connect any Mastodon-compatible instance using OAuth.</p>
+        <div class="card-hdr"><div class="card-title">🐘 Mastodon</div><span id="mastodon-badge" class="badge badge-fail">✗ Not connected</span></div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Connect your Mastodon instance using OAuth.</p>
         <div style="display:flex;flex-direction:column;gap:10px">
           <div id="mastodon-connected-list"></div>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <select class="f-input" id="mastodon-platform" style="max-width:180px">
-              <option value="mastodon">Mastodon</option>
-              <option value="truth_social">Truth Social</option>
-              <option value="counter">CounterSocial</option>
-            </select>
             <input class="f-input" style="flex:1;min-width:200px" id="mastodon-instance" placeholder="https://mastodon.social" />
             <button class="btn btn-primary" onclick="connectMastodon()">🔑 Connect</button>
+            <button class="btn btn-secondary" id="btn-mastodon-disconnect" style="display:none" onclick="disconnectSocial('mastodon')">✗ Disconnect</button>
           </div>
         </div>
       </div>
@@ -624,36 +716,16 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
         </div>
       </div>
 
-      <!-- Nostr card -->
-      <div class="card" style="margin-top:14px" id="card-nostr">
-        <div class="card-hdr"><div class="card-title">⚡ Nostr</div><span id="nostr-badge" class="badge badge-fail">✗ Not connected</span></div>
-        <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Enter your private key (nsec). It is stored server-side in <code style="background:var(--bg);padding:2px 5px;border-radius:4px">/data/social-connections.json</code>.</p>
-        <div style="display:flex;flex-direction:column;gap:8px">
-          <input class="f-input" id="nostr-nsec" type="password" placeholder="nsec1…" autocomplete="off" />
-          <input class="f-input" id="nostr-npub" placeholder="npub1… (optional, for display)" />
-          <div style="display:flex;gap:8px">
-            <button class="btn btn-primary" onclick="connectNostr()">🔑 Save Key</button>
-            <button class="btn btn-secondary" id="btn-nostr-disconnect" style="display:none" onclick="disconnectSocial('nostr')">✗ Disconnect</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Plurk card -->
-      <div class="card" style="margin-top:14px" id="card-plurk">
-        <div class="card-hdr"><div class="card-title">📣 Plurk</div><span id="plurk-badge" class="badge badge-fail">✗ Not connected</span></div>
-        <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Requires <code style="background:var(--bg);padding:2px 5px;border-radius:4px">PLURK_CONSUMER_KEY</code> + <code style="background:var(--bg);padding:2px 5px;border-radius:4px">PLURK_CONSUMER_SECRET</code>.</p>
-        <div style="display:flex;gap:8px">
-          <button class="btn btn-primary" onclick="connectOAuth2('plurk')">🔑 Connect via Plurk OAuth</button>
-          <button class="btn btn-secondary" id="btn-plurk-disconnect" style="display:none" onclick="disconnectSocial('plurk')">✗ Disconnect</button>
-        </div>
-      </div>
-
-      <!-- Credentials-based platforms -->
-      <div class="card" style="margin-top:14px">
-        <div class="card-hdr"><div class="card-title">🔐 Other Platforms</div></div>
-        <p style="font-size:13px;color:var(--muted);margin-bottom:14px">These platforms use username/password credentials stored server-side.</p>
-        <div id="cred-platforms-list" style="display:flex;flex-direction:column;gap:12px"></div>
-      </div>
+      <!-- X / Facebook / Instagram — managed via Quick Connect panel above -->
+      <div id="card-x" style="display:none"></div>
+      <div id="card-facebook" style="display:none"></div>
+      <div id="card-instagram" style="display:none"></div>
+      <span id="x-badge" style="display:none"></span>
+      <span id="facebook-badge" style="display:none"></span>
+      <span id="instagram-badge" style="display:none"></span>
+      <button id="btn-x-disconnect" style="display:none" onclick="disconnectSocial('x')"></button>
+      <button id="btn-facebook-disconnect" style="display:none" onclick="disconnectSocial('facebook')"></button>
+      <button id="btn-instagram-disconnect" style="display:none" onclick="disconnectSocial('instagram')"></button>
     </div>
 
     <!-- ══ SCHEDULE ══ -->
@@ -746,6 +818,40 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
       <div class="g2">
         <div>
           <div class="card" style="margin-bottom:16px">
+            <div class="card-hdr"><div class="card-title">📡 Publishing Platforms</div></div>
+            <p style="font-size:12px;color:var(--muted);margin-bottom:14px">Choose which platforms to post to when the scheduler runs. Only platforms with saved credentials will actually post.</p>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px">
+                <input type="checkbox" id="p-bluesky" style="width:16px;height:16px;accent-color:var(--accent)">
+                <span>🦋 Bluesky</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px">
+                <input type="checkbox" id="p-mastodon" style="width:16px;height:16px;accent-color:var(--accent)">
+                <span>🐘 Mastodon</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px">
+                <input type="checkbox" id="p-threads" style="width:16px;height:16px;accent-color:var(--accent)">
+                <span>🧵 Threads</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px">
+                <input type="checkbox" id="p-tumblr" style="width:16px;height:16px;accent-color:var(--accent)">
+                <span>📝 Tumblr</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px">
+                <input type="checkbox" id="p-x" style="width:16px;height:16px;accent-color:var(--accent)">
+                <span>𝕏 X (Twitter)</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px">
+                <input type="checkbox" id="p-facebook" style="width:16px;height:16px;accent-color:var(--accent)">
+                <span>📘 Facebook</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px">
+                <input type="checkbox" id="p-instagram" style="width:16px;height:16px;accent-color:var(--accent)">
+                <span>📸 Instagram</span>
+              </label>
+            </div>
+          </div>
+          <div class="card" style="margin-bottom:16px">
             <div class="card-hdr"><div class="card-title">💸 Budget</div></div>
             <div class="f-group"><label class="f-label">Daily Cost Cap (USD)</label><input class="f-input" id="s-cap" type="number" step="0.01" placeholder="2.00" /></div>
             <div class="f-group"><label class="f-label">Alert Threshold (USD)</label><input class="f-input" id="s-alert" type="number" step="0.01" placeholder="1.50" /></div>
@@ -760,6 +866,7 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
             <div class="card-hdr"><div class="card-title">🤖 AI &amp; Content</div></div>
             <div class="f-group"><label class="f-label">Max Post Length (chars)</label><input class="f-input" id="s-maxlen" type="number" placeholder="280" /><div class="f-hint">Bluesky grapheme limit is 300. Recommended: 280.</div></div>
             <div class="f-group"><label class="f-label">SEO Min Score (0-100)</label><input class="f-input" id="s-seo" type="number" placeholder="50" /><div class="f-hint">Captions below this score are regenerated once</div></div>
+            <div class="f-group"><label class="f-label">CTA Phrases <span style="font-weight:400;color:var(--muted)">(one per line — AI picks randomly per post)</span></label><textarea class="f-textarea" id="s-cta" rows="5" placeholder="🛍️ Grab yours today&#10;💰 Save big now&#10;⚡ Get the deal"></textarea><div class="f-hint">The AI reads the product type and picks the most fitting phrase — urgency for deals, lifestyle for fashion/beauty, value for tech. One phrase per line.</div></div>
             <div class="f-group"><label class="f-label">System Prompt</label><textarea class="f-textarea" id="s-sysprompt" rows="5"></textarea></div>
             <div class="f-group"><label class="f-label">User Template</label><textarea class="f-textarea" id="s-template" rows="4" placeholder="Product: {name} ({category})…"></textarea><div class="f-hint">Variables: {name} {category} {description} {trend} {price}</div></div>
           </div>
@@ -775,20 +882,85 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
     <!-- ══ LOGS ══ -->
     <div class="page" id="page-logs">
       <div class="sec-hdr">
-        <div><div class="sec-title">System Logs</div><div class="sec-sub" id="logs-count"></div></div>
+        <div><div class="sec-title">Performance Monitor</div><div class="sec-sub" id="logs-count">Loading…</div></div>
         <div class="sec-ctrl">
+          <button class="btn btn-primary" style="font-size:12px;padding:5px 14px" id="btn-ai-analyze" onclick="runAiAnalysis()">🤖 AI Diagnose</button>
+          <button class="btn btn-secondary" style="font-size:12px;padding:5px 12px" id="btn-log-live" onclick="toggleLiveLog()">⏸ Pause</button>
+          <button class="btn btn-secondary" style="font-size:12px;padding:5px 12px" onclick="loadLogs()">↻ Refresh</button>
+          <button class="btn btn-secondary" style="font-size:12px;padding:5px 12px" onclick="clearLogs()">🗑 Clear</button>
+        </div>
+      </div>
+
+      <!-- AI Analysis panel -->
+      <div id="ai-analysis-panel" style="display:none;margin-bottom:16px">
+        <div class="card" style="border:1px solid var(--accent);padding:18px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <div style="font-size:13px;font-weight:700;color:var(--accent)">🤖 AI Diagnostics <span id="ai-model-tag" style="font-size:11px;font-weight:400;color:var(--muted)"></span></div>
+            <button onclick="document.getElementById('ai-analysis-panel').style.display='none'" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px">&#x2715;</button>
+          </div>
+          <div id="ai-status-badge" style="display:inline-block;padding:3px 12px;border-radius:20px;font-size:12px;font-weight:700;margin-bottom:12px"></div>
+          <div id="ai-summary" style="font-size:13px;color:var(--text);margin-bottom:14px;line-height:1.6"></div>
+          <div id="ai-issues" style="margin-bottom:14px"></div>
+          <div id="ai-insights" style="margin-bottom:14px"></div>
+          <div id="ai-recommendation" style="background:rgba(99,102,241,.08);border-left:3px solid var(--accent);padding:10px 14px;border-radius:4px;font-size:13px;color:var(--text)"></div>
+        </div>
+      </div>
+
+      <!-- Health cards row -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:16px" id="log-health-row">
+        <div class="card" style="padding:14px;text-align:center">
+          <div style="font-size:22px;font-weight:700;color:var(--red)" id="lh-errors">—</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">Errors</div>
+        </div>
+        <div class="card" style="padding:14px;text-align:center">
+          <div style="font-size:22px;font-weight:700;color:#f59e0b" id="lh-warns">—</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">Warnings</div>
+        </div>
+        <div class="card" style="padding:14px;text-align:center">
+          <div style="font-size:22px;font-weight:700;color:var(--green)" id="lh-total">—</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">Total Entries</div>
+        </div>
+        <div class="card" style="padding:14px;text-align:center;grid-column:span 1">
+          <div style="font-size:12px;font-weight:600;color:var(--red);word-break:break-word;min-height:32px" id="lh-last-err">—</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">Last Error</div>
+        </div>
+      </div>
+
+      <!-- Component health badges -->
+      <div class="card" style="margin-bottom:16px;padding:14px">
+        <div style="font-size:12px;font-weight:600;margin-bottom:10px;color:var(--muted)">COMPONENT STATUS</div>
+        <div id="log-components" style="display:flex;flex-wrap:wrap;gap:8px">
+          <span style="font-size:12px;color:var(--muted)">Loading…</span>
+        </div>
+      </div>
+
+      <!-- Filters + log stream -->
+      <div class="card">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
           <select class="f-select" style="width:auto;font-size:12px" id="log-filter" onchange="filterLogs()">
             <option value="all">All levels</option>
-            <option value="error">Errors</option>
+            <option value="error">Errors only</option>
             <option value="warn">Warnings+</option>
             <option value="info">Info+</option>
           </select>
-          <button class="btn btn-secondary" style="font-size:12px;padding:5px 12px" onclick="loadLogs()">↻ Refresh</button>
-          <button class="btn btn-secondary" style="font-size:12px;padding:5px 12px" onclick="showDebug()">🔍 Debug Info</button>
+          <select class="f-select" style="width:auto;font-size:12px" id="log-comp-filter" onchange="filterLogs()">
+            <option value="all">All components</option>
+            <option value="pipeline">Pipeline</option>
+            <option value="bluesky">Bluesky</option>
+            <option value="mastodon">Mastodon</option>
+            <option value="x">X (Twitter)</option>
+            <option value="threads">Threads</option>
+            <option value="tumblr">Tumblr</option>
+            <option value="ai">AI</option>
+            <option value="sovrn">SOVRN</option>
+            <option value="oauth">OAuth</option>
+            <option value="scheduler">Scheduler</option>
+            <option value="system">System</option>
+          </select>
+          <input class="f-input" style="flex:1;min-width:160px;font-size:12px" id="log-search" placeholder="Search logs…" oninput="filterLogs()">
+          <span style="font-size:11px;color:var(--muted)" id="log-filtered-count"></span>
         </div>
-      </div>
-      <div class="card">
-        <div id="logs-wrap" style="max-height:600px;overflow-y:auto">
+        <div id="logs-wrap" style="max-height:520px;overflow-y:auto;font-family:monospace;font-size:12px">
           <div class="empty"><div class="empty-txt">Loading…</div></div>
         </div>
       </div>
@@ -833,18 +1005,109 @@ function nav(p) {
 }
 
 // ── API ────────────────────────────────────────────────────────
+// ── AUTH ───────────────────────────────────────────────────────
+function getToken() { return sessionStorage.getItem('dash_token') || ''; }
+function setToken(t) { sessionStorage.setItem('dash_token', t); }
+function clearToken() { sessionStorage.removeItem('dash_token'); }
+
+function showLogin(msg) {
+  document.getElementById('app').style.display = 'none';
+  const ls = document.getElementById('login-screen');
+  ls.style.display = 'flex';
+  if (msg) {
+    const el = document.getElementById('login-error');
+    el.textContent = msg; el.style.display = 'block';
+  }
+  setTimeout(() => document.getElementById('login-pw')?.focus(), 50);
+}
+
+async function doLogin() {
+  const pw = document.getElementById('login-pw').value.trim();
+  if (!pw) return;
+  setToken(pw);
+  // Try a lightweight auth check
+  const r = await fetch('/api/status', { headers: { Authorization: `Bearer ${pw}` } });
+  if (r.status === 401) {
+    clearToken();
+    showLogin('Incorrect password — try again.');
+    return;
+  }
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app').style.display = '';
+  init();
+}
+
+function addLogoutButton() {
+  const sidebar = document.getElementById('sidebar');
+  if (!sidebar || document.getElementById('btn-logout')) return;
+  const btn = document.createElement('button');
+  btn.id = 'btn-logout';
+  btn.textContent = '🔒 Lock';
+  btn.className = 'btn btn-secondary';
+  btn.style.cssText = 'position:fixed;bottom:14px;left:14px;font-size:11px;padding:5px 12px;z-index:100;opacity:.7';
+  btn.onclick = () => { clearToken(); showLogin(); };
+  document.body.appendChild(btn);
+}
+
 async function api(path, method='GET', body=null) {
   try {
     const opts = { method, headers: {} };
+    const token = getToken();
+    if (token) opts.headers['Authorization'] = `Bearer ${token}`;
     if (body != null) { opts.headers['Content-Type']='application/json'; opts.body=JSON.stringify(body); }
     const r = await fetch(path, opts);
+    if (r.status === 401) { showLogin('Session expired — please log in again.'); return null; }
     return r.json();
   } catch { return null; }
 }
 
 // ── LOAD ALL ───────────────────────────────────────────────────
+async function loadGoldenSignals() {
+  const [m, slo] = await Promise.all([api('/api/metrics'), api('/api/slo')]);
+  if (!m || !slo) return;
+  const gs = m.golden_signals || {};
+  // Latency — pipeline_total p99
+  const lat = gs.latency_p99_ms?.pipeline_total || gs.latency_p99_ms?.bluesky_total;
+  document.getElementById('gs-latency').textContent = lat ? Math.round(lat) + 'ms' : '—';
+  // Traffic
+  const traffic = Object.values(gs.traffic_total || {}).reduce((a,b)=>a+b,0);
+  document.getElementById('gs-traffic').textContent = traffic || '—';
+  // Error rate via SLO
+  const sloVal = slo.slo_pct;
+  const errRate = sloVal != null ? (100-sloVal).toFixed(1)+'%' : '—';
+  document.getElementById('gs-errors').textContent = errRate;
+  const errEl = document.getElementById('gs-errors');
+  errEl.style.color = sloVal==null?'':sloVal>=99?'var(--green)':sloVal>=90?'#f59e0b':'var(--red)';
+  // Error budget
+  const budget = slo.error_budget_remaining_pct;
+  document.getElementById('gs-budget').textContent = budget != null ? budget.toFixed(1)+'%' : '—';
+  document.getElementById('gs-budget-bar').style.width = (budget||0)+'%';
+  document.getElementById('gs-budget-bar').style.background = budget>=50?'var(--green)':budget>=20?'#f59e0b':'var(--red)';
+  // SLO badge
+  const badge = document.getElementById('slo-badge');
+  if (sloVal != null) {
+    badge.textContent = sloVal.toFixed(1)+'% SLO';
+    badge.style.background = (sloVal>=99?'var(--green)':sloVal>=90?'#f59e0b':'var(--red)')+'22';
+    badge.style.color = sloVal>=99?'var(--green)':sloVal>=90?'#f59e0b':'var(--red)';
+  }
+  // Alert if circuit breaker active or budget critical
+  const alert = document.getElementById('slo-alert');
+  if (slo.circuit_breaker_active) {
+    alert.style.display='';
+    alert.textContent='⚡ Error budget exhausted — circuit breaker active. Feature deployments halted. Focus: stability.';
+  } else if (budget != null && budget < 20) {
+    alert.style.display='';
+    alert.style.background='rgba(245,158,11,.08)';
+    alert.style.borderColor='rgba(245,158,11,.25)';
+    alert.style.color='#f59e0b';
+    alert.textContent=`⚠ Error budget at ${budget.toFixed(1)}% — below 20% threshold. Monitor closely.`;
+  } else {
+    alert.style.display='none';
+  }
+}
+
 async function loadAll() {
-  await Promise.all([loadStatus(), loadClicks(), loadHistory(), loadNetworks(), loadInsights(), loadAccounts(), loadNetworkStats()]);
+  await Promise.all([loadStatus(), loadClicks(), loadHistory(), loadNetworks(), loadInsights(), loadAccounts(), loadNetworkStats(), loadGoldenSignals()]);
   renderOverview(); renderAnalytics(); renderPosts(); renderSEO(); renderAI(); renderNetworks(); renderAccounts();
   document.getElementById('topbar-ts').textContent = 'Updated ' + new Date().toLocaleTimeString();
 }
@@ -907,38 +1170,123 @@ async function loadNetworkStats() {
   S.networkStats = Array.isArray(d) ? d : [];
 }
 // loadAccounts is defined further down (after renderSocialPlatforms)
-async function loadLogs() {
-  const d = await api('/api/logs?n=150');
+async function runAiAnalysis() {
+  const btn = document.getElementById('btn-ai-analyze');
+  const panel = document.getElementById('ai-analysis-panel');
+  btn.disabled = true;
+  btn.textContent = '🤖 Analyzing…';
+  panel.style.display = '';
+  document.getElementById('ai-summary').textContent = 'Sending logs to AI model — this may take 10-20 seconds…';
+  document.getElementById('ai-issues').innerHTML = '';
+  document.getElementById('ai-insights').innerHTML = '';
+  document.getElementById('ai-recommendation').innerHTML = '';
+  document.getElementById('ai-status-badge').textContent = '';
+  document.getElementById('ai-model-tag').textContent = '';
+
+  const d = await api('/api/logs/analyze', 'POST');
+  btn.disabled = false;
+  btn.textContent = '🤖 AI Diagnose';
+
   if (!d) {
-    const el = document.getElementById('logs-list');
-    if (el) el.innerHTML = '<div class="empty"><div class="empty-txt" style="color:var(--red)">⚠ Failed to load logs — API unreachable</div></div>';
+    document.getElementById('ai-summary').innerHTML = '<span style="color:var(--red)">⚠ AI analysis failed — API unreachable</span>';
+    return;
+  }
+
+  // Status badge
+  const statusColors = { healthy:'var(--green)', warning:'#f59e0b', critical:'var(--red)', unknown:'var(--muted)' };
+  const sb = document.getElementById('ai-status-badge');
+  sb.textContent = (d.status || 'unknown').toUpperCase();
+  sb.style.background = (statusColors[d.status] || 'var(--muted)') + '22';
+  sb.style.color = statusColors[d.status] || 'var(--muted)';
+  sb.style.border = '1px solid ' + (statusColors[d.status] || 'var(--muted)');
+
+  // Model tag
+  if (d.provider) {
+    document.getElementById('ai-model-tag').textContent = `via ${d.provider} · ${d.model || ''}`;
+  }
+
+  // Summary
+  document.getElementById('ai-summary').textContent = d.summary || '';
+
+  // Issues
+  const issues = d.issues || [];
+  const sevColor = { error:'var(--red)', warning:'#f59e0b', info:'var(--muted)' };
+  document.getElementById('ai-issues').innerHTML = issues.length ? `
+    <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:8px">DETECTED ISSUES (${issues.length})</div>
+    ${issues.map(i => `
+      <div style="margin-bottom:10px;padding:10px 14px;border-radius:6px;border-left:3px solid ${sevColor[i.severity]||'var(--muted)'};background:${sevColor[i.severity]||'var(--muted)'}11">
+        <div style="font-size:12px;font-weight:700;color:${sevColor[i.severity]||'var(--text)'}">[${(i.component||'?').toUpperCase()}] ${esc(i.title||'')}</div>
+        <div style="font-size:12px;color:var(--text);margin-top:4px">${esc(i.detail||'')}</div>
+        ${i.fix ? `<div style="font-size:12px;color:var(--green);margin-top:4px">&#x2192; Fix: ${esc(i.fix)}</div>` : ''}
+      </div>`).join('')}` : '<div style="font-size:12px;color:var(--green)">&#x2713; No issues detected</div>';
+
+  // Insights
+  const insights = d.insights || [];
+  if (insights.length) {
+    document.getElementById('ai-insights').innerHTML = `
+      <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:8px">INSIGHTS</div>
+      ${insights.map(s => `<div style="font-size:12px;color:var(--text);padding:3px 0">&#x2022; ${esc(s)}</div>`).join('')}`;
+  }
+
+  // Recommendation
+  if (d.recommendation) {
+    document.getElementById('ai-recommendation').innerHTML =
+      `<span style="font-weight:700;color:var(--accent)">&#x26A1; Recommended action: </span>${esc(d.recommendation)}`;
+  }
+}
+
+let _logLive = true;
+function toggleLiveLog() {
+  _logLive = !_logLive;
+  document.getElementById('btn-log-live').textContent = _logLive ? '⏸ Pause' : '▶ Live';
+}
+async function clearLogs() {
+  if (!confirm('Clear all log entries?')) return;
+  await api('/api/logs/clear', 'POST');
+  S.allLogs = [];
+  filterLogs();
+  await loadLogSummary();
+  toast('Logs cleared', 'ok');
+}
+async function loadLogSummary() {
+  const s = await api('/api/logs/summary');
+  if (!s) return;
+  document.getElementById('lh-errors').textContent = s.totalErrors ?? '—';
+  document.getElementById('lh-warns').textContent  = s.totalWarns  ?? '—';
+  const lastErr = s.lastError;
+  document.getElementById('lh-last-err').textContent = lastErr
+    ? `[${(lastErr.component||'?').toUpperCase()}] ${(lastErr.msg||'').slice(0,80)}`
+    : 'None';
+  // Component badges
+  const COMP_ICONS = {pipeline:'⚙️',bluesky:'🦋',mastodon:'🐘',x:'𝕏',threads:'🧵',tumblr:'📝',ai:'🤖',sovrn:'🛒',oauth:'🔑',scheduler:'⏱',system:'🖥'};
+  const comps = s.byComponent || {};
+  const el = document.getElementById('log-components');
+  const keys = Object.keys(comps);
+  if (!keys.length) { el.innerHTML = '<span style="font-size:12px;color:var(--muted)">No issues detected</span>'; return; }
+  el.innerHTML = keys.map(k => {
+    const c = comps[k];
+    const hasErr = c.errors > 0;
+    const color = hasErr ? 'var(--red)' : c.warns > 0 ? '#f59e0b' : 'var(--green)';
+    return `<span style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:20px;border:1px solid ${color};font-size:12px;cursor:pointer;color:${color}" onclick="filterByComponent('${k}')">
+      ${COMP_ICONS[k]||'●'} ${k} ${hasErr?`<strong>${c.errors}e</strong>`:''} ${c.warns?`<span style="opacity:.7">${c.warns}w</span>`:''}
+    </span>`;
+  }).join('');
+}
+function filterByComponent(comp) {
+  document.getElementById('log-comp-filter').value = comp;
+  filterLogs();
+}
+async function loadLogs() {
+  if (!_logLive) return;
+  const d = await api('/api/logs?n=300');
+  if (!d) {
+    document.getElementById('logs-wrap').innerHTML = '<div class="empty"><div class="empty-txt" style="color:var(--red)">⚠ Failed to load logs — API unreachable</div></div>';
     return;
   }
   S.allLogs = Array.isArray(d) ? d : (Array.isArray(d?.logs) ? d.logs : []);
+  document.getElementById('lh-total').textContent = S.allLogs.length;
+  await loadLogSummary();
   filterLogs();
-}
-async function showDebug() {
-  const d = await api('/api/debug');
-  if (!d) { toast('Failed to load debug info', 'err'); return; }
-  const lines = [
-    '=== ENV ===',
-    ...Object.entries(d.env||{}).map(([k,v])=>`${k}: ${v}`),
-    '',
-    '=== NETWORKS ===',
-    ...(d.networks||[]).map(n=>`${n.key}: ${n.enabled?'✓ enabled':'✗ disabled'}`),
-    '',
-    `=== SPACE HOST ===`,
-    d.spaceHost || '(not set)',
-    '',
-    '=== LAST RUN ===',
-    d.lastRun ? JSON.stringify(d.lastRun, null, 2) : '(no runs yet)',
-    '',
-    '=== RECENT ERRORS ===',
-    ...(d.recentErrors||[]).map(e=>`[${e.ts}] ${e.error}`),
-  ].join('\n');
-  const wrap = document.getElementById('logs-wrap');
-  wrap.innerHTML = `<pre style="font-size:11px;white-space:pre-wrap;word-break:break-all;padding:12px;color:var(--text);line-height:1.6">${esc(lines)}</pre>`;
-  document.getElementById('logs-count').textContent = 'Debug info';
 }
 
 // ── RENDER OVERVIEW ────────────────────────────────────────────
@@ -1204,8 +1552,7 @@ async function testNetwork(key, btn) {
   btn.disabled=true; btn.textContent='⏳ Testing…';
   out.textContent=''; out.style.color='var(--muted)';
   try {
-    const r=await fetch('/api/network/test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({network:key})});
-    const d=r.ok||r.status===200?await r.json():null;
+    const d=await api('/api/network/test','POST',{network:key});
     if (d?.ok) {
       out.style.color='var(--green)';
       out.textContent='✓ OK — '+esc(d.product?.name||'product received');
@@ -1243,9 +1590,15 @@ function renderAccounts() {
   // Connected summary grid
   const grid = document.getElementById('accounts-grid');
   if (!grid) return;
+  const s = d.social || {};
   const all = [
-    { key:'bluesky', name:'Bluesky', icon:'🦋', c: bsky.connected, handle: bsky.did },
-    ...Object.entries(d.social||{}).map(([k,v])=>({ key:k, name:v.name, icon:v.icon, c:v.connected, handle:v.handle }))
+    { key:'bluesky',   name:'Bluesky',        icon:'🦋', c: bsky.connected,              handle: bsky.did },
+    { key:'mastodon',  name:'Mastodon',        icon:'🐘', c: !!s.mastodon?.connected,     handle: s.mastodon?.handle },
+    { key:'threads',   name:'Threads',         icon:'🧵', c: !!s.threads?.connected,      handle: s.threads?.handle },
+    { key:'tumblr',    name:'Tumblr',          icon:'📝', c: !!s.tumblr?.connected,       handle: s.tumblr?.handle },
+    { key:'x',         name:'X (Twitter)',     icon:'𝕏', c: !!s.x?.connected,            handle: s.x?.handle },
+    { key:'facebook',  name:'Facebook',        icon:'📘', c: !!s.facebook?.connected,     handle: s.facebook?.handle },
+    { key:'instagram', name:'Instagram',       icon:'📸', c: !!s.instagram?.connected,    handle: s.instagram?.handle },
   ];
   const connected = all.filter(a=>a.c);
   if (!connected.length) { grid.innerHTML = ''; return; }
@@ -1258,8 +1611,8 @@ function renderAccounts() {
 }
 
 function renderSocialPlatforms(social) {
-  // OAuth2 platforms: threads, tumblr, plurk
-  for (const p of ['threads','tumblr','plurk']) {
+  // OAuth2 platforms: threads, tumblr, mastodon
+  for (const p of ['threads','tumblr','mastodon']) {
     const badge = document.getElementById(`${p}-badge`);
     const disc  = document.getElementById(`btn-${p}-disconnect`);
     const conn  = social[p];
@@ -1270,72 +1623,68 @@ function renderSocialPlatforms(social) {
     if (disc) disc.style.display = conn?.connected ? '' : 'none';
   }
 
-  // Nostr
-  const nostrBadge = document.getElementById('nostr-badge');
-  const nostrDisc  = document.getElementById('btn-nostr-disconnect');
-  const nostr = social.nostr;
-  if (nostrBadge) {
-    nostrBadge.className   = nostr?.connected ? 'badge badge-ok' : 'badge badge-fail';
-    nostrBadge.textContent = nostr?.connected ? `✓ ${nostr.handle||'Connected'}` : '✗ Not connected';
-  }
-  if (nostrDisc) nostrDisc.style.display = nostr?.connected ? '' : 'none';
-
-  // Mastodon family
+  // Mastodon connected instance display
   const mastoList = document.getElementById('mastodon-connected-list');
   if (mastoList) {
-    const mastoItems = ['mastodon','truth_social','counter'].map(k=>{
-      const c = social[k];
-      if (!c?.connected) return '';
-      return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
-        <span style="font-size:18px">${c.icon||'🐘'}</span>
-        <div style="flex:1"><div style="font-size:13px;font-weight:600">${esc(c.name||k)}</div>
-        <div style="font-size:11px;color:var(--muted)">@${esc(c.handle||'')} · ${esc(c.instance||'')}</div></div>
-        <button class="btn btn-secondary" style="font-size:11px;padding:3px 8px" onclick="disconnectSocial('${k}')">✗</button></div>`;
-    }).filter(Boolean).join('');
-    mastoList.innerHTML = mastoItems;
+    const c = social.mastodon;
+    mastoList.innerHTML = c?.connected
+      ? `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
+           <span style="font-size:18px">🐘</span>
+           <div style="flex:1"><div style="font-size:13px;font-weight:600">@${esc(c.handle||'')}</div>
+           <div style="font-size:11px;color:var(--muted)">${esc(c.instance||'')}</div></div>
+         </div>`
+      : '';
   }
 
-  // Credentials platforms
-  const credList = document.getElementById('cred-platforms-list');
-  if (!credList) return;
-  const credPlatforms = [
-    {key:'pillowfort', name:'Pillowfort', icon:'🐾'},
-    {key:'squabblr',   name:'Squabblr',   icon:'💬'},
-    {key:'spill',      name:'Spill',      icon:'🫗'},
-    {key:'substack',   name:'Substack',   icon:'📰'},
-    {key:'semble',     name:'Semble',     icon:'🔗'},
-  ];
-  credList.innerHTML = credPlatforms.map(p => {
-    const c = social[p.key];
-    return `<div style="border:1px solid var(--border);border-radius:8px;padding:12px">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-        <span style="font-size:20px">${p.icon}</span>
-        <span style="font-weight:600">${p.name}</span>
-        <span class="badge ${c?.connected?'badge-ok':'badge-fail'}">${c?.connected?'✓ @'+esc(c.handle||''):'✗ Not connected'}</span>
-      </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <input class="f-input" id="cred-${p.key}-handle" style="flex:1;min-width:140px" placeholder="Username" value="${esc(c?.handle||'')}" />
-        <input class="f-input" id="cred-${p.key}-pass" type="password" style="flex:1;min-width:140px" placeholder="Password" autocomplete="off" />
-        <button class="btn btn-primary" style="font-size:12px;padding:6px 12px" onclick="connectCredentials('${p.key}')">Save</button>
-        ${c?.connected?`<button class="btn btn-secondary" style="font-size:12px;padding:6px 12px" onclick="disconnectSocial('${p.key}')">✗</button>`:''}
-      </div>
-    </div>`;
-  }).join('');
+  // Credential-based platforms: X, Facebook, Instagram (shown in Quick Connect panel)
+  for (const p of ['x','facebook','instagram']) {
+    const conn     = social[p];
+    const qcBadge  = document.getElementById(`qc-${p}-badge`);
+    const handleEl = document.getElementById(`qc-${p}-handle`);
+    if (qcBadge) {
+      qcBadge.className   = conn?.connected ? 'badge badge-ok' : 'badge badge-fail';
+      qcBadge.textContent = conn?.connected ? `✓ ${conn.handle||''}` : '✗';
+    }
+    if (handleEl && conn?.handle) handleEl.value = conn.handle;
+  }
 }
 
 // ── FILTER LOGS ───────────────────────────────────────────────
+const COMP_COLORS = {pipeline:'#8b5cf6',bluesky:'#0ea5e9',mastodon:'#6d28d9',x:'#e2e8f0',threads:'#ec4899',tumblr:'#60a5fa',ai:'#10b981',sovrn:'#f59e0b',oauth:'#6366f1',scheduler:'#94a3b8',system:'#64748b'};
 function filterLogs() {
-  const lv=document.getElementById('log-filter')?.value||'all';
-  const LVL={all:0,debug:1,info:2,warn:3,error:4};
-  const min=LVL[lv]||0;
-  const logs=S.allLogs.filter(l=>(LVL[l.level]||2)>=min);
-  document.getElementById('logs-count').textContent=logs.length+' entries';
-  const el=document.getElementById('logs-wrap');
-  if (!logs.length) { el.innerHTML='<div class="empty"><div class="empty-txt">No log entries</div></div>'; return; }
-  el.innerHTML=logs.map(l=>`<div class="log-row"><span class="log-ts">${(l.ts||l.timestamp||'').replace('T',' ').slice(0,19)}</span><span class="log-lvl ${l.level||'info'}">${(l.level||'info').toUpperCase()}</span><span class="log-msg">${esc(l.msg||l.message||'')}</span></div>`).join('');
-  const errs=S.allLogs.filter(l=>l.level==='error').length;
-  const badge=document.getElementById('log-badge');
-  badge.textContent=errs||''; badge.style.display=errs?'':'none';
+  const lv   = document.getElementById('log-filter')?.value || 'all';
+  const comp = document.getElementById('log-comp-filter')?.value || 'all';
+  const q    = (document.getElementById('log-search')?.value || '').toLowerCase();
+  const LVL  = {all:0,debug:1,info:2,warn:3,error:4};
+  const min  = LVL[lv] || 0;
+  let logs = S.allLogs.filter(l => {
+    if ((LVL[l.level] || 2) < min) return false;
+    if (comp !== 'all' && l.component !== comp) return false;
+    if (q && !(l.msg||'').toLowerCase().includes(q) && !(l.component||'').includes(q)) return false;
+    return true;
+  });
+  document.getElementById('log-filtered-count').textContent = logs.length + ' / ' + S.allLogs.length;
+  document.getElementById('logs-count').textContent = S.allLogs.length + ' total entries · ' + S.allLogs.filter(l=>l.level==='error').length + ' errors';
+  const el = document.getElementById('logs-wrap');
+  if (!logs.length) { el.innerHTML='<div class="empty"><div class="empty-txt">No matching log entries</div></div>'; return; }
+  // Show newest first
+  const reversed = [...logs].reverse();
+  el.innerHTML = reversed.map(l => {
+    const lvl   = l.level || 'info';
+    const clr   = lvl==='error'?'var(--red)':lvl==='warn'?'#f59e0b':'var(--muted)';
+    const ccomp = l.component || 'system';
+    const cclr  = COMP_COLORS[ccomp] || '#94a3b8';
+    const ts    = (l.ts||'').replace('T',' ').slice(0,19);
+    return `<div style="display:flex;gap:8px;align-items:baseline;padding:5px 0;border-bottom:1px solid var(--border);line-height:1.4">
+      <span style="color:var(--dim);flex-shrink:0;width:142px;font-size:11px">${ts}</span>
+      <span style="color:${clr};font-weight:700;flex-shrink:0;width:44px;font-size:11px">${lvl.toUpperCase()}</span>
+      <span style="color:${cclr};flex-shrink:0;width:80px;font-size:11px;font-weight:600">[${ccomp}]</span>
+      <span style="color:var(--text);word-break:break-word;flex:1">${esc(l.msg||l.message||'')}</span>
+    </div>`;
+  }).join('');
+  const errs = S.allLogs.filter(l=>l.level==='error').length;
+  const badge = document.getElementById('log-badge');
+  if (badge) { badge.textContent=errs||''; badge.style.display=errs?'':'none'; }
 }
 
 // ── SETTINGS ──────────────────────────────────────────────────
@@ -1352,6 +1701,13 @@ async function loadSettingsForm() {
   document.getElementById('s-sysprompt').value = d.postSystemPrompt || '';
   document.getElementById('s-template').value  = d.postUserTemplate || '';
   document.getElementById('s-seo').value       = d.seoMinScore      || 50;
+  const ctaPhrases = Array.isArray(d.ctaPhrases) ? d.ctaPhrases : [];
+  document.getElementById('s-cta').value = ctaPhrases.join('\n');
+  const platforms = d.publishPlatforms || ['bluesky'];
+  for (const p of ['bluesky','mastodon','threads','tumblr','x','facebook','instagram']) {
+    const el = document.getElementById(`p-${p}`);
+    if (el) el.checked = platforms.includes(p);
+  }
 }
 async function loadEnvStatus() {
   const el=document.getElementById('env-status-list');
@@ -1368,6 +1724,8 @@ async function loadEnvStatus() {
 }
 
 async function saveSettings() {
+  const publishPlatforms = ['bluesky','mastodon','threads','tumblr','x','facebook','instagram']
+    .filter(p => document.getElementById(`p-${p}`)?.checked);
   const p = {
     maxPostLength:    parseInt(document.getElementById('s-maxlen').value)    || 280,
     dailyCostCap:     parseFloat(document.getElementById('s-cap').value)     || 2,
@@ -1375,8 +1733,10 @@ async function saveSettings() {
     postSystemPrompt: document.getElementById('s-sysprompt').value,
     postUserTemplate: document.getElementById('s-template').value,
     seoMinScore:      parseInt(document.getElementById('s-seo').value)       || 50,
+    ctaPhrases: document.getElementById('s-cta').value.split('\n').map(l=>l.trim()).filter(Boolean),
+    publishPlatforms,
   };
-  const d = await fetch('/api/settings', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(p)}).then(r=>r.json()).catch(()=>null);
+  const d = await api('/api/settings','POST',p);
   const msg = document.getElementById('s-msg');
   if (d?.ok) { msg.style.color='var(--green)'; msg.textContent='✓ Saved'; toast('Settings saved','ok'); }
   else { msg.style.color='var(--red)'; msg.textContent=d?.error||'Save failed'; }
@@ -1388,7 +1748,7 @@ async function triggerRun() {
   btns.forEach(b => b.disabled = true);
 
   const triggerTs = Date.now();
-  const d = await fetch('/api/run', {method:'POST'}).then(r=>r.json()).catch(()=>null);
+  const d = await api('/api/run','POST');
 
   if (!d) {
     toast('⚠ Could not reach the API — is the Space running?', 'err');
@@ -1409,7 +1769,7 @@ async function triggerRun() {
   const poll = async () => {
     polls++;
     if (polls > 105) { btns.forEach(b => b.disabled = false); return; }
-    const st = await fetch('/api/status').then(r=>r.json()).catch(()=>null);
+    const st = await api('/api/status');
     if (!st) { setTimeout(poll, 3000); return; }
     S.status = st;
     renderOverview();
@@ -1427,7 +1787,7 @@ async function triggerRun() {
 async function triggerDiagnose() {
   const btn = document.getElementById('btn-diagnose');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Diagnosing…'; }
-  const d = await fetch('/api/diagnose').then(r=>r.json()).catch(()=>null);
+  const d = await api('/api/diagnose');
   if (btn) { btn.disabled = false; btn.textContent = '🩺 Diagnose'; }
   if (!d) { toast('⚠ Could not reach /api/diagnose', 'err'); return; }
 
@@ -1458,11 +1818,7 @@ async function triggerDiagnose() {
 async function resetCircuitBreakers() {
   const btn = document.getElementById('btn-cb-reset');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Resetting…'; }
-  const d = await fetch('/api/circuit-breaker/reset', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({name:'all'})
-  }).then(r=>r.json()).catch(()=>null);
+  const d = await api('/api/circuit-breaker/reset', 'POST', {name:'all'});
   if (btn) { btn.disabled = false; btn.textContent = '⚡ Reset CB'; }
   if (d?.ok) {
     toast('✓ Circuit breakers reset — pipeline will attempt Bluesky on next Run', 'ok');
@@ -1473,7 +1829,7 @@ async function resetCircuitBreakers() {
 }
 
 async function triggerDryRun() {
-  const d = await fetch('/api/dry-run', {method:'POST'}).then(r=>r.json()).catch(()=>null);
+  const d = await api('/api/dry-run','POST');
   if (d?.ok) toast(`Dry run: ${d.product?.name || 'product'} via ${d.product?.source || '?'}`, 'ok');
   else toast(d?.error || 'Dry run failed', 'err');
 }
@@ -1489,7 +1845,7 @@ async function togglePause() {
 async function generateCaption() {
   const btn=document.getElementById('btn-gen');
   btn.disabled=true; btn.textContent='⏳ Generating…';
-  const d=await fetch('/api/ai/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({productName:document.getElementById('gen-name').value,category:document.getElementById('gen-cat').value,description:document.getElementById('gen-desc').value})}).then(r=>r.json()).catch(()=>null);
+  const d=await api('/api/ai/generate','POST',{productName:document.getElementById('gen-name').value,category:document.getElementById('gen-cat').value,description:document.getElementById('gen-desc').value});
   btn.disabled=false; btn.textContent='✨ Generate Caption';
   if (d?.text) {
     document.getElementById('gen-out').style.display='';
@@ -1506,12 +1862,12 @@ function startOAuth() {
 }
 async function disconnectBsky() {
   if (!confirm('Disconnect Bluesky? The pipeline will stop posting until you re-enable it.')) return;
-  const d = await fetch('/api/accounts/bluesky/disconnect', {method:'POST'}).then(r=>r.json()).catch(()=>null);
+  const d = await api('/api/accounts/bluesky/disconnect','POST');
   if (d?.ok) { toast('Bluesky disconnected'); await loadAccounts(); }
   else toast('Disconnect failed','err');
 }
 async function enableBsky() {
-  const d = await fetch('/api/accounts/bluesky/enable', {method:'POST'}).then(r=>r.json()).catch(()=>null);
+  const d = await api('/api/accounts/bluesky/enable','POST');
   if (d?.ok) { toast('Bluesky re-enabled ✓'); await loadAccounts(); }
   else toast('Failed to enable','err');
 }
@@ -1520,7 +1876,7 @@ async function testBskyConnection() {
   const msg = document.getElementById('bsky-status-msg');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Testing…'; }
   if (msg) msg.textContent = 'Testing connection to Bluesky…';
-  const d = await fetch('/api/accounts/bluesky/test', {method:'POST'}).then(r=>r.json()).catch(()=>null);
+  const d = await api('/api/accounts/bluesky/test','POST');
   if (btn) { btn.disabled = false; btn.textContent = '🧪 Test'; }
   if (!d) {
     if (msg) msg.textContent = '⚠ Could not reach API';
@@ -1535,10 +1891,9 @@ async function testBskyConnection() {
   }
 }
 async function connectMastodon() {
-  const platform  = document.getElementById('mastodon-platform').value;
-  const instance  = document.getElementById('mastodon-instance').value.trim();
+  const instance = document.getElementById('mastodon-instance').value.trim();
   if (!instance) { toast('Enter the instance URL (e.g. https://mastodon.social)', 'err'); return; }
-  const d = await api('/api/social/mastodon/register', 'POST', { platform, instance });
+  const d = await api('/api/social/mastodon/register', 'POST', { platform: 'mastodon', instance });
   if (d?.url) { window.location.href = d.url; }
   else toast(d?.error || d?.detail || 'Registration failed', 'err');
 }
@@ -1547,14 +1902,7 @@ async function connectOAuth2(platform) {
   if (d?.url) { window.location.href = d.url; }
   else toast(d?.error || d?.detail || `${platform} OAuth failed`, 'err');
 }
-async function connectNostr() {
-  const nsec = document.getElementById('nostr-nsec').value.trim();
-  const npub = document.getElementById('nostr-npub').value.trim();
-  if (!nsec) { toast('Enter your nsec private key', 'err'); return; }
-  const d = await api('/api/social/nostr/connect', 'POST', { nsec, npub });
-  if (d?.ok) { toast('Nostr key saved ⚡'); await loadAccounts(); }
-  else toast(d?.error || d?.detail || 'Failed to save key', 'err');
-}
+
 async function connectCredentials(platform) {
   const handle   = document.getElementById(`cred-${platform}-handle`)?.value.trim();
   const password = document.getElementById(`cred-${platform}-pass`)?.value;
@@ -1563,6 +1911,77 @@ async function connectCredentials(platform) {
   if (d?.ok) { toast(`${platform} saved ✓`); await loadAccounts(); }
   else toast(d?.error || d?.detail || 'Failed', 'err');
 }
+async function quickSaveAll() {
+  const btn = document.getElementById('btn-qc-save');
+  const msg = document.getElementById('qc-msg');
+  btn.disabled = true;
+  msg.textContent = 'Saving…';
+
+  const results = [];
+
+  // X — needs 4 API keys
+  const xHandle = document.getElementById('qc-x-handle')?.value.trim();
+  if (xHandle) {
+    const d = await api('/api/social/x/credentials', 'POST', {
+      handle:          xHandle,
+      consumer_key:    document.getElementById('qc-x-consumer-key')?.value.trim(),
+      consumer_secret: document.getElementById('qc-x-consumer-secret')?.value.trim(),
+      access_token:    document.getElementById('qc-x-access-token')?.value.trim(),
+      access_secret:   document.getElementById('qc-x-access-secret')?.value.trim(),
+    });
+    results.push(d?.ok ? 'x: ✓ saved' : `x: ✗ ${d?.error || 'failed'}`);
+  } else {
+    results.push('x: skipped (no username)');
+  }
+
+  // Facebook
+  const fbHandle = document.getElementById('qc-facebook-handle')?.value.trim();
+  if (fbHandle) {
+    const d = await api('/api/social/facebook/credentials', 'POST', {
+      handle:            fbHandle,
+      page_id:           document.getElementById('qc-facebook-page-id')?.value.trim() || fbHandle,
+      page_access_token: document.getElementById('qc-facebook-pass')?.value.trim(),
+    });
+    results.push(d?.ok ? 'facebook: ✓ saved' : `facebook: ✗ ${d?.error || 'failed'}`);
+  } else { results.push('facebook: skipped (no page name)'); }
+
+  // Instagram
+  const igHandle = document.getElementById('qc-instagram-handle')?.value.trim();
+  if (igHandle) {
+    const d = await api('/api/social/instagram/credentials', 'POST', {
+      handle:       igHandle,
+      ig_user_id:   document.getElementById('qc-instagram-ig-user-id')?.value.trim() || igHandle,
+      access_token: document.getElementById('qc-instagram-pass')?.value.trim(),
+    });
+    results.push(d?.ok ? 'instagram: ✓ saved' : `instagram: ✗ ${d?.error || 'failed'}`);
+  } else { results.push('instagram: skipped (no username)'); }
+
+  msg.textContent = results.join(' · ');
+  btn.disabled = false;
+  await loadAccounts();
+}
+
+async function quickConnectOAuth() {
+  const mastoInstance = document.getElementById('mastodon-instance')?.value.trim() || 'https://mastodon.social';
+
+  // Threads
+  const threadsData = await api('/api/social/threads/auth');
+  if (threadsData?.url) window.open(threadsData.url, '_blank');
+  else toast('Threads: ' + (threadsData?.detail || 'THREADS_APP_ID not set — add it in Space secrets'), 'warn');
+
+  // Tumblr
+  const tumblrData = await api('/api/social/tumblr/auth');
+  if (tumblrData?.url) window.open(tumblrData.url, '_blank');
+  else toast('Tumblr: ' + (tumblrData?.detail || 'TUMBLR_CLIENT_ID not set — add it in Space secrets'), 'warn');
+
+  // Mastodon
+  const mastoData = await api('/api/social/mastodon/register', 'POST', { platform: 'mastodon', instance: mastoInstance });
+  if (mastoData?.url) window.open(mastoData.url, '_blank');
+  else toast('Mastodon: ' + (mastoData?.detail || mastoData?.error || 'registration failed'), 'warn');
+
+  toast('OAuth tabs opened — approve each one in the new tabs 🔑');
+}
+
 async function disconnectSocial(platform) {
   if (!confirm(`Disconnect ${platform}?`)) return;
   const d = await api(`/api/social/${platform}/disconnect`, 'DELETE');
@@ -1677,11 +2096,7 @@ async function schedSave() {
   const hrs  = document.getElementById('sched-hours').value.trim();
   const enab = document.getElementById('sched-enabled').checked;
   const msg  = document.getElementById('sched-msg');
-  const r = await fetch('/api/schedule/config', {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ postsPerDay: ppd, postingHours: hrs, schedulerEnabled: enab }),
-  }).then(x => x.json()).catch(() => null);
+  const r = await api('/api/schedule/config', 'POST', { postsPerDay: ppd, postingHours: hrs, schedulerEnabled: enab });
   if (r?.ok) {
     msg.style.color = 'var(--green)'; msg.textContent = '✓ Saved';
     toast('Schedule saved', 'ok');
@@ -1795,8 +2210,38 @@ window.addEventListener('resize', () => {
     history.replaceState({}, '', '/');
   }
 })();
-loadAll();
-setInterval(()=>{ loadStatus(); if(currentPage==='analytics'){loadClicks().then(renderAnalytics);} if(currentPage==='logs')loadLogs(); }, 20000);
+// ── BOOTSTRAP: check auth before showing anything ─────────────
+async function init() {
+  addLogoutButton();
+  loadAll();
+  setInterval(()=>{ loadStatus(); loadGoldenSignals(); if(currentPage==='analytics'){loadClicks().then(renderAnalytics);} if(currentPage==='logs')loadLogs(); }, 20000);
+  setInterval(()=>{ if(currentPage==='logs' && _logLive) loadLogs(); }, 5000);
+}
+
+(async () => {
+  const token = getToken();
+  if (token) {
+    // Validate stored token silently
+    const r = await fetch('/api/status', { headers: { Authorization: `Bearer ${token}` } }).catch(()=>null);
+    if (r && r.status !== 401) {
+      document.getElementById('login-screen').style.display = 'none';
+      document.getElementById('app').style.display = '';
+      init();
+      return;
+    }
+    clearToken();
+  }
+  // No password set on server → open mode
+  const probe = await fetch('/api/status').catch(()=>null);
+  if (probe && probe.status !== 401) {
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('app').style.display = '';
+    init();
+    return;
+  }
+  // Password required → show login
+  showLogin();
+})();
 </script>
 <!-- SOVRN Commerce (VigLink) — monetizes outbound product links on this page -->
 <script type="text/javascript">

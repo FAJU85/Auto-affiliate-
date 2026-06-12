@@ -1,0 +1,15 @@
+{
+  "cycle": 1,
+  "timestamp": "2026-06-11T22:35:38Z",
+  "priority_flows": {
+    "PF-01": {"name": "Pipeline execution (run_pipeline)", "source": "api/pipeline.py", "unit": "COVERED", "integration": "MISSING", "e2e": "MISSING", "test_file": "api/tests/test_pipeline_core.py"},
+    "PF-02": {"name": "Affiliate link tracking (_tracking_url / resolve_redirect)", "source": "api/pipeline.py", "unit": "COVERED", "integration": "MISSING", "e2e": "MISSING", "test_file": "api/tests/test_pipeline_core.py"},
+    "PF-03": {"name": "Platform guardian enforcement (check_allowed)", "source": "api/utils/platform_guardian.py", "unit": "COVERED", "integration": "MISSING", "e2e": "MISSING", "test_file": "api/tests/test_platform_guardian.py"},
+    "PF-04": {"name": "Product dedup (was_posted_within / mark_posted)", "source": "api/utils/metrics.py", "unit": "COVERED", "integration": "MISSING", "e2e": "MISSING", "test_file": "api/tests/test_metrics.py"},
+    "PF-05": {"name": "Daily budget cap enforcement (get_daily_spend / add_spend)", "source": "api/utils/budget.py", "unit": "COVERED", "integration": "MISSING", "e2e": "MISSING", "test_file": "api/tests/test_budget.py"},
+    "PF-06": {"name": "SLO calculation (calculate_slo)", "source": "api/pipeline.py", "unit": "COVERED", "integration": "MISSING", "e2e": "MISSING", "test_file": "api/tests/test_metrics.py"},
+    "PF-07": {"name": "Circuit breaker state transitions", "source": "api/utils/circuit_breaker.py", "unit": "COVERED", "integration": "MISSING", "e2e": "MISSING", "test_file": "api/tests/test_circuit_breaker.py"},
+    "PF-08": {"name": "Bluesky post text assembly (_build_post_text)", "source": "api/bluesky_client.py", "unit": "COVERED", "integration": "MISSING", "e2e": "MISSING", "test_file": "api/tests/test_grapheme.py"},
+    "PF-09": {"name": "Settings persistence (get_settings / save_settings)", "source": "api/utils/settings.py", "unit": "COVERED", "integration": "MISSING", "e2e": "MISSING", "test_file": "api/tests/test_settings.py"}
+  }
+}

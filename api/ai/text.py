@@ -9,6 +9,7 @@ Reliability:
   - Template fallback always succeeds
 """
 
+import asyncio
 import os
 import random
 
@@ -40,7 +41,28 @@ def _fmt_price(product: dict) -> str:
 def _build_prompts(product: dict, trends: list) -> tuple[str, str]:
     s = settings.get_settings()
     trend = (trends[0] if trends else product.get("category", "trending"))
-    # Safely format — unknown keys fall back to empty string
+
+    # Inject CTA instruction: AI generates or selects the best phrase for this product type.
+    # ctaPhrases from settings are offered as inspiration; AI can use one verbatim OR
+    # craft a better one following the same psychological angle.
+    cta_phrases: list[str] = s.get("ctaPhrases") or []
+    base_system = s.get("postSystemPrompt", "Write a short affiliate post.")
+    if cta_phrases:
+        cta_examples = "  " + "\n  ".join(cta_phrases[:6])
+        cta_instruction = (
+            f"\n\nCTA RULE: End your post with exactly ONE short, psychology-driven CTA phrase "
+            f"(max 6 words + optional emoji). Pick the angle that best fits this specific product — "
+            f"urgency for deals, aspiration for fashion/beauty, curiosity for tech, pain-relief for health. "
+            f"Use one of these examples verbatim, or craft a stronger one in the same style:\n{cta_examples}"
+        )
+    else:
+        cta_instruction = (
+            "\n\nEnd with exactly one short, punchy CTA phrase (max 6 words + emoji). "
+            "Match the psychological angle to the product type."
+        )
+    system = base_system + cta_instruction
+
+    # Safely format user template — unknown keys fall back to empty string
     template = s.get("postUserTemplate", "{name}")
     try:
         user = template.format(
@@ -53,21 +75,36 @@ def _build_prompts(product: dict, trends: list) -> tuple[str, str]:
         )
     except KeyError:
         user = f"Product: {product.get('name', 'this product')}. Write a short affiliate post."
-    return s.get("postSystemPrompt", "Write a short affiliate post."), user
+    return system, user
 
 
 def _looks_usable(text: str) -> bool:
     """Reject clearly broken AI output before returning it."""
-    import unicodedata
+    import re
     if not text or len(text) < 20:
         return False
-    # Count non-ASCII chars — if >40% of the text is non-ASCII, likely wrong language
+    # Reject non-English: >40% non-ASCII chars
     non_ascii = sum(1 for c in text if ord(c) > 127)
     if non_ascii / len(text) > 0.40:
         return False
-    # Reject if ratio of punctuation/symbols to letters is too high (spam/broken output)
+    # Reject if almost no actual letters (symbol/punctuation spam)
     letters = sum(1 for c in text if c.isalpha())
     if letters < 10:
+        return False
+    # Reject CamelCase keyword-list spam (e.g. "NorthFaceThermoball SummerDeals ClickNow")
+    # Real sentences have spaces between lower-case words; keyword dumps are CamelCase runs
+    words = text.split()
+    if len(words) >= 4:
+        camel_words = sum(1 for w in words if re.match(r'^[A-Z][a-z]+[A-Z]', w))
+        if camel_words / len(words) > 0.5:
+            return False
+    # Reject if the text has no verb-like words and no punctuation (likely a title/tag list)
+    has_verb = bool(re.search(
+        r'\b(get|buy|shop|save|grab|try|discover|find|enjoy|upgrade|love|perfect|great|best|top|now|today)\b',
+        text, re.I
+    ))
+    has_punctuation = bool(re.search(r'[.,!?—]', text))
+    if not has_verb and not has_punctuation and len(words) > 6:
         return False
     return True
 
@@ -101,21 +138,29 @@ async def _chat(url: str, key: str, model: str, system: str, user: str) -> str |
         "temperature": TEMPERATURE,
     }
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-    async with httpx.AsyncClient(timeout=API_TIMEOUT) as client:
-        r = await client.post(url, json=payload, headers=headers)
 
-    if r.status_code == 429:
-        record_saturation(model)
-        retry_after = int(r.headers.get("Retry-After", 5))
-        logger.warn(f"AI {model} rate-limited (429) — Retry-After: {retry_after}s")
-        raise RuntimeError(f"rate_limited:{retry_after}")
+    # Up to 3 attempts with exponential backoff on 429
+    for attempt in range(3):
+        async with httpx.AsyncClient(timeout=API_TIMEOUT) as client:
+            r = await client.post(url, json=payload, headers=headers)
 
-    if r.status_code != 200:
-        logger.warn(f"AI {model} HTTP {r.status_code}: {r.text[:120]}")
-        return None
+        if r.status_code == 429:
+            record_saturation(model)
+            retry_after = int(r.headers.get("Retry-After", 2 ** attempt * 5))
+            logger.warn(f"AI {model} rate-limited (429) — waiting {retry_after}s (attempt {attempt+1}/3)")
+            if attempt < 2:
+                await asyncio.sleep(min(retry_after, 30))
+                continue
+            raise RuntimeError(f"rate_limited:{retry_after}")
 
-    content = r.json().get("choices", [{}])[0].get("message", {}).get("content", "")
-    return content or None
+        if r.status_code != 200:
+            logger.warn(f"AI {model} HTTP {r.status_code}: {r.text[:120]}")
+            return None
+
+        content = r.json().get("choices", [{}])[0].get("message", {}).get("content", "")
+        return content or None
+
+    return None
 
 
 async def _try_groq(system: str, user: str) -> str | None:
@@ -165,12 +210,13 @@ def _template(product: dict, trends: list) -> str:
     price = _fmt_price(product)
     cat   = product.get("category", "")
     hooks = [
-        f"Great deal on {name}",
-        f"Check out {name}",
-        f"{name} is worth every penny",
-        f"Looking for {cat.lower() + ' gear' if cat else 'a great deal'}? Try {name}",
+        f"Upgrade your {cat.lower() if cat else 'life'} with {name}",
+        f"Save big on {name}",
+        f"{name} — top-rated and worth every penny",
+        f"Grab the {name} while it lasts",
+        f"Best value on {name} right now",
     ]
-    tail = f" — just {price}." if price else "."
+    tail = f" — just {price}. Get it now!" if price else ". Get it now!"
     return _clean(random.choice(hooks) + tail)
 
 
