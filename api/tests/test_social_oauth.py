@@ -1,6 +1,5 @@
 """Unit tests for social_oauth.py — persistence helpers and platform registry."""
 
-import json
 import time
 import pytest
 from fastapi.testclient import TestClient

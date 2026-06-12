@@ -166,7 +166,7 @@ class TestExecuteFullPath:
              patch("api.pipeline.check_allowed", return_value=(True, "allowed")), \
              patch("api.pipeline.post_to_bluesky",
                    AsyncMock(side_effect=RuntimeError("rate limit 429 too many requests"))):
-            result = await pipeline.run_pipeline()
+            await pipeline.run_pipeline()
 
         # Pipeline should have set paused=True due to rate limit
         assert pipeline.STATE["paused"] is True

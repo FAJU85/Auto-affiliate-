@@ -1,6 +1,5 @@
 """Unit tests for Four Golden Signals telemetry (utils/telemetry.py)."""
 
-import time
 from api.utils import telemetry
 
 
