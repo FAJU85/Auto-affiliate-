@@ -17,6 +17,9 @@ import httpx
 from .ai import text as ai_text
 from .bluesky_client import post_to_bluesky
 from .feeds.sovrn import get_sovrn_product
+from .feeds.takeads import get_takeads_product
+from .feeds.admitad import get_admitad_product
+from .feeds.travelpayouts import get_travelpayouts_product
 from .social_post import post_to_platform
 from .utils.platform_guardian import check_allowed
 from .utils import budget as budget_util
@@ -50,23 +53,43 @@ _REDIRECTS: dict = {}
 
 # ── Product fetching ─────────────────────────────────────────────────────────
 
-async def _try_sovrn() -> dict | None:
-    if not os.environ.get("SOVRN_API_KEY"):
-        return None
+async def _try_network(name: str, fn, timer_key: str) -> dict | None:
     try:
-        with Timer("sovrn_fetch"):
-            return await get_sovrn_product()
+        with Timer(timer_key):
+            return await fn()
     except Exception as err:  # noqa: BLE001
-        logger.warn(f"SOVRN fetch failed: {err}", "sovrn")
+        logger.warn(f"{name} fetch failed: {err}", name.lower())
         return None
 
 
 async def _get_product() -> dict | None:
-    """Try each configured network in priority order; return first successful product."""
-    # Priority: SOVRN (curated + monetized) → future networks here
-    product = await _try_sovrn()
-    if product:
-        return product
+    """Try each configured network in priority order; return first successful product.
+
+    Priority:
+      1. SOVRN   — curated product pool, always monetized
+      2. TakeAds — active affiliate programs, highest commission first
+      3. Admitad — XML feed (requires ADMITAD_FEED_URL)
+      4. Travelpayouts — live flight deals (travel niche)
+    """
+    if os.environ.get("SOVRN_API_KEY"):
+        product = await _try_network("SOVRN", get_sovrn_product, "sovrn_fetch")
+        if product:
+            return product
+
+    if os.environ.get("TAKEADS_API_KEY"):
+        product = await _try_network("TakeAds", get_takeads_product, "takeads_fetch")
+        if product:
+            return product
+
+    if os.environ.get("ADMITAD_FEED_URL"):
+        product = await _try_network("Admitad", get_admitad_product, "admitad_fetch")
+        if product:
+            return product
+
+    if os.environ.get("TRAVELPAYOUTS_TOKEN"):
+        product = await _try_network("Travelpayouts", get_travelpayouts_product, "travelpayouts_fetch")
+        if product:
+            return product
 
     logger.warn("All product networks failed or unconfigured — no product available", "pipeline")
     return None

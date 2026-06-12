@@ -41,10 +41,10 @@ ENV_KEYS = [
 REQUIRED_VARS: list[str] = []  # Bluesky is optional when other platforms are selected
 
 NETWORKS = [
-    {"key": "sovrn", "name": "SOVRN Commerce", "env": "SOVRN_API_KEY"},
-    {"key": "admitad", "name": "Admitad", "env": "ADMITAD_CLIENT_ID"},
-    {"key": "takeads", "name": "TakeAds", "env": "TAKEADS_API_KEY"},
-    {"key": "travelpayouts", "name": "Travelpayouts", "env": "TRAVELPAYOUTS_TOKEN"},
+    {"key": "sovrn",         "name": "SOVRN Commerce", "env": "SOVRN_API_KEY"},
+    {"key": "admitad",       "name": "Admitad",         "env": "ADMITAD_FEED_URL"},
+    {"key": "takeads",       "name": "TakeAds",         "env": "TAKEADS_API_KEY"},
+    {"key": "travelpayouts", "name": "Travelpayouts",   "env": "TRAVELPAYOUTS_TOKEN"},
 ]
 
 scheduler = AsyncIOScheduler(timezone="UTC")
@@ -825,9 +825,11 @@ async def diagnose():
             "detail": f"${spend:.4f} spent of ${cap:.2f} cap",
         },
         {
-            "name": "SOVRN product network",
-            "ok": sovrn_key,
-            "detail": "SOVRN_API_KEY set" if sovrn_key else "NOT SET — no product source available (add SOVRN_API_KEY to Space Secrets)",
+            "name": "Product networks",
+            "ok": any(bool(os.environ.get(n["env"])) for n in NETWORKS),
+            "detail": ", ".join(
+                n["name"] for n in NETWORKS if os.environ.get(n["env"])
+            ) or "NONE configured — add SOVRN_API_KEY, TAKEADS_API_KEY, ADMITAD_FEED_URL, or TRAVELPAYOUTS_TOKEN",
         },
         {
             "name": "Click tracking (SPACE_HOST)",
