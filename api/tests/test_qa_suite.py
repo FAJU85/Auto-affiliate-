@@ -239,11 +239,51 @@ class TestSettingsRoundTrip:
 
     def test_partial_save_preserves_other_fields(self, qa):
         """Saving one field must not wipe unrelated fields."""
-        # First establish known state
         self._save_and_reload(qa["client"], {"maxPostLength": 300, "postsPerDay": 2})
-        # Save only one field
         d = self._save_and_reload(qa["client"], {"maxPostLength": 280})
         assert d["postsPerDay"] == 2, "Partial save wiped postsPerDay"
+
+    # ── Input validation (Bug #1) ─────────────────────────────────────────────
+
+    def test_invalid_type_rejected(self, qa):
+        r = qa["client"].post("/api/settings", json={"maxPostLength": "not_a_number"})
+        assert r.json()["ok"] is False
+        assert "must be a number" in r.json()["error"]
+
+    def test_negative_cost_cap_rejected(self, qa):
+        r = qa["client"].post("/api/settings", json={"dailyCostCap": -1.0})
+        assert r.json()["ok"] is False
+        assert "dailyCostCap" in r.json()["error"]
+
+    def test_zero_cost_cap_rejected(self, qa):
+        r = qa["client"].post("/api/settings", json={"dailyCostCap": 0})
+        assert r.json()["ok"] is False
+
+    def test_zero_posts_per_day_rejected(self, qa):
+        r = qa["client"].post("/api/settings", json={"postsPerDay": 0})
+        assert r.json()["ok"] is False
+        assert "postsPerDay" in r.json()["error"]
+
+    def test_invalid_posting_hours_format_rejected(self, qa):
+        for bad in ("25-99", "8-25", "abc", "99"):
+            r = qa["client"].post("/api/settings", json={"postingHours": bad})
+            assert r.json()["ok"] is False, f"postingHours='{bad}' should be rejected"
+
+    def test_valid_settings_still_accepted(self, qa):
+        r = qa["client"].post("/api/settings", json={
+            "maxPostLength": 280,
+            "dailyCostCap": 2.0,
+            "postsPerDay": 3,
+            "postingHours": "9-21",
+        })
+        assert r.json()["ok"] is True
+
+    def test_invalid_setting_does_not_persist(self, qa):
+        """A rejected save must not mutate the stored value."""
+        qa["client"].post("/api/settings", json={"dailyCostCap": 1.5})
+        qa["client"].post("/api/settings", json={"dailyCostCap": -99.0})
+        d = qa["client"].get("/api/settings").json()
+        assert d["dailyCostCap"] > 0, "Invalid value was persisted despite rejection"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -437,6 +477,12 @@ class TestCircuitBreakers:
     def test_legacy_circuit_breaker_reset(self, qa):
         r = qa["client"].post("/api/circuit-breaker/reset", json={"name": "groq"})
         assert r.status_code == 200
+
+    def test_reset_all_alias_works(self, qa):
+        """Bug fix: /all/reset must not 404 — alias for /reset-all."""
+        r = qa["client"].post("/api/circuit-breakers/all/reset")
+        assert r.status_code == 200
+        assert r.json().get("ok") is True
 
 
 # ─────────────────────────────────────────────────────────────────────────────
