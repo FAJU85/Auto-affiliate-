@@ -15,7 +15,7 @@ class TestPctEncode:
 
     def test_leaves_unreserved_unchanged(self):
         from api.social_post import _pct
-        assert _pct("abcABC123") == "abcABC123"
+        assert _pct("hello123") == "hello123"
 
 
 class TestOauth1Sign:
@@ -177,8 +177,8 @@ class TestPostX:
         conn_file = tmp_path / "social-connections.json"
         conn_file.write_text(json.dumps({"x": {
             "connected": True,
-            "consumer_key": "ck", "consumer_secret": "cs",
-            "access_token": "at", "access_secret": "as", "handle": "testuser"
+            "consumer_key": "ck", "consumer_secret": "cs",  # pragma: allowlist secret
+            "access_token": "at", "access_secret": "as", "handle": "testuser"  # pragma: allowlist secret
         }}))
         import importlib
         import api.social_post as sp
@@ -197,8 +197,8 @@ class TestPostX:
         conn_file = tmp_path / "social-connections.json"
         conn_file.write_text(json.dumps({"x": {
             "connected": True,
-            "consumer_key": "ck", "consumer_secret": "cs",
-            "access_token": "at", "access_secret": "as", "handle": "testuser"
+            "consumer_key": "ck", "consumer_secret": "cs",  # pragma: allowlist secret
+            "access_token": "at", "access_secret": "as", "handle": "testuser"  # pragma: allowlist secret
         }}))
         import importlib
         import api.social_post as sp

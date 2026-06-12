@@ -163,9 +163,9 @@ class TestManualCredentialsSave:
         payload = {
             "platform": "x",
             "consumer_key": "ck",
-            "consumer_secret": "cs",
-            "access_token": "at",
-            "access_secret": "as",
+            "consumer_secret": "cs",  # pragma: allowlist secret
+            "access_token": "at",  # pragma: allowlist secret
+            "access_secret": "as",  # pragma: allowlist secret
             "handle": "myhandle",
         }
         r = c.post("/social/credentials", json=payload)
