@@ -2,6 +2,8 @@
 
 import time
 import os
+from pathlib import Path
+from unittest.mock import patch, MagicMock
 
 
 # ── bluesky_client.py: file-op exception handlers (direct, no reload) ─────────
@@ -11,53 +13,34 @@ class TestBlueskyFileExceptionsDirect:
         """Lines 47-48: exception in _save_ratelimit is swallowed."""
         from api.bluesky_client import _save_ratelimit
 
-        # Write to a path under a read-only dir
-        readonly_dir = tmp_path / "ro"
-        readonly_dir.mkdir()
-        os.chmod(str(readonly_dir), 0o444)
+        bad_path = MagicMock(spec=Path)
+        bad_path.mkdir.side_effect = PermissionError("no write")
+        bad_ratelimit = MagicMock(spec=Path)
+        bad_ratelimit.write_text.side_effect = PermissionError("no write")
 
-        from unittest.mock import patch
-        ro_path = readonly_dir / "sub"
-
-        # Patch DATA_DIR to point to read-only location
-        with patch("api.bluesky_client.DATA_DIR", ro_path):
-            with patch("api.bluesky_client.RATELIMIT_FILE", ro_path / "ratelimit.json"):
-                # Should not raise despite mkdir failing
+        with patch("api.bluesky_client.DATA_DIR", bad_path):
+            with patch("api.bluesky_client.RATELIMIT_FILE", bad_ratelimit):
                 _save_ratelimit(time.time() + 3600)
-
-        os.chmod(str(readonly_dir), 0o755)
 
     def test_clear_ratelimit_permission_error_swallowed(self, tmp_path):
         """Lines 53-54: PermissionError in unlink is swallowed."""
         from api.bluesky_client import _clear_ratelimit
 
-        # Create a file that we'll make read-only
-        ratelimit_file = tmp_path / "ratelimit.json"
-        ratelimit_file.write_text('{"reset": 9999}')
-        parent = tmp_path
-        os.chmod(str(parent), 0o555)  # read+execute only — can't delete files
+        bad_ratelimit = MagicMock(spec=Path)
+        bad_ratelimit.unlink.side_effect = PermissionError("no delete")
 
-        from unittest.mock import patch
-        with patch("api.bluesky_client.RATELIMIT_FILE", ratelimit_file):
-            # Unlink should fail due to permissions → exception swallowed
+        with patch("api.bluesky_client.RATELIMIT_FILE", bad_ratelimit):
             _clear_ratelimit()
-
-        os.chmod(str(parent), 0o755)
 
     def test_clear_session_permission_error_swallowed(self, tmp_path):
         """Lines 102-103: PermissionError in unlink is swallowed."""
         from api.bluesky_client import _clear_session
 
-        session_file = tmp_path / "session.json"
-        session_file.write_text('{"accessJwt": "jwt"}')
-        parent = tmp_path
-        os.chmod(str(parent), 0o555)
+        bad_session = MagicMock(spec=Path)
+        bad_session.unlink.side_effect = PermissionError("no delete")
 
-        from unittest.mock import patch
-        with patch("api.bluesky_client.SESSION_FILE", session_file):
+        with patch("api.bluesky_client.SESSION_FILE", bad_session):
             _clear_session()
-
-        os.chmod(str(parent), 0o755)
 
 
 # ── main.py: line 119 (auth middleware passthrough for non-API paths) ──────────
@@ -80,8 +63,8 @@ class TestMainAuthMiddlewareDirect:
         from fastapi.testclient import TestClient
         from api.main import app
         with TestClient(app, raise_server_exceptions=False) as client:
-            # Non-API path without auth header → line 119 (call_next is called)
-            r = client.get("/")
-        assert r.status_code == 200
+            # Non-API, non-public-exact path without auth → line 119
+            r = client.get("/dashboard")
+        assert r.status_code in (200, 404)
 
         os.environ.pop("DASHBOARD_PASSWORD", None)
