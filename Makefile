@@ -3,14 +3,18 @@
 ALLURE_RESULTS := /tmp/allure-results
 ALLURE_REPORT  := /tmp/allure-report
 
-# Run QA suite (session-start health check) + generate Allure report
+# Run QA suite (session-start health check) + intelligent layer + Allure report
 qa:
-	python -m pytest api/tests/test_qa_suite.py -v \
+	python -m pytest api/tests/test_qa_suite.py api/tests/test_qa_intelligent.py -v \
 		--alluredir=$(ALLURE_RESULTS) \
 		--tb=short
 	allure generate $(ALLURE_RESULTS) -o $(ALLURE_REPORT) --clean
 	@echo ""
 	@echo "✓ Allure report: $(ALLURE_REPORT)/index.html"
+
+# Intelligent QA only (property tests + memory replay)
+qa-intelligent:
+	python -m pytest api/tests/test_qa_intelligent.py -v --tb=short
 
 # Generate Allure report from last run (no re-run)
 qa-report:
