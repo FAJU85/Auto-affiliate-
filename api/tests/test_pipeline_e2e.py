@@ -47,7 +47,7 @@ class TestExecuteFullPath:
         smod._cache = None
 
         with patch.object(pipeline, "_get_product", AsyncMock(return_value=PRODUCT)), \
-             patch.object(pipeline, "_find_image", AsyncMock(return_value=None)), \
+             patch.object(pipeline, "_find_image", AsyncMock(return_value=(None, None))), \
              patch("api.ai.text.generate_post_text", AsyncMock(return_value="Great Sony headphones! Get it now.")), \
              patch("api.pipeline.check_allowed", return_value=(True, "allowed")), \
              patch("api.pipeline.post_to_bluesky", AsyncMock(return_value="at://did:plc:abc/app.bsky.feed.post/123")):
@@ -161,7 +161,7 @@ class TestExecuteFullPath:
         smod._cache = {"publishPlatforms": ["bluesky"], "dailyCostCap": 10.0}
 
         with patch.object(pipeline, "_get_product", AsyncMock(return_value=PRODUCT)), \
-             patch.object(pipeline, "_find_image", AsyncMock(return_value=None)), \
+             patch.object(pipeline, "_find_image", AsyncMock(return_value=(None, None))), \
              patch("api.ai.text.generate_post_text", AsyncMock(return_value="Great deal. Buy now!")), \
              patch("api.pipeline.check_allowed", return_value=(True, "allowed")), \
              patch("api.pipeline.post_to_bluesky",

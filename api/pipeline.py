@@ -80,7 +80,13 @@ async def get_trends() -> list:
 
 # ── Image ────────────────────────────────────────────────────────────────────
 
-async def _find_image(product: dict) -> bytes | None:
+async def _find_image(product: dict) -> tuple[bytes | None, str | None]:
+    """Return (image_bytes, public_image_url). Either or both may be None.
+
+    Facebook / Instagram / Threads need a public URL; Bluesky / Mastodon / X
+    use raw bytes.  We return both so the pipeline can pass the right form to
+    each platform.
+    """
     # Try explicit imageUrl first
     url = product.get("imageUrl")
     if url:
@@ -89,7 +95,7 @@ async def _find_image(product: dict) -> bytes | None:
                 async with httpx.AsyncClient(timeout=IMAGE_TIMEOUT, follow_redirects=True) as client:
                     r = await client.get(url)
                 if r.status_code == 200 and r.headers.get("content-type", "").startswith("image"):
-                    return r.content
+                    return r.content, url
         except Exception as err:  # noqa: BLE001
             logger.warn(f"Image download failed: {err}")
 
@@ -97,18 +103,20 @@ async def _find_image(product: dict) -> bytes | None:
     site_url = product.get("siteUrl") or product.get("deeplink") or ""
     if "amazon.com" in site_url:
         try:
-            img_bytes = await _fetch_amazon_og_image(site_url)
+            img_bytes, img_url = await _fetch_amazon_og_image(site_url)
             if img_bytes:
-                return img_bytes
+                return img_bytes, img_url
         except Exception as err:  # noqa: BLE001
             logger.warn(f"Amazon image scrape failed (non-fatal): {err}")
 
     logger.warn("No image available for product — posting without image")
-    return None
+    return None, None
 
 
-async def _fetch_amazon_og_image(product_url: str) -> bytes | None:
-    """Scrape Amazon product page for og:image URL, then download it."""
+async def _fetch_amazon_og_image(product_url: str) -> tuple[bytes | None, str | None]:
+    """Scrape Amazon product page for og:image URL, then download it.
+    Returns (bytes, url) so callers that need a public URL (Facebook/Instagram/Threads) have it.
+    """
     import re
     headers = {
         "User-Agent": (
@@ -124,21 +132,21 @@ async def _fetch_amazon_og_image(product_url: str) -> bytes | None:
             r = await client.get(product_url)
         if r.status_code != 200:
             logger.warn(f"Amazon page fetch HTTP {r.status_code} — no image")
-            return None
+            return None, None
         m = re.search(r'"og:image"[^>]*content="([^"]+)"', r.text)
         if not m:
             m = re.search(r'content="(https://m\.media-amazon\.com/images/I/[^"]+)"', r.text)
         if not m:
             logger.warn("og:image not found in Amazon page")
-            return None
+            return None, None
         img_url = m.group(1).replace("&amp;", "&")
         async with httpx.AsyncClient(timeout=IMAGE_TIMEOUT, follow_redirects=True) as client:
             ir = await client.get(img_url)
         if ir.status_code == 200 and ir.headers.get("content-type", "").startswith("image"):
-            return ir.content
+            return ir.content, img_url
     except Exception as err:  # noqa: BLE001
         logger.warn(f"Amazon og:image fetch error: {err}")
-    return None
+    return None, None
 
 
 # ── Tracking ─────────────────────────────────────────────────────────────────
@@ -147,6 +155,12 @@ def _tracking_url(deeplink: str) -> tuple[str, str]:
     tid = uuid.uuid4().hex[:10]
     _REDIRECTS[tid] = deeplink
     host = settings.get_space_host()
+    if not host:
+        logger.warn(
+            "SPACE_HOST not configured — click tracking disabled. "
+            "Set SPACE_HOST in Space Secrets to enable /r/{id} redirect tracking.",
+            "pipeline",
+        )
     redirect = f"{host}/r/{tid}" if host else deeplink
     return tid, redirect
 
@@ -274,7 +288,11 @@ async def _execute(started: float) -> dict:
     logger.info(f"Caption ({len(caption)} chars): {caption[:80]}…", "ai")
 
     # ── Phase 3: Image (non-blocking — failure is fine) ──
-    image = await _find_image(product)
+    # image_bytes → Bluesky / Mastodon / X (binary upload)
+    # image_url   → Facebook / Instagram / Threads (need a public HTTPS URL)
+    image, image_url = await _find_image(product)
+    # If product already has a public imageUrl, prefer that for URL-based platforms
+    image_url = image_url or product.get("imageUrl")
 
     # ── Phase 4: Tracking URL ──
     deeplink = product.get("deeplink") or product.get("siteUrl") or ""
@@ -312,7 +330,10 @@ async def _execute(started: float) -> dict:
                 logger.error(f"Post failed: {_msg}", "bluesky")
         else:
             logger.info("Attempting post…", platform)
-            uri = await post_to_platform(platform, caption, redirect, image=image, product=product)
+            uri = await post_to_platform(
+                platform, caption, redirect,
+                image=image, image_url=image_url, product=product,
+            )
             if uri:
                 uris[platform] = uri
                 primary_uri = primary_uri or uri

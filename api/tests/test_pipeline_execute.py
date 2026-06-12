@@ -106,11 +106,12 @@ class TestFindImage:
     @pytest.mark.asyncio
     async def test_returns_none_when_no_url(self):
         from api import pipeline
-        result = await pipeline._find_image({})
-        assert result is None
+        img, url = await pipeline._find_image({})
+        assert img is None
+        assert url is None
 
     @pytest.mark.asyncio
-    async def test_returns_bytes_on_200_image_response(self):
+    async def test_returns_bytes_and_url_on_200_image_response(self):
         from api import pipeline
         mock_resp = MagicMock()
         mock_resp.status_code = 200
@@ -118,8 +119,9 @@ class TestFindImage:
         mock_resp.content = b"fakeimagebytes"
         with patch("httpx.AsyncClient") as mock_client:
             mock_client.return_value.__aenter__.return_value.get = AsyncMock(return_value=mock_resp)
-            result = await pipeline._find_image({"imageUrl": "https://example.com/img.jpg"})
-        assert result == b"fakeimagebytes"
+            img, url = await pipeline._find_image({"imageUrl": "https://example.com/img.jpg"})
+        assert img == b"fakeimagebytes"
+        assert url == "https://example.com/img.jpg"
 
     @pytest.mark.asyncio
     async def test_returns_none_on_non_image_content_type(self):
@@ -130,16 +132,16 @@ class TestFindImage:
         mock_resp.content = b"<html>"
         with patch("httpx.AsyncClient") as mock_client:
             mock_client.return_value.__aenter__.return_value.get = AsyncMock(return_value=mock_resp)
-            result = await pipeline._find_image({"imageUrl": "https://example.com/page"})
-        assert result is None
+            img, url = await pipeline._find_image({"imageUrl": "https://example.com/page"})
+        assert img is None
 
     @pytest.mark.asyncio
     async def test_returns_none_on_http_error(self):
         from api import pipeline
         with patch("httpx.AsyncClient") as mock_client:
             mock_client.return_value.__aenter__.return_value.get = AsyncMock(side_effect=Exception("timeout"))
-            result = await pipeline._find_image({"imageUrl": "https://example.com/img.jpg"})
-        assert result is None
+            img, url = await pipeline._find_image({"imageUrl": "https://example.com/img.jpg"})
+        assert img is None
 
 
 class TestRunPipelineExecution:

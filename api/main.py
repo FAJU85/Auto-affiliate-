@@ -829,6 +829,11 @@ async def diagnose():
             "ok": sovrn_key,
             "detail": "SOVRN_API_KEY set" if sovrn_key else "NOT SET — no product source available (add SOVRN_API_KEY to Space Secrets)",
         },
+        {
+            "name": "Click tracking (SPACE_HOST)",
+            "ok": bool(settings.get_space_host()),
+            "detail": settings.get_space_host() or "NOT SET — clicks won't be tracked. Add SPACE_HOST to Space Secrets (e.g. your-space-name.hf.space)",
+        },
     ]
 
     last_run = pipeline.STATE["lastRun"]

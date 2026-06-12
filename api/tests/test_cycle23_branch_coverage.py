@@ -245,9 +245,10 @@ class TestPipelineBranches:
         import api.pipeline as pipeline
 
         product = {"siteUrl": "https://amazon.com/dp/B001"}
-        with patch.object(pipeline, "_fetch_amazon_og_image", AsyncMock(return_value=None)):
-            result = await pipeline._find_image(product)
-        assert result is None
+        with patch.object(pipeline, "_fetch_amazon_og_image", AsyncMock(return_value=(None, None))):
+            img, url = await pipeline._find_image(product)
+        assert img is None
+        assert url is None
 
     def test_resolve_redirect_not_in_recent_runs(self):
         """Branch 158->157: tracking_id not found in any run → returns None."""
@@ -288,7 +289,7 @@ class TestPipelineBranches:
                     with patch.object(pipeline, "_get_product", AsyncMock(return_value=product)):
                         with patch.object(pipeline, "get_trends", AsyncMock(return_value=[])):
                             with patch.object(txt, "generate_post_text", AsyncMock(return_value="Caption text")):
-                                with patch.object(pipeline, "_find_image", AsyncMock(return_value=None)):
+                                with patch.object(pipeline, "_find_image", AsyncMock(return_value=(None, None))):
                                     with patch.object(pipeline, "post_to_bluesky", AsyncMock(
                                         side_effect=RuntimeError("Network timeout — server down")
                                     )):

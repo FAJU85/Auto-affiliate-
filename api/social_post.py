@@ -445,9 +445,13 @@ async def _post_threads(caption: str, deeplink: str,
 
         r1 = await client.post(f"{base}/{user_id}/threads", params=container_params)
         if r1.status_code not in (200, 201):
-            # If image fails, retry as text-only
+            # If image fails, retry as text-only — but make the fallback explicit in logs
             if image_url and r1.status_code in (400, 422):
-                logger.warn(f"Threads image container failed ({r1.status_code}) — retrying as text", "threads")
+                logger.warn(
+                    f"Threads image rejected (HTTP {r1.status_code}) — "
+                    f"falling back to text-only post. Image URL: {image_url[:80]}",
+                    "threads",
+                )
                 r1 = await client.post(f"{base}/{user_id}/threads", params={
                     "media_type": "TEXT", "text": text, "access_token": access_token,
                 })
@@ -528,24 +532,38 @@ async def post_to_tumblr(caption: str, deeplink: str) -> str:
 
 
 async def post_to_platform(platform: str, caption: str, deeplink: str,
-                           image: bytes | None = None, product: dict | None = None) -> str | None:
-    """Post to a single platform. Returns URI on success, logs and returns None on failure."""
+                           image: bytes | None = None,
+                           image_url: str | None = None,
+                           product: dict | None = None) -> str | None:
+    """Post to a single platform. Returns URI on success, logs and returns None on failure.
+
+    image     — raw bytes for platforms that upload binary (Bluesky, Mastodon, X)
+    image_url — public HTTPS URL for platforms that fetch images server-side
+                (Facebook, Instagram, Threads). Populated from product.imageUrl
+                or from the Amazon og:image URL found during pipeline image fetch.
+    """
+    # Prefer the pipeline-resolved image_url; fall back to product field
+    resolved_url = image_url or (product or {}).get("imageUrl")
     try:
         if platform == "mastodon":
             return await post_to_mastodon(caption, deeplink, image, product)
         if platform == "x":
             return await post_to_x(caption, deeplink, image)
         if platform == "threads":
-            image_url = (product or {}).get("imageUrl")
-            return await post_to_threads(caption, deeplink, image_url, product)
+            return await post_to_threads(caption, deeplink, resolved_url, product)
         if platform == "tumblr":
             return await post_to_tumblr(caption, deeplink)
         if platform == "facebook":
-            image_url = (product or {}).get("imageUrl")
-            return await post_to_facebook(caption, deeplink, image_url)
+            return await post_to_facebook(caption, deeplink, resolved_url)
         if platform == "instagram":
-            image_url = (product or {}).get("imageUrl")
-            return await post_to_instagram(caption, deeplink, image_url)
+            if not resolved_url:
+                logger.warn(
+                    "Instagram skipped — no public image URL available for this product. "
+                    "Instagram requires an image for every post.",
+                    "instagram",
+                )
+                return None
+            return await post_to_instagram(caption, deeplink, resolved_url)
         logger.warn("Unknown platform — skipping", platform)
         return None
     except RuntimeError as err:
