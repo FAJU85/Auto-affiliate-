@@ -27,6 +27,7 @@ from fastapi.responses import (
 from . import pipeline
 from .ai import text as ai_text
 from .utils import budget, logger, metrics, settings
+from .utils.snapshot import record_response
 from .utils.circuit_breaker import all_statuses as cb_statuses, reset_breaker, reset_all as cb_reset_all
 from .utils.telemetry import golden_signals
 
@@ -82,6 +83,38 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="Affiliate Bot", lifespan=lifespan)
+
+
+class _SnapshotMiddleware(BaseHTTPMiddleware):
+    """Capture GET /api/* JSON response shapes into logs/snapshots/ when SNAPSHOT_DIR is set."""
+
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        path = request.url.path
+        if (
+            request.method == "GET"
+            and path.startswith("/api/")
+            and response.headers.get("content-type", "").startswith("application/json")
+        ):
+            import json as _json
+            from starlette.responses import Response
+            body_bytes = b""
+            async for chunk in response.body_iterator:
+                body_bytes += chunk
+            try:
+                record_response(path, _json.loads(body_bytes))
+            except Exception:
+                pass
+            return Response(
+                content=body_bytes,
+                status_code=response.status_code,
+                headers=dict(response.headers),
+                media_type=response.media_type,
+            )
+        return response
+
+
+app.add_middleware(_SnapshotMiddleware)
 
 
 # ── Dashboard auth middleware ────────────────────────────────────────────────
