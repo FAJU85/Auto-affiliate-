@@ -444,11 +444,23 @@ async def accounts():
     social = {}
     for key in ("mastodon", "threads", "tumblr", "x", "facebook", "instagram"):
         c = social_raw.get(key, {})
-        social[key] = {
+        entry: dict = {
             "connected": bool(c.get("connected")),
             "handle":    c.get("handle", ""),
             "instance":  c.get("instance", ""),
         }
+        # Return credential fields so the frontend can repopulate form inputs.
+        # Sensitive values are masked — presence is confirmed without exposing secrets.
+        if key == "x":
+            for field in ("consumer_key", "consumer_secret", "access_token", "access_secret"):
+                entry[field] = "••••" if c.get(field) else ""
+        elif key == "facebook":
+            entry["page_access_token"] = "••••" if c.get("page_access_token") else ""
+            entry["page_id"] = c.get("page_id", "")
+        elif key == "instagram":
+            entry["access_token"] = "••••" if c.get("access_token") else ""
+            entry["ig_user_id"] = c.get("ig_user_id", "")
+        social[key] = entry
 
     return {
         "bluesky": {
