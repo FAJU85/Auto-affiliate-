@@ -1646,6 +1646,20 @@ function renderSocialPlatforms(social) {
       qcBadge.textContent = conn?.connected ? `✓ ${conn.handle||''}` : '✗';
     }
     if (handleEl && conn?.handle) handleEl.value = conn.handle;
+    // Repopulate credential fields — show mask placeholder so user knows values are saved
+    const setField = (id, val) => { const el = document.getElementById(id); if (el && val) el.value = val; };
+    if (p === 'x') {
+      setField(`qc-x-consumer-key`,    conn?.consumer_key);
+      setField(`qc-x-consumer-secret`, conn?.consumer_secret);
+      setField(`qc-x-access-token`,    conn?.access_token);
+      setField(`qc-x-access-secret`,   conn?.access_secret);
+    } else if (p === 'facebook') {
+      setField(`qc-facebook-pass`,    conn?.page_access_token);
+      setField(`qc-facebook-page-id`, conn?.page_id);
+    } else if (p === 'instagram') {
+      setField(`qc-instagram-pass`,       conn?.access_token);
+      setField(`qc-instagram-ig-user-id`, conn?.ig_user_id);
+    }
   }
 }
 
@@ -1919,16 +1933,22 @@ async function quickSaveAll() {
 
   const results = [];
 
+  // Strip mask placeholders — "••••" means "unchanged, keep what's on server"
+  const unmasked = v => (v && v !== '••••') ? v : undefined;
+
   // X — needs 4 API keys
   const xHandle = document.getElementById('qc-x-handle')?.value.trim();
   if (xHandle) {
-    const d = await api('/api/social/x/credentials', 'POST', {
-      handle:          xHandle,
-      consumer_key:    document.getElementById('qc-x-consumer-key')?.value.trim(),
-      consumer_secret: document.getElementById('qc-x-consumer-secret')?.value.trim(),
-      access_token:    document.getElementById('qc-x-access-token')?.value.trim(),
-      access_secret:   document.getElementById('qc-x-access-secret')?.value.trim(),
-    });
+    const body = { handle: xHandle };
+    const ck = unmasked(document.getElementById('qc-x-consumer-key')?.value.trim());
+    const cs = unmasked(document.getElementById('qc-x-consumer-secret')?.value.trim());
+    const at = unmasked(document.getElementById('qc-x-access-token')?.value.trim());
+    const as_ = unmasked(document.getElementById('qc-x-access-secret')?.value.trim());
+    if (ck) body.consumer_key    = ck;
+    if (cs) body.consumer_secret = cs;
+    if (at) body.access_token    = at;
+    if (as_) body.access_secret  = as_;
+    const d = await api('/api/social/x/credentials', 'POST', body);
     results.push(d?.ok ? 'x: ✓ saved' : `x: ✗ ${d?.error || 'failed'}`);
   } else {
     results.push('x: skipped (no username)');

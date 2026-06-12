@@ -322,21 +322,35 @@ async def store_credentials(platform: str, request: Request):
         raise HTTPException(400, "handle required")
 
     conns = load_connections()
-    entry: dict = {"connected": True, "handle": handle, "connectedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ")}
+    # Merge into existing entry so omitted fields (partial update) keep their stored value
+    existing = conns.get(platform, {})
+    entry: dict = {**existing, "connected": True, "handle": handle, "connectedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ")}
+
+    def _set(field: str, *keys: str) -> None:
+        """Write first non-empty value from body keys into entry[field], if provided."""
+        for k in keys:
+            v = body.get(k)
+            if v:
+                entry[field] = v
+                return
 
     if platform == "x":
-        entry["consumer_key"]    = body.get("consumer_key", "")
-        entry["consumer_secret"] = body.get("consumer_secret", "")
-        entry["access_token"]    = body.get("access_token", "")
-        entry["access_secret"]   = body.get("access_secret", "")
+        _set("consumer_key",    "consumer_key")
+        _set("consumer_secret", "consumer_secret")
+        _set("access_token",    "access_token")
+        _set("access_secret",   "access_secret")
     elif platform == "facebook":
-        entry["page_access_token"] = body.get("page_access_token", "") or body.get("password", "")
-        entry["page_id"]           = body.get("page_id", "") or handle
+        _set("page_access_token", "page_access_token", "password")
+        _set("page_id",           "page_id")
+        if not entry.get("page_id"):
+            entry["page_id"] = handle
     elif platform == "instagram":
-        entry["access_token"] = body.get("access_token", "") or body.get("password", "")
-        entry["ig_user_id"]   = body.get("ig_user_id", "") or body.get("page_id", "") or handle
+        _set("access_token", "access_token", "password")
+        _set("ig_user_id",   "ig_user_id", "page_id")
+        if not entry.get("ig_user_id"):
+            entry["ig_user_id"] = handle
     else:
-        entry["password"] = body.get("password", "")
+        _set("password", "password")
 
     conns[platform] = entry
     save_connections(conns)
