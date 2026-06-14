@@ -176,6 +176,46 @@
       "bug": "Pipeline sometimes posted plain (non-affiliate) Amazon URLs \u2014 zero revenue",
       "fix": "Added guard: never post if deeplink == original URL without monetization",
       "assertion": "GET /api/status shows source-tracked product in lastRun"
+    },
+    {
+      "id": "json-not-imported-main",
+      "commit": "current",
+      "date": "2026-06-14",
+      "bug": "NameError: json not imported in main.py \u2014 _load_social_connections and _save_social_connections crashed on every call because json was only imported locally as _json in middleware",
+      "fix": "Added import json at top of main.py",
+      "assertion": "POST /api/social/bluesky/credentials returns ok=true"
+    },
+    {
+      "id": "bluesky-handle-dead-overwrite",
+      "commit": "current",
+      "date": "2026-06-14",
+      "bug": "save_bluesky_credentials assigned handle twice \u2014 first line set handle from body.get('handle') or body.get('password'), second line immediately overwrote it with body.get('handle') only, making first assignment dead code",
+      "fix": "Removed dead first assignment",
+      "assertion": "POST /api/social/bluesky/credentials with handle+password returns ok=true"
+    },
+    {
+      "id": "facebook-instagram-tumblr-403-trips-circuit-breaker",
+      "commit": "current",
+      "date": "2026-06-14",
+      "bug": "Facebook/Instagram/Tumblr raised RuntimeError on 401/403 (expired token), incorrectly incrementing circuit breaker failure counter and eventually halting all posts to those platforms",
+      "fix": "Changed 401/403 responses in _post_facebook, _post_instagram, _post_tumblr to raise AuthError (which circuit breaker skips for failure counting)",
+      "assertion": "AuthError raised inside circuit breaker call() does not increment failure counter"
+    },
+    {
+      "id": "bluesky-auth-error-treated-as-rate-limit",
+      "commit": "current",
+      "date": "2026-06-14",
+      "bug": "pipeline.py Bluesky except RuntimeError block checked 'rate' in str(e) to detect rate limits \u2014 AuthError (subclass of RuntimeError) could have been caught there and auto-paused the pipeline as if rate-limited",
+      "fix": "Added explicit except AuthError handler before except RuntimeError in pipeline Bluesky block",
+      "assertion": "AuthError from Bluesky does not set pipeline STATE['paused']"
+    },
+    {
+      "id": "arabic-ai-captions",
+      "commit": "cabc624",
+      "date": "2026-06-14",
+      "bug": "Groq/Mistral generated Arabic-language captions when product names/descriptions were in Arabic \u2014 captions rejected as unusable, wasting AI budget on every run",
+      "fix": "Prepend 'You must respond in English only' to every system prompt; added Arabic Unicode range check to _looks_usable()",
+      "assertion": "AI caption for Arabic product name is in English"
     }
   ],
   "learned_shapes": {
@@ -329,7 +369,7 @@
       ]
     }
   },
-  "run_count": 63,
+  "run_count": 70,
   "known_routes": [
     "/",
     "/api/accounts",

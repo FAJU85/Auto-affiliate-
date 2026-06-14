@@ -3,6 +3,7 @@
 import asyncio
 import csv
 import io
+import json
 import os
 import time
 from collections import defaultdict
@@ -716,9 +717,6 @@ def _save_social_connections(data: dict) -> None:
 @app.post("/api/social/bluesky/credentials")
 async def save_bluesky_credentials(request: Request):
     body = await request.json()
-    handle   = (body.get("handle") or body.get("password") or "").strip()
-    password = (body.get("password") or "").strip()
-    # handle may be passed as first positional field; check both keys
     handle   = (body.get("handle") or "").strip()
     password = (body.get("password") or "").strip()
     if not handle or not password:
@@ -945,8 +943,6 @@ async def diagnose():
     cap = float(s.get("dailyCostCap", 2.0))
     spend = round(budget.get_daily_spend(), 4)
     bsky_enabled = s.get("bskyEnabled", True)
-    sovrn_key = bool(os.environ.get("SOVRN_API_KEY"))
-
     checks = [
         {
             "name": "Bluesky handle",

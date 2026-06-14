@@ -16,6 +16,7 @@ import httpx
 
 from .ai import text as ai_text
 from .bluesky_client import post_to_bluesky
+from .utils.circuit_breaker import AuthError
 from .feeds.sovrn import get_sovrn_product
 from .feeds.takeads import get_takeads_product
 from .feeds.admitad import get_admitad_product
@@ -347,6 +348,8 @@ async def _execute(started: float) -> dict:
                 primary_uri = primary_uri or uri
                 any_success = True
                 logger.info(f"Posted OK → {uri}", "bluesky")
+            except AuthError as _err:
+                logger.error(f"Bluesky auth error (permanent) — check credentials: {_err}", "bluesky")
             except RuntimeError as _err:
                 _msg = str(_err)
                 if "rate" in _msg.lower() or "429" in _msg.lower():

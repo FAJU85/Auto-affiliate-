@@ -320,6 +320,8 @@ async def _post_facebook(caption: str, deeplink: str, image_url: str | None = No
             })
 
     if r.status_code not in (200, 201):
+        if r.status_code in (401, 403):
+            raise AuthError(f"Facebook auth error HTTP {r.status_code} — page token expired or invalid. Reconnect in Accounts.")
         raise RuntimeError(f"Facebook API HTTP {r.status_code}: {r.text[:300]}")
     post_id = r.json().get("id", "")
     uri = f"https://facebook.com/{post_id}" if post_id else "https://facebook.com"
@@ -367,6 +369,8 @@ async def _post_instagram(caption: str, deeplink: str, image_url: str | None = N
             "access_token": access_token,
         })
         if r1.status_code not in (200, 201):
+            if r1.status_code in (401, 403):
+                raise AuthError(f"Instagram auth error HTTP {r1.status_code} — token expired or invalid. Reconnect in Accounts.")
             raise RuntimeError(f"Instagram container HTTP {r1.status_code}: {r1.text[:300]}")
         container_id = r1.json().get("id")
         if not container_id:
@@ -497,6 +501,8 @@ async def _post_tumblr(caption: str, deeplink: str) -> str:
             json={"content": [{"type": "text", "text": text}]},
         )
     if r.status_code not in (200, 201):
+        if r.status_code in (401, 403):
+            raise AuthError(f"Tumblr auth error HTTP {r.status_code} — token expired or revoked. Reconnect in Accounts.")
         raise RuntimeError(f"Tumblr post failed HTTP {r.status_code}: {r.text[:200]}")
     post_id = r.json().get("response", {}).get("id", "")
     uri = f"https://{blog_name}.tumblr.com/post/{post_id}" if post_id else f"https://{blog_name}.tumblr.com"
