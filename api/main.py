@@ -668,8 +668,21 @@ async def test_bluesky():
 
 @app.post("/api/accounts/bluesky/disconnect")
 async def disconnect_bluesky():
+    try:
+        from .bluesky_client import clear_session as _bsky_clear
+        _bsky_clear()
+    except Exception:
+        pass
     settings.save_settings({"bskyEnabled": False})
     return {"ok": True}
+
+
+@app.post("/api/accounts/bluesky/clear-session")
+async def clear_bluesky_session():
+    """Force a fresh login on next pipeline run (clears cached JWT)."""
+    from .bluesky_client import clear_session as _bsky_clear
+    _bsky_clear()
+    return {"ok": True, "message": "Bluesky session cleared — next run will log in fresh"}
 
 
 @app.post("/api/accounts/bluesky/enable")
