@@ -47,6 +47,9 @@ def _build_prompts(product: dict, trends: list) -> tuple[str, str]:
     # craft a better one following the same psychological angle.
     cta_phrases: list[str] = s.get("ctaPhrases") or []
     base_system = s.get("postSystemPrompt", "Write a short affiliate post.")
+    # Always enforce English — prepend unconditionally so no system prompt override drops it
+    if not base_system.lower().startswith("you must"):
+        base_system = "You must respond in English only, regardless of the product name or description language. " + base_system
     if cta_phrases:
         cta_examples = "  " + "\n  ".join(cta_phrases[:6])
         cta_instruction = (
@@ -83,7 +86,11 @@ def _looks_usable(text: str) -> bool:
     import re
     if not text or len(text) < 20:
         return False
-    # Reject non-English: >40% non-ASCII chars
+    # Reject Arabic / RTL scripts outright
+    arabic_chars = sum(1 for c in text if '؀' <= c <= 'ۿ' or 'ݐ' <= c <= 'ݿ')
+    if arabic_chars > 2:
+        return False
+    # Reject non-English: >40% non-ASCII chars (catches other non-Latin scripts)
     non_ascii = sum(1 for c in text if ord(c) > 127)
     if non_ascii / len(text) > 0.40:
         return False
