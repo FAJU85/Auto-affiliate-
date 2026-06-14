@@ -1,41 +1,5 @@
 {
-  "failures": [
-    {
-      "test": "shape:/api/settings",
-      "detail": "lost keys {'bskyEnabled'}",
-      "ts": "2026-06-12T16:31:13Z"
-    },
-    {
-      "test": "wrong-method:/api/network/test:POST",
-      "detail": "{'GET'}",
-      "ts": "2026-06-12T16:31:18Z"
-    },
-    {
-      "test": "wrong-method:/api/schedule/config:GET",
-      "detail": "{'POST'}",
-      "ts": "2026-06-12T16:31:18Z"
-    },
-    {
-      "test": "wrong-method:/api/settings:GET",
-      "detail": "{'POST'}",
-      "ts": "2026-06-12T16:31:18Z"
-    },
-    {
-      "test": "missing-route:/api/social/facebook/credentials",
-      "detail": "methods={'POST'}",
-      "ts": "2026-06-12T16:31:18Z"
-    },
-    {
-      "test": "missing-route:/api/social/instagram/credentials",
-      "detail": "methods={'POST'}",
-      "ts": "2026-06-12T16:31:18Z"
-    },
-    {
-      "test": "missing-route:/api/social/x/credentials",
-      "detail": "methods={'POST'}",
-      "ts": "2026-06-12T16:31:18Z"
-    }
-  ],
+  "failures": [],
   "regressions": [
     {
       "id": "env-status-404",
@@ -140,6 +104,14 @@
       "bug": "X, Facebook, Instagram credentials disappeared after page refresh \u2014 not persisted to social-connections.json",
       "fix": "Store credentials to social-connections.json on save",
       "assertion": "GET /api/accounts returns connected field for social platforms"
+    },
+    {
+      "id": "social-credential-routes-missing",
+      "commit": "current",
+      "date": "2026-06-14",
+      "bug": "POST /api/social/x/credentials, /facebook/credentials, /instagram/credentials returned 404 \u2014 dashboard Save button silently dropped all X/Facebook/Instagram credentials",
+      "fix": "Added four credential save routes in main.py; Bluesky client now reads from social-connections.json as fallback when env vars not set",
+      "assertion": "POST /api/social/x/credentials with handle returns ok=true"
     },
     {
       "id": "dedup-ttl-slo-collapse",
@@ -357,7 +329,7 @@
       ]
     }
   },
-  "run_count": 53,
+  "run_count": 57,
   "known_routes": [
     "/",
     "/api/accounts",
@@ -381,7 +353,11 @@
     "/api/schedule/suggest",
     "/api/settings",
     "/api/slo",
+    "/api/social/bluesky/credentials",
+    "/api/social/facebook/credentials",
+    "/api/social/instagram/credentials",
     "/api/social/status",
+    "/api/social/x/credentials",
     "/api/stats",
     "/api/status",
     "/health"

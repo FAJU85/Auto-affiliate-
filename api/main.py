@@ -557,7 +557,9 @@ async def post_settings(request: Request):
 async def accounts():
     import json as _json
     from pathlib import Path as _Path
-    has_creds = bool(os.environ.get("BSKY_HANDLE") and os.environ.get("BSKY_APP_PASSWORD"))
+    from .bluesky_client import _bsky_credentials
+    _bh, _bp = _bsky_credentials()
+    has_creds = bool(_bh and _bp)
     bsky_enabled = settings.get_settings().get("bskyEnabled", True)
     connected = has_creds and bsky_enabled
 
@@ -631,15 +633,10 @@ async def test_bluesky():
             "error": f"Bluesky rate limit active until {reset_dt.strftime('%H:%M:%S')} UTC ({wait_s}s). Login blocked automatically — no need to retry.",
         }
 
-    handle   = (os.environ.get("BSKY_HANDLE",        "") or "").strip()
-    password = (os.environ.get("BSKY_APP_PASSWORD", "") or "").strip()
+    from .bluesky_client import _bsky_credentials
+    handle, password = _bsky_credentials()
     if not handle or not password:
-        creds_missing = []
-        if not handle:
-            creds_missing.append("BSKY_HANDLE")
-        if not password:
-            creds_missing.append("BSKY_APP_PASSWORD")
-        return {"ok": False, "error": f"Missing secrets: {', '.join(creds_missing)}"}
+        return {"ok": False, "error": "Bluesky credentials not set — enter them in Accounts or set BSKY_HANDLE / BSKY_APP_PASSWORD in Space Secrets"}
 
     _last_bsky_test = time.time()
     try:
@@ -678,6 +675,112 @@ async def disconnect_bluesky():
 @app.post("/api/accounts/bluesky/enable")
 async def enable_bluesky():
     settings.save_settings({"bskyEnabled": True})
+    return {"ok": True}
+
+
+# ── Social credential save endpoints ─────────────────────────────────────────
+# These persist credentials to social-connections.json so the pipeline can
+# post without requiring HuggingFace Space Secrets for every platform.
+
+def _social_connections_file() -> Path:
+    return Path(os.environ.get("DATA_DIR", "/data")) / "social-connections.json"
+
+
+def _load_social_connections() -> dict:
+    f = _social_connections_file()
+    try:
+        return json.loads(f.read_text()) if f.exists() else {}
+    except Exception:
+        return {}
+
+
+def _save_social_connections(data: dict) -> None:
+    f = _social_connections_file()
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(json.dumps(data, indent=2))
+
+
+@app.post("/api/social/bluesky/credentials")
+async def save_bluesky_credentials(request: Request):
+    body = await request.json()
+    handle   = (body.get("handle") or body.get("password") or "").strip()
+    password = (body.get("password") or "").strip()
+    # handle may be passed as first positional field; check both keys
+    handle   = (body.get("handle") or "").strip()
+    password = (body.get("password") or "").strip()
+    if not handle or not password:
+        return {"ok": False, "error": "handle and password are required"}
+    conns = _load_social_connections()
+    conns["bluesky"] = {"handle": handle, "password": password, "connected": True}
+    _save_social_connections(conns)
+    # Also inject into current process env so pipeline picks them up immediately
+    os.environ["BSKY_HANDLE"] = handle
+    os.environ["BSKY_APP_PASSWORD"] = password
+    settings.save_settings({"bskyEnabled": True})
+    return {"ok": True}
+
+
+@app.post("/api/social/x/credentials")
+async def save_x_credentials(request: Request):
+    body = await request.json()
+    handle          = (body.get("handle") or "").strip().lstrip("@")
+    consumer_key    = (body.get("consumer_key") or "").strip()
+    consumer_secret = (body.get("consumer_secret") or "").strip()
+    access_token    = (body.get("access_token") or "").strip()
+    access_secret   = (body.get("access_secret") or "").strip()
+    if not handle:
+        return {"ok": False, "error": "handle is required"}
+    conns = _load_social_connections()
+    existing = conns.get("x", {})
+    conns["x"] = {
+        "handle":          handle,
+        "consumer_key":    consumer_key    or existing.get("consumer_key", ""),
+        "consumer_secret": consumer_secret or existing.get("consumer_secret", ""),
+        "access_token":    access_token    or existing.get("access_token", ""),
+        "access_secret":   access_secret   or existing.get("access_secret", ""),
+        "connected":       True,
+    }
+    _save_social_connections(conns)
+    return {"ok": True}
+
+
+@app.post("/api/social/facebook/credentials")
+async def save_facebook_credentials(request: Request):
+    body = await request.json()
+    handle            = (body.get("handle") or "").strip()
+    page_id           = (body.get("page_id") or handle).strip()
+    page_access_token = (body.get("page_access_token") or "").strip()
+    if not handle:
+        return {"ok": False, "error": "handle is required"}
+    conns = _load_social_connections()
+    existing = conns.get("facebook", {})
+    conns["facebook"] = {
+        "handle":            handle,
+        "page_id":           page_id           or existing.get("page_id", ""),
+        "page_access_token": page_access_token or existing.get("page_access_token", ""),
+        "connected":         bool(page_id and (page_access_token or existing.get("page_access_token"))),
+    }
+    _save_social_connections(conns)
+    return {"ok": True}
+
+
+@app.post("/api/social/instagram/credentials")
+async def save_instagram_credentials(request: Request):
+    body = await request.json()
+    handle       = (body.get("handle") or "").strip().lstrip("@")
+    ig_user_id   = (body.get("ig_user_id") or handle).strip()
+    access_token = (body.get("access_token") or "").strip()
+    if not handle:
+        return {"ok": False, "error": "handle is required"}
+    conns = _load_social_connections()
+    existing = conns.get("instagram", {})
+    conns["instagram"] = {
+        "handle":       handle,
+        "ig_user_id":   ig_user_id   or existing.get("ig_user_id", ""),
+        "access_token": access_token or existing.get("access_token", ""),
+        "connected":    bool(ig_user_id and (access_token or existing.get("access_token"))),
+    }
+    _save_social_connections(conns)
     return {"ok": True}
 
 

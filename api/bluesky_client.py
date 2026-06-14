@@ -270,14 +270,29 @@ async def _upload_image(access_jwt: str, image_bytes: bytes) -> dict | None:
 
 # ── Core async post ───────────────────────────────────────────────────────────
 
-async def _post_async(caption: str, deeplink: str, image_bytes: bytes | None, product: dict) -> str:
+def _bsky_credentials() -> tuple[str, str]:
+    """Return (handle, password) — env vars take priority, then social-connections.json."""
     handle   = (os.environ.get("BSKY_HANDLE",        "") or "").strip()
     password = (os.environ.get("BSKY_APP_PASSWORD", "") or "").strip()
     if not handle or not password:
+        import json as _json
+        conn_file = Path(os.environ.get("DATA_DIR", "/data")) / "social-connections.json"
+        try:
+            conns = _json.loads(conn_file.read_text()) if conn_file.exists() else {}
+            bsky = conns.get("bluesky", {})
+            handle   = handle   or (bsky.get("handle")   or "").strip()
+            password = password or (bsky.get("password") or "").strip()
+        except Exception:
+            pass
+    return handle, password
+
+
+async def _post_async(caption: str, deeplink: str, image_bytes: bytes | None, product: dict) -> str:
+    handle, password = _bsky_credentials()
+    if not handle or not password:
         raise RuntimeError(
-            "Bluesky credentials missing — set BSKY_HANDLE and BSKY_APP_PASSWORD in Space Secrets "
-            f"(BSKY_HANDLE {'set' if handle else 'MISSING'}, "
-            f"BSKY_APP_PASSWORD {'set' if password else 'MISSING'})"
+            "Bluesky credentials missing — enter them in Accounts → Bluesky or set "
+            "BSKY_HANDLE and BSKY_APP_PASSWORD in Space Secrets"
         )
 
     access_jwt, did = await _get_session(handle, password)

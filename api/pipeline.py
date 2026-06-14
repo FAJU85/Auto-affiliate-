@@ -281,9 +281,12 @@ async def _execute(started: float) -> dict:
         if not s.get("bskyEnabled", True):
             platforms = [p for p in platforms if p != "bluesky"]
             logger.warn("Bluesky disabled — skipping, continuing with other platforms", "bluesky")
-        elif not os.environ.get("BSKY_HANDLE") or not os.environ.get("BSKY_APP_PASSWORD"):
-            platforms = [p for p in platforms if p != "bluesky"]
-            logger.warn("Bluesky credentials missing — skipping, continuing with other platforms", "bluesky")
+        else:
+            from .bluesky_client import _bsky_credentials
+            _h, _p = _bsky_credentials()
+            if not _h or not _p:
+                platforms = [p for p in platforms if p != "bluesky"]
+                logger.warn("Bluesky credentials missing — skipping, continuing with other platforms", "bluesky")
 
     if not platforms:
         return _record({"success": False, "error": "No platforms available to post to"})
