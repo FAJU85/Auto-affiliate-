@@ -1,69 +1,49 @@
-# CLAUDE.md — GOVERNANCE OPERATING SYSTEM ENTRY POINT
-> **Document Version:** 1.0.0 | **Scope:** All sessions, all projects, all agents
-> **Authority:** This file is the mandatory bootstrap for every Claude Code session.
+# CLAUDE.md — Auto-Affiliate Bot
 
----
+## What this project is
+FastAPI backend (`api/`) + single-page dashboard (`src/dashboard.html`).
+Runs on HuggingFace Spaces (port 7860). Posts affiliate products to Bluesky,
+Mastodon, X, Instagram, Facebook, Threads, Tumblr via a scheduled pipeline.
 
-## MANDATORY PRE-TASK PROTOCOL
+## Stack
+- **Backend:** Python 3.11, FastAPI, APScheduler, httpx
+- **AI:** Groq / Mistral (text generation via `api/ai/text.py`)
+- **Affiliate feeds:** SOVRN → TakeAds → Admitad → Travelpayouts (priority order)
+- **Tests:** pytest, pytest-asyncio, playwright (E2E)
+- **Linter:** ruff
 
-Before touching any code, file, or external system in a new project or session, you MUST read and internalize all six governance files in this order:
+## Key files
+| File | Purpose |
+|---|---|
+| `api/main.py` | All FastAPI routes |
+| `api/pipeline.py` | Core posting pipeline — `run_pipeline()` |
+| `api/feeds/` | One file per affiliate network |
+| `api/utils/circuit_breaker.py` | `CircuitBreaker` + `AuthError` |
+| `api/utils/settings.py` | Persistent settings with `DEFAULTS` dict |
+| `api/utils/metrics.py` | Run history, dedup, click tracking |
+| `api/social_post.py` | Per-platform posting logic |
+| `src/dashboard.html` | Entire frontend (single file) |
+| `api/tests/e2e/` | Playwright browser tests |
+| `core/orchestrator.py` | Runs only tests for changed files |
+| `scripts/pattern_detector.py` | Detects API response shape drift |
 
-| # | File | Purpose |
-|---|------|---------|
-| 1 | [GLOSSARY.MD](./GLOSSARY.MD) | Canonical agent/term definitions — the shared vocabulary |
-| 2 | [WIKI.MD](./WIKI.MD) | System architecture index and schema registry (SSOT) |
-| 3 | [PROTOCOL.MD](./PROTOCOL.MD) | Universal multi-agent execution engine — MVAT triad, quality gates, IAC contracts |
-| 4 | [PLAYBOOK.MD](./PLAYBOOK.MD) | Override layer — pre-approved mutation patterns, CI/CD pipeline template |
-| 5 | [CANVAS.MD](./CANVAS.MD) | Project initialization canvas — scope contract, session mode, MVB §6.4 |
-| 6 | [CLAUDE.md](./CLAUDE.md) | This file — entry point and enforcement summary |
+## Rules that matter
+- **`AuthError(RuntimeError)`** — permanent credential failures (403, not connected).
+  Never trips the circuit breaker. Use it instead of plain `RuntimeError` in social_post.py.
+- **`_find_image()` returns `(bytes, url)`** — bytes for Bluesky/Mastodon/X,
+  url for Instagram/Facebook/Threads (Meta fetches server-side).
+- **DEFAULTS in settings.py** — every key the frontend reads must exist here
+  or GET /api/settings will have an unstable shape.
+- **Never commit real credentials.** `rzekl.com` affiliate wrapper and
+  `aff_short_key` must be preserved in Admitad links.
+- **Branch:** `claude/zealous-carson-oMr43` — always develop and push here.
 
-**There are no exceptions.** A brief is not enough to start work. The governance system is already decided.
+## Session start gate
+`api/tests/test_qa_suite.py` + `test_qa_intelligent.py` run automatically.
+95 checks must pass before feature work. Do not break this gate.
 
----
-
-## OPERATING RULES (SUMMARY)
-
-### Identity & Roles
-- You operate within the **MVAT triad**: Orchestrator → Builder → Validator.
-- Never collapse roles. The Validator is always a separate reasoning pass.
-- Consult GLOSSARY.MD §AGENT-REGISTRY for full role definitions.
-
-### Before Every Task
-1. Read the task brief.
-2. If the brief is ambiguous, ask **ONE targeted question** (CANVAS.MD §6.4 Minimum Viable Brief).
-3. Never ask more than one question. Never ask the same question twice.
-4. Confirm scope against CANVAS.MD before writing code.
-
-### Quality Gates (non-negotiable)
-- Cyclomatic complexity: **max 3** per function
-- Function length: **max 50 lines**
-- Dead code: **zero tolerance**
-- Line coverage: **≥ 85%**
-- Branch coverage: **≥ 75%**
-- Full gate definitions in PROTOCOL.MD §QUALITY-GATES
-
-### Execution Lock
-- One active task at a time. No parallel mutations on the same file.
-- IAC contract must be drafted before any cross-agent handoff.
-- Schema in PROTOCOL.MD §IAC-CONTRACT
-
-### Autonomy Thresholds
-- **Session mode** (default): no approval tokens required for in-scope work.
-- Escalate to human only for: out-of-scope changes, irreversible destructive actions, credential exposure.
-- Autonomous reaction pathways defined in PROTOCOL.MD §AUTONOMOUS-REACTIONS
-
-### State & History
-- All architecture decisions logged in WIKI.MD as SSOT.
-- All overrides and mutations logged via PLAYBOOK.MD execution contract.
-- Never duplicate information across files — single source of truth always.
-
----
-
-## ENFORCEMENT
-
-Violation of any rule in this governance system is a **blocking error**.  
-Stop. Log the violation. Ask one clarifying question if needed. Never silently skip a gate.
-
----
-
-*This governance operating system was designed to run without human intervention for every routine task. The brief is all you need. Everything else is already decided here.*
+## Before every task
+1. State what you're attempting and the success criteria.
+2. Make the change.
+3. Run the relevant test: `pytest api/tests/` or `python core/orchestrator.py`.
+4. End with: **Done: X. Blocked: Y. Why: Z.**
