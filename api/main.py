@@ -1229,3 +1229,112 @@ async def redirect(tracking_id: str):
     if target:
         return RedirectResponse(target, status_code=302)
     return RedirectResponse("/", status_code=302)
+
+
+# ── Affiliate conversion postbacks ─────────────────────────────────────────
+
+@app.post("/api/affiliate/postback")
+async def affiliate_postback(request: Request):
+    """Receive affiliate conversion postbacks from networks.
+
+    Networks call this URL when a user makes a purchase via our affiliate link.
+    SOVRN:       POST /api/affiliate/postback?tid={tracking_id}&commission={amount}&network=sovrn
+    TakeAds:     POST /api/affiliate/postback?tid={tracking_id}&commission={amount}&network=takeads
+    Generic:     JSON body with tracking_id, commission_usd, network, order_id
+
+    Security: validate the source via a shared secret in production.
+    """
+    import hmac as _hmac
+    import hashlib as _hl
+
+    # Accept both query-params (GET-style postbacks) and JSON body
+    params = dict(request.query_params)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    tracking_id = (
+        params.get("tid") or params.get("tracking_id")
+        or body.get("tracking_id") or body.get("tid") or ""
+    ).strip()
+    try:
+        commission_usd = float(
+            params.get("commission") or params.get("commission_usd")
+            or body.get("commission_usd") or body.get("commission") or 0
+        )
+    except (ValueError, TypeError):
+        commission_usd = 0.0
+    network = (
+        params.get("network") or body.get("network") or "unknown"
+    ).strip().lower()
+    order_id = (
+        params.get("order_id") or body.get("order_id") or ""
+    ).strip()
+
+    # Optional shared-secret validation (set POSTBACK_SECRET in Space Secrets)
+    secret = os.environ.get("POSTBACK_SECRET", "")
+    if secret:
+        sig = params.get("sig") or body.get("sig") or ""
+        expected = _hmac.new(secret.encode(), tracking_id.encode(), _hl.sha256).hexdigest()
+        if not _hmac.compare_digest(sig, expected):
+            return JSONResponse({"ok": False, "error": "invalid signature"}, status_code=403)
+
+    if not tracking_id:
+        return {"ok": False, "error": "tracking_id required"}
+    if commission_usd < 0:
+        return {"ok": False, "error": "commission must be non-negative"}
+
+    result = metrics.record_conversion(tracking_id, commission_usd, network, order_id)
+    if not result:
+        logger.warn(f"Postback for unknown tracking_id={tracking_id!r} — no matching run")
+        return {"ok": False, "error": "tracking_id not found"}
+
+    logger.info(
+        f"Conversion recorded: {tracking_id} +${commission_usd:.2f} via {network}",
+        "postback",
+    )
+    return {
+        "ok": True,
+        "tracking_id": tracking_id,
+        "commission_usd": commission_usd,
+        "network": network,
+        "total_commission_usd": result.get("totalCommissionUsd", 0),
+    }
+
+
+@app.get("/api/revenue")
+async def revenue_summary():
+    """Revenue dashboard — conversions, commission by network, daily breakdown."""
+    runs = metrics.get_recent_runs(500)
+    total_commission = metrics.get_total_commission()
+    by_network = metrics.get_commission_by_network()
+    conversion_count = metrics.get_conversion_count()
+    total_clicks = metrics.get_total_clicks()
+
+    # Daily revenue breakdown
+    from collections import defaultdict as _dd
+    daily: dict = _dd(lambda: {"conversions": 0, "commission_usd": 0.0, "clicks": 0})
+    for r in runs:
+        day = str(r.get("timestamp", ""))[:10]
+        if not day:
+            continue
+        daily[day]["clicks"] += int(r.get("clicks", 0))
+        for c in r.get("conversions", []):
+            daily[day]["conversions"] += 1
+            daily[day]["commission_usd"] = round(
+                daily[day]["commission_usd"] + c.get("commission_usd", 0), 4
+            )
+
+    daily_list = [{"date": d, **v} for d, v in sorted(daily.items())][-30:]
+
+    epc = round(total_commission / total_clicks, 4) if total_clicks else 0.0  # earnings per click
+
+    return {
+        "total_commission_usd": total_commission,
+        "conversion_count": conversion_count,
+        "total_clicks": total_clicks,
+        "epc_usd": epc,
+        "by_network": by_network,
+        "daily": daily_list,
+    }
