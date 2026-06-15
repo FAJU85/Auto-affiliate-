@@ -26,6 +26,7 @@ from .utils.platform_guardian import check_allowed
 from .utils import budget as budget_util
 from .utils import logger, metrics, settings
 from .utils.telemetry import Timer
+from .utils.product_scorer import pick_best, score_product
 
 STATIC_TRENDS = [
     "summer deals", "gift ideas", "tech upgrades", "home essentials",
@@ -64,36 +65,48 @@ async def _try_network(name: str, fn, timer_key: str) -> dict | None:
 
 
 async def _get_product() -> dict | None:
-    """Try each configured network in priority order; return first successful product.
+    """Fetch candidates from all configured networks and return the highest-scoring one.
 
-    Priority:
-      1. SOVRN   — curated product pool, always monetized
-      2. TakeAds — active affiliate programs, highest commission first
-      3. Admitad — XML feed (requires ADMITAD_FEED_URL)
-      4. Travelpayouts — live flight deals (travel niche)
+    Scoring weights: commission 40%, price band 30%, has image 20%, description 10%.
+    This ensures we always post the most revenue-valuable product available, not
+    just whichever network responds first.
     """
+    candidates: list[dict] = []
+
+    async def _try(name: str, fn, key: str) -> None:
+        p = await _try_network(name, fn, key)
+        if p:
+            candidates.append(p)
+
+    # Gather one candidate from each configured network concurrently
+    tasks = []
     if os.environ.get("SOVRN_API_KEY"):
-        product = await _try_network("SOVRN", get_sovrn_product, "sovrn_fetch")
-        if product:
-            return product
-
+        tasks.append(_try("SOVRN", get_sovrn_product, "sovrn_fetch"))
     if os.environ.get("TAKEADS_API_KEY"):
-        product = await _try_network("TakeAds", get_takeads_product, "takeads_fetch")
-        if product:
-            return product
-
+        tasks.append(_try("TakeAds", get_takeads_product, "takeads_fetch"))
     if os.environ.get("ADMITAD_FEED_URL"):
-        product = await _try_network("Admitad", get_admitad_product, "admitad_fetch")
-        if product:
-            return product
-
+        tasks.append(_try("Admitad", get_admitad_product, "admitad_fetch"))
     if os.environ.get("TRAVELPAYOUTS_TOKEN"):
-        product = await _try_network("Travelpayouts", get_travelpayouts_product, "travelpayouts_fetch")
-        if product:
-            return product
+        tasks.append(_try("Travelpayouts", get_travelpayouts_product, "travelpayouts_fetch"))
 
-    logger.warn("All product networks failed or unconfigured — no product available", "pipeline")
-    return None
+    if not tasks:
+        logger.warn("All product networks unconfigured — no product available", "pipeline")
+        return None
+
+    await asyncio.gather(*tasks)
+
+    if not candidates:
+        logger.warn("All product networks failed — no product available", "pipeline")
+        return None
+
+    best = pick_best(candidates)
+    if len(candidates) > 1:
+        score = score_product(best)
+        logger.info(
+            f"Scored {len(candidates)} candidates — best: {best['name']!r} "            f"({best['source']}) score={score.total:.0%}",
+            "pipeline",
+        )
+    return best
 
 
 # ── Trends ───────────────────────────────────────────────────────────────────
