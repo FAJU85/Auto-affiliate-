@@ -67,6 +67,7 @@ def get_base_url() -> str:
 # ── Platform registry ──────────────────────────────────────────────────────────
 
 PLATFORMS = {
+    "bluesky":   {"name": "Bluesky",      "icon": "🦋", "auth": "credentials"},
     "mastodon":  {"name": "Mastodon",    "icon": "🐘", "auth": "oauth2",      "needs_instance": True},
     "threads":   {"name": "Threads",     "icon": "🧵", "auth": "oauth2"},
     "tumblr":    {"name": "Tumblr",      "icon": "📝", "auth": "oauth2"},
@@ -334,7 +335,16 @@ async def store_credentials(platform: str, request: Request):
                 entry[field] = v
                 return
 
-    if platform == "x":
+    if platform == "bluesky":
+        _set("password", "password")
+        # Inject into current process env so pipeline picks it up immediately
+        import os as _os
+        _os.environ["BSKY_HANDLE"] = handle
+        if entry.get("password"):
+            _os.environ["BSKY_APP_PASSWORD"] = entry["password"]
+        from .utils import settings as _settings
+        _settings.save_settings({"bskyEnabled": True})
+    elif platform == "x":
         _set("consumer_key",    "consumer_key")
         _set("consumer_secret", "consumer_secret")
         _set("access_token",    "access_token")

@@ -134,7 +134,7 @@ class TestPipelineFallthrough:
         with patch.object(pipeline, "_get_product", AsyncMock(return_value=product)):
             with patch("api.utils.metrics.was_posted_within", return_value=False):
                 with patch("api.ai.text.generate_post_text", AsyncMock(return_value="Great deal!")):
-                    with patch.object(pipeline, "_find_image", AsyncMock(return_value=None)):
+                    with patch.object(pipeline, "_find_image", AsyncMock(return_value=(None, None))):
                         with patch.object(pipeline, "check_allowed", return_value=(True, "allowed")):
                             with patch.object(pipeline, "post_to_platform", AsyncMock(return_value="https://mastodon.social/@u/1")):
                                 result = await pipeline.run_pipeline()
@@ -169,7 +169,7 @@ class TestPipelineFallthrough:
         with patch.object(pipeline, "_get_product", AsyncMock(return_value=product)):
             with patch("api.utils.metrics.was_posted_within", return_value=False):
                 with patch("api.ai.text.generate_post_text", AsyncMock(return_value="Amazing!")):
-                    with patch.object(pipeline, "_find_image", AsyncMock(return_value=None)):
+                    with patch.object(pipeline, "_find_image", AsyncMock(return_value=(None, None))):
                         with patch.object(pipeline, "check_allowed", return_value=(True, "allowed")):
                             with patch.object(pipeline, "post_to_platform", AsyncMock(return_value="https://mastodon.social/@u/2")):
                                 result = await pipeline.run_pipeline()
@@ -222,7 +222,7 @@ class TestPipelineFallthrough:
         with patch.object(pipeline, "_get_product", AsyncMock(return_value=product)):
             with patch("api.utils.metrics.was_posted_within", return_value=False):
                 with patch("api.ai.text.generate_post_text", AsyncMock(return_value="Hot deal!")):
-                    with patch.object(pipeline, "_find_image", AsyncMock(return_value=None)):
+                    with patch.object(pipeline, "_find_image", AsyncMock(return_value=(None, None))):
                         with patch.object(pipeline, "check_allowed", return_value=(False, "outside posting hours")):
                             result = await pipeline.run_pipeline()
         assert result["success"] is False
@@ -458,9 +458,10 @@ class TestPipelineFindImage:
             "deeplink": "https://www.amazon.com/dp/B0001234",
         }
 
-        with patch.object(pipeline, "_fetch_amazon_og_image", AsyncMock(return_value=b"fakeimgbytes")):
-            result = await pipeline._find_image(amazon_product)
-        assert result == b"fakeimgbytes"
+        with patch.object(pipeline, "_fetch_amazon_og_image", AsyncMock(return_value=(b"fakeimgbytes", "https://img.amazon.com/x.jpg"))):
+            img, url = await pipeline._find_image(amazon_product)
+        assert img == b"fakeimgbytes"
+        assert url == "https://img.amazon.com/x.jpg"
 
     @pytest.mark.asyncio
     async def test_amazon_image_fallback_exception(self, monkeypatch, tmp_path):
@@ -475,5 +476,6 @@ class TestPipelineFindImage:
         }
 
         with patch.object(pipeline, "_fetch_amazon_og_image", AsyncMock(side_effect=Exception("scrape failed"))):
-            result = await pipeline._find_image(amazon_product)
-        assert result is None
+            img, url = await pipeline._find_image(amazon_product)
+        assert img is None
+        assert url is None

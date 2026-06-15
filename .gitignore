@@ -5,7 +5,10 @@ data/
 
 __pycache__/
 *.pyc
-.claude/
+# Track .claude/hooks and settings.json for session-start automation
+# but ignore personal/local overrides
+.claude/settings.local.json
+.claude/todos.md
 .coverage
 *.cover
 *,cover

@@ -3,6 +3,7 @@
 import asyncio
 import csv
 import io
+import json
 import os
 import time
 from collections import defaultdict
@@ -27,6 +28,7 @@ from fastapi.responses import (
 from . import pipeline
 from .ai import text as ai_text
 from .utils import budget, logger, metrics, settings
+from .utils.snapshot import record_response
 from .utils.circuit_breaker import all_statuses as cb_statuses, reset_breaker, reset_all as cb_reset_all
 from .utils.telemetry import golden_signals
 
@@ -41,10 +43,10 @@ ENV_KEYS = [
 REQUIRED_VARS: list[str] = []  # Bluesky is optional when other platforms are selected
 
 NETWORKS = [
-    {"key": "sovrn", "name": "SOVRN Commerce", "env": "SOVRN_API_KEY"},
-    {"key": "admitad", "name": "Admitad", "env": "ADMITAD_CLIENT_ID"},
-    {"key": "takeads", "name": "TakeAds", "env": "TAKEADS_API_KEY"},
-    {"key": "travelpayouts", "name": "Travelpayouts", "env": "TRAVELPAYOUTS_TOKEN"},
+    {"key": "sovrn",         "name": "SOVRN Commerce", "env": "SOVRN_API_KEY"},
+    {"key": "admitad",       "name": "Admitad",         "env": "ADMITAD_FEED_URL"},
+    {"key": "takeads",       "name": "TakeAds",         "env": "TAKEADS_API_KEY"},
+    {"key": "travelpayouts", "name": "Travelpayouts",   "env": "TRAVELPAYOUTS_TOKEN"},
 ]
 
 scheduler = AsyncIOScheduler(timezone="UTC")
@@ -82,6 +84,38 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="Affiliate Bot", lifespan=lifespan)
+
+
+class _SnapshotMiddleware(BaseHTTPMiddleware):
+    """Capture GET /api/* JSON response shapes into logs/snapshots/ when SNAPSHOT_DIR is set."""
+
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        path = request.url.path
+        if (
+            request.method == "GET"
+            and path.startswith("/api/")
+            and response.headers.get("content-type", "").startswith("application/json")
+        ):
+            import json as _json
+            from starlette.responses import Response
+            body_bytes = b""
+            async for chunk in response.body_iterator:
+                body_bytes += chunk
+            try:
+                record_response(path, _json.loads(body_bytes))
+            except Exception:
+                pass
+            return Response(
+                content=body_bytes,
+                status_code=response.status_code,
+                headers=dict(response.headers),
+                media_type=response.media_type,
+            )
+        return response
+
+
+app.add_middleware(_SnapshotMiddleware)
 
 
 # ── Dashboard auth middleware ────────────────────────────────────────────────
@@ -296,7 +330,57 @@ async def resume():
 
 @app.get("/api/schedule/config")
 async def schedule_config():
-    return {"cron": _cron(), "nextRun": _next_run(), "paused": pipeline.STATE["paused"]}
+    s = settings.get_settings()
+    return {
+        "cron":             _cron(),
+        "nextRun":          _next_run(),
+        "paused":           pipeline.STATE["paused"],
+        "schedulerEnabled": s.get("schedulerEnabled", True),
+        "postsPerDay":      s.get("postsPerDay", 1),
+        "postingHours":     s.get("postingHours", "8-22"),
+    }
+
+
+@app.post("/api/schedule/config")
+async def save_schedule_config(request: Request):
+    """Save schedule settings (postsPerDay, postingHours, schedulerEnabled)."""
+    try:
+        body = await request.json()
+        allowed = {k: body[k] for k in ("postsPerDay", "postingHours", "schedulerEnabled") if k in body}
+        if not allowed:
+            return {"ok": False, "error": "No valid schedule fields provided"}
+        err = _validate_settings(allowed)
+        if err:
+            return {"ok": False, "error": err}
+        settings.save_settings(allowed)
+        if "schedulerEnabled" in allowed:
+            _schedule_job()
+        return {"ok": True}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/api/schedule/suggest")
+async def schedule_suggest(n: int = 1):
+    """Return AI-suggested posting times based on posting hours setting."""
+    s = settings.get_settings()
+    hours = s.get("postingHours", "8-22")
+    try:
+        start, end = [int(x) for x in str(hours).split("-")]
+    except Exception:  # noqa: BLE001
+        start, end = 8, 22
+    window = (end - start) if end > start else (end + 24 - start)
+    step = max(1, window // max(n, 1))
+    suggested = []
+    for i in range(min(n, 8)):
+        h = (start + step * i) % 24
+        suggested.append({"label": f"{h:02d}:00 UTC", "hour": h})
+    return {
+        "ok": True,
+        "suggestedTimes": suggested,
+        "message": f"Based on your posting window ({hours}), spread {n} post(s) evenly.",
+        "basedOn": "posting-hours",
+    }
 
 
 # ── Logs & debug ────────────────────────────────────────────────────────────
@@ -327,6 +411,11 @@ async def api_slo():
         slo["circuit_breaker_active"] = False
         slo["action"] = "nominal"
     return slo
+
+
+@app.get("/api/circuit-breakers")
+async def list_circuit_breakers():
+    return cb_statuses()
 
 
 @app.post("/api/circuit-breakers/reset-all")
@@ -409,6 +498,7 @@ async def debug():
 
 
 @app.get("/api/env")
+@app.get("/api/env-status")
 async def env_status():
     return {k: bool(os.environ.get(k)) for k in ENV_KEYS}
 
@@ -427,6 +517,7 @@ _SETTINGS_VALIDATORS: dict[str, tuple] = {
     "alertThreshold": ((int, float), 0.01, 1000),
     "postsPerDay":    ((int, float), 1,    100),
     "rateLimitWaitMs":((int, float), 1000, 86_400_000),
+    "seoMinScore":    ((int, float), 0,    100),
 }
 
 
@@ -472,7 +563,9 @@ async def post_settings(request: Request):
 async def accounts():
     import json as _json
     from pathlib import Path as _Path
-    has_creds = bool(os.environ.get("BSKY_HANDLE") and os.environ.get("BSKY_APP_PASSWORD"))
+    from .bluesky_client import _bsky_credentials
+    _bh, _bp = _bsky_credentials()
+    has_creds = bool(_bh and _bp)
     bsky_enabled = settings.get_settings().get("bskyEnabled", True)
     connected = has_creds and bsky_enabled
 
@@ -546,15 +639,10 @@ async def test_bluesky():
             "error": f"Bluesky rate limit active until {reset_dt.strftime('%H:%M:%S')} UTC ({wait_s}s). Login blocked automatically — no need to retry.",
         }
 
-    handle   = (os.environ.get("BSKY_HANDLE",        "") or "").strip()
-    password = (os.environ.get("BSKY_APP_PASSWORD", "") or "").strip()
+    from .bluesky_client import _bsky_credentials
+    handle, password = _bsky_credentials()
     if not handle or not password:
-        creds_missing = []
-        if not handle:
-            creds_missing.append("BSKY_HANDLE")
-        if not password:
-            creds_missing.append("BSKY_APP_PASSWORD")
-        return {"ok": False, "error": f"Missing secrets: {', '.join(creds_missing)}"}
+        return {"ok": False, "error": "Bluesky credentials not set — enter them in Accounts or set BSKY_HANDLE / BSKY_APP_PASSWORD in Space Secrets"}
 
     _last_bsky_test = time.time()
     try:
@@ -586,13 +674,129 @@ async def test_bluesky():
 
 @app.post("/api/accounts/bluesky/disconnect")
 async def disconnect_bluesky():
+    try:
+        from .bluesky_client import clear_session as _bsky_clear
+        _bsky_clear()
+    except Exception:
+        pass
     settings.save_settings({"bskyEnabled": False})
     return {"ok": True}
+
+
+@app.post("/api/accounts/bluesky/clear-session")
+async def clear_bluesky_session():
+    """Force a fresh login on next pipeline run (clears cached JWT)."""
+    from .bluesky_client import clear_session as _bsky_clear
+    _bsky_clear()
+    return {"ok": True, "message": "Bluesky session cleared — next run will log in fresh"}
 
 
 @app.post("/api/accounts/bluesky/enable")
 async def enable_bluesky():
     settings.save_settings({"bskyEnabled": True})
+    return {"ok": True}
+
+
+# ── Social credential save endpoints ─────────────────────────────────────────
+# These persist credentials to social-connections.json so the pipeline can
+# post without requiring HuggingFace Space Secrets for every platform.
+
+def _social_connections_file() -> Path:
+    return Path(os.environ.get("DATA_DIR", "/data")) / "social-connections.json"
+
+
+def _load_social_connections() -> dict:
+    f = _social_connections_file()
+    try:
+        return json.loads(f.read_text()) if f.exists() else {}
+    except Exception:
+        return {}
+
+
+def _save_social_connections(data: dict) -> None:
+    f = _social_connections_file()
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(json.dumps(data, indent=2))
+
+
+@app.post("/api/social/bluesky/credentials")
+async def save_bluesky_credentials(request: Request):
+    body = await request.json()
+    handle   = (body.get("handle") or "").strip()
+    password = (body.get("password") or "").strip()
+    if not handle or not password:
+        return {"ok": False, "error": "handle and password are required"}
+    conns = _load_social_connections()
+    conns["bluesky"] = {"handle": handle, "password": password, "connected": True}
+    _save_social_connections(conns)
+    # Also inject into current process env so pipeline picks them up immediately
+    os.environ["BSKY_HANDLE"] = handle
+    os.environ["BSKY_APP_PASSWORD"] = password
+    settings.save_settings({"bskyEnabled": True})
+    return {"ok": True}
+
+
+@app.post("/api/social/x/credentials")
+async def save_x_credentials(request: Request):
+    body = await request.json()
+    handle          = (body.get("handle") or "").strip().lstrip("@")
+    consumer_key    = (body.get("consumer_key") or "").strip()
+    consumer_secret = (body.get("consumer_secret") or "").strip()
+    access_token    = (body.get("access_token") or "").strip()
+    access_secret   = (body.get("access_secret") or "").strip()
+    if not handle:
+        return {"ok": False, "error": "handle is required"}
+    conns = _load_social_connections()
+    existing = conns.get("x", {})
+    conns["x"] = {
+        "handle":          handle,
+        "consumer_key":    consumer_key    or existing.get("consumer_key", ""),
+        "consumer_secret": consumer_secret or existing.get("consumer_secret", ""),
+        "access_token":    access_token    or existing.get("access_token", ""),
+        "access_secret":   access_secret   or existing.get("access_secret", ""),
+        "connected":       True,
+    }
+    _save_social_connections(conns)
+    return {"ok": True}
+
+
+@app.post("/api/social/facebook/credentials")
+async def save_facebook_credentials(request: Request):
+    body = await request.json()
+    handle            = (body.get("handle") or "").strip()
+    page_id           = (body.get("page_id") or handle).strip()
+    page_access_token = (body.get("page_access_token") or "").strip()
+    if not handle:
+        return {"ok": False, "error": "handle is required"}
+    conns = _load_social_connections()
+    existing = conns.get("facebook", {})
+    conns["facebook"] = {
+        "handle":            handle,
+        "page_id":           page_id           or existing.get("page_id", ""),
+        "page_access_token": page_access_token or existing.get("page_access_token", ""),
+        "connected":         bool(page_id and (page_access_token or existing.get("page_access_token"))),
+    }
+    _save_social_connections(conns)
+    return {"ok": True}
+
+
+@app.post("/api/social/instagram/credentials")
+async def save_instagram_credentials(request: Request):
+    body = await request.json()
+    handle       = (body.get("handle") or "").strip().lstrip("@")
+    ig_user_id   = (body.get("ig_user_id") or handle).strip()
+    access_token = (body.get("access_token") or "").strip()
+    if not handle:
+        return {"ok": False, "error": "handle is required"}
+    conns = _load_social_connections()
+    existing = conns.get("instagram", {})
+    conns["instagram"] = {
+        "handle":       handle,
+        "ig_user_id":   ig_user_id   or existing.get("ig_user_id", ""),
+        "access_token": access_token or existing.get("access_token", ""),
+        "connected":    bool(ig_user_id and (access_token or existing.get("access_token"))),
+    }
+    _save_social_connections(conns)
     return {"ok": True}
 
 
@@ -605,7 +809,15 @@ async def networks():
 
 
 @app.get("/api/network/test")
-async def network_test(network: str = ""):
+@app.post("/api/network/test")
+async def network_test(request: Request, network: str = ""):
+    # Accept network from query param (GET) or JSON body (POST)
+    if request.method == "POST":
+        try:
+            body = await request.json()
+            network = body.get("network", network)
+        except Exception:  # noqa: BLE001
+            pass
     found = next((n for n in NETWORKS if n["key"] == network), None)
     if not found:
         return {"ok": False, "error": "Unknown network"}
@@ -736,8 +948,6 @@ async def diagnose():
     cap = float(s.get("dailyCostCap", 2.0))
     spend = round(budget.get_daily_spend(), 4)
     bsky_enabled = s.get("bskyEnabled", True)
-    sovrn_key = bool(os.environ.get("SOVRN_API_KEY"))
-
     checks = [
         {
             "name": "Bluesky handle",
@@ -765,9 +975,16 @@ async def diagnose():
             "detail": f"${spend:.4f} spent of ${cap:.2f} cap",
         },
         {
-            "name": "SOVRN product network",
-            "ok": sovrn_key,
-            "detail": "SOVRN_API_KEY set" if sovrn_key else "NOT SET — no product source available (add SOVRN_API_KEY to Space Secrets)",
+            "name": "Product networks",
+            "ok": any(bool(os.environ.get(n["env"])) for n in NETWORKS),
+            "detail": ", ".join(
+                n["name"] for n in NETWORKS if os.environ.get(n["env"])
+            ) or "NONE configured — add SOVRN_API_KEY, TAKEADS_API_KEY, ADMITAD_FEED_URL, or TRAVELPAYOUTS_TOKEN",
+        },
+        {
+            "name": "Click tracking (SPACE_HOST)",
+            "ok": bool(settings.get_space_host()),
+            "detail": settings.get_space_host() or "NOT SET — clicks won't be tracked. Add SPACE_HOST to Space Secrets (e.g. your-space-name.hf.space)",
         },
     ]
 

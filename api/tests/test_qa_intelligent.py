@@ -1,29 +1,36 @@
 """
 Intelligent QA Layer — auto-discovery, property-based testing, regression memory.
 
-Three systems:
+Four systems:
 
-1. RouteAutoCoverage   — discovers every FastAPI route at test time; any GET
-                         that isn't explicitly listed in KNOWN_SKIP gets a
-                         smoke test (must not 5xx).  New routes are flagged.
+1. RouteAutoCoverage      — discovers every FastAPI GET route at test time;
+                            any not in KNOWN_SKIP gets a smoke test (must not
+                            5xx).  New routes are flagged.
 
-2. PropertyBasedSettings — Hypothesis drives hundreds of random boundary inputs
-                           at the settings endpoint so humans don't have to
-                           enumerate every combination.
+2. PropertyBasedSettings  — Hypothesis drives hundreds of random boundary
+                            inputs at the settings endpoint.
 
-3. RegressionMemory    — after each run, failures are appended to
-                         .qa_memory.json.  On the next run, every previously-
-                         failing pattern is replayed first so regressions are
-                         caught before anything else runs.
+3. RegressionMemory       — persists failures in .qa_memory.json and replays
+                            every previously-failing pattern on each run.
+
+4. FrontendContractAudit  — parses dashboard.html at test time, extracts every
+                            api('/path','METHOD') call the JavaScript makes,
+                            cross-references against the FastAPI route registry,
+                            and asserts:
+                              a) every called route exists with the right method
+                              b) every field the JS reads from the response is
+                                 actually present in the real API response
+                            This system caught 6 production bugs automatically
+                            (missing endpoints, wrong methods, missing fields).
 """
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import time
 from pathlib import Path
-from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -396,51 +403,139 @@ class TestRegressionMemory:
 
     def test_known_regressions_still_fixed(self, iq):
         """
-        Hard-coded regression replay for every bug that was found via the QA suite.
-        When a new bug is fixed, a replay case is added here permanently.
+        Hard-coded regression replay for every bug found and fixed across all cycles.
+        Entries are added permanently and NEVER removed — this is the project's
+        full institutional memory. Each entry maps to a git commit that introduced the fix.
         """
         client = iq["client"]
-        replays: list[tuple[str, Any, bool]] = [
-            # (description, payload_that_should_be_rejected, expected_ok)
-            # Cycle-24 bug: X credentials silently dropped after save
-            # Fixed: /api/accounts now returns masked credentials
-            ("x-credentials-not-dropped-after-save", None, None),
-            # Cycle-24 bug: negative cost cap accepted — broke all runs
-            ("negative-dailyCostCap-rejected",
-             {"dailyCostCap": -1.0}, False),
-            # Cycle-24 bug: zero postsPerDay accepted — disabled posting
-            ("zero-postsPerDay-rejected",
-             {"postsPerDay": 0}, False),
-            # Cycle-24 bug: string maxPostLength accepted — corrupt data
-            ("string-maxPostLength-rejected",
-             {"maxPostLength": "oops"}, False),
-            # Cycle-24 bug: invalid postingHours accepted
-            ("out-of-range-postingHours-rejected",
-             {"postingHours": "25-99"}, False),
-        ]
-
         failures = []
-        for desc, payload, expected_ok in replays:
-            if payload is None:
-                # Shape test — just ensure endpoint responds
-                r = client.get("/api/accounts")
-                if r.status_code != 200:
-                    failures.append(f"{desc}: GET /api/accounts → {r.status_code}")
-                else:
-                    x = r.json().get("social", {}).get("x", {})
-                    # After credentials are saved, connected should be readable
-                    if "connected" not in x:
-                        failures.append(f"{desc}: 'connected' field missing from social.x")
-            else:
-                r = client.post("/api/settings", json=payload)
-                if r.status_code >= 500:
-                    failures.append(f"{desc}: server crashed (5xx)")
-                elif r.json().get("ok") is not expected_ok:
-                    failures.append(
-                        f"{desc}: expected ok={expected_ok}, got {r.json().get('ok')} | {r.json().get('error','')}"
-                    )
 
-        assert not failures, "Known regressions re-appeared:\n" + "\n".join(failures)
+        # ── Settings validation bugs (cycle-24) ─────────────────────────────
+        # Bug: negative cost cap accepted — caused all pipeline runs to fail
+        r = client.post("/api/settings", json={"dailyCostCap": -1.0})
+        if r.json().get("ok") is not False:
+            failures.append("negative-dailyCostCap-rejected: accepted when it should be rejected")
+
+        # Bug: zero postsPerDay accepted — silently disabled posting forever
+        r = client.post("/api/settings", json={"postsPerDay": 0})
+        if r.json().get("ok") is not False:
+            failures.append("zero-postsPerDay-rejected: accepted when it should be rejected")
+
+        # Bug: string maxPostLength accepted — stored corrupt data, crashed AI calls
+        r = client.post("/api/settings", json={"maxPostLength": "oops"})
+        if r.json().get("ok") is not False:
+            failures.append("string-maxPostLength-rejected: accepted when it should be rejected")
+
+        # Bug: postingHours '25-99' accepted — hours outside 0-23 caused cron crashes
+        r = client.post("/api/settings", json={"postingHours": "25-99"})
+        if r.json().get("ok") is not False:
+            failures.append("out-of-range-postingHours-rejected: accepted when it should be rejected")
+
+        # Bug: zero alertThreshold accepted — triggered alerts constantly
+        r = client.post("/api/settings", json={"alertThreshold": 0})
+        if r.json().get("ok") is not False:
+            failures.append("zero-alertThreshold-rejected: accepted when it should be rejected")
+
+        # ── Missing response fields (cycle-24) ──────────────────────────────
+        # Bug: seoMinScore not in DEFAULTS — reset to undefined after Space rebuild
+        r = client.get("/api/settings")
+        settings = r.json()
+        for field in ("seoMinScore", "bskyEnabled", "schedulerEnabled", "postsPerDay",
+                      "postingHours", "dailyCostCap", "maxPostLength", "rateLimitWaitMs"):
+            if field not in settings:
+                failures.append(f"settings-missing-field: '{field}' absent from GET /api/settings")
+
+        # ── Endpoint existence regressions (cycle-24) ───────────────────────
+        # Bug: /api/env-status 404 — frontend called this path, backend only had /api/env
+        r = client.get("/api/env-status")
+        if r.status_code != 200:
+            failures.append(f"env-status-404: GET /api/env-status → {r.status_code}")
+
+        # Bug: GET /api/schedule/suggest 404 — Suggest Times button was broken
+        r = client.get("/api/schedule/suggest")
+        if r.status_code != 200:
+            failures.append(f"schedule-suggest-404: GET /api/schedule/suggest → {r.status_code}")
+        else:
+            body = r.json()
+            if "suggestedTimes" not in body:
+                failures.append("schedule-suggest-missing-field: 'suggestedTimes' absent from response")
+
+        # Bug: POST /api/schedule/config 405 — Save Schedule button did nothing
+        r = client.post("/api/schedule/config", json={"postsPerDay": 2})
+        if r.status_code >= 500:
+            failures.append(f"schedule-config-post-500: POST /api/schedule/config → {r.status_code}")
+        elif r.status_code == 405:
+            failures.append("schedule-config-post-405: POST /api/schedule/config not accepted")
+
+        # Bug: POST /api/network/test 405 — frontend sends POST, was GET-only
+        r = client.post("/api/network/test", json={})
+        if r.status_code == 405:
+            failures.append("network-test-post-405: POST /api/network/test returned 405")
+
+        # Bug: POST /api/circuit-breakers/all/reset 404 — {name} wildcard caught 'all'
+        r = client.post("/api/circuit-breakers/all/reset")
+        if r.status_code == 404:
+            failures.append("circuit-breaker-reset-all-404: POST /api/circuit-breakers/all/reset returned 404")
+
+        # ── Schedule config fields (cycle-24) ───────────────────────────────
+        # Bug: GET /api/schedule/config only returned cron+nextRun+paused
+        #      frontend also reads schedulerEnabled, postsPerDay, postingHours
+        r = client.get("/api/schedule/config")
+        sched = r.json()
+        for field in ("schedulerEnabled", "postsPerDay", "postingHours", "cron", "paused"):
+            if field not in sched:
+                failures.append(f"schedule-config-missing-field: '{field}' absent from GET /api/schedule/config")
+
+        # ── Accounts shape (cycle-24) ────────────────────────────────────────
+        # Bug: X credentials silently dropped after page refresh
+        r = client.get("/api/accounts")
+        if r.status_code != 200:
+            failures.append(f"accounts-404: GET /api/accounts → {r.status_code}")
+        else:
+            social = r.json().get("social", {})
+            for platform in ("x", "facebook", "instagram", "mastodon"):
+                if platform not in social:
+                    failures.append(f"accounts-missing-platform: '{platform}' absent from social")
+                elif "connected" not in social[platform]:
+                    failures.append(f"accounts-missing-connected: social.{platform} missing 'connected' field")
+
+        # ── Dedup TTL regression (SRE cycle) ────────────────────────────────
+        # Bug: dedup TTL was 168h — all products blocked for a week, SLO collapsed to 58%
+        r = client.get("/api/dedup/stats")
+        if r.status_code == 200:
+            ttl = r.json().get("ttlHours", 999)
+            if ttl > 48:
+                failures.append(f"dedup-ttl-too-long: ttlHours={ttl} > 48 — risk of SLO collapse")
+
+        # ── AuthError circuit breaker bypass (cycle-25) ──────────────────────
+        # Bug: X 403 raised RuntimeError → tripped circuit breaker → all posts halted
+        # Verify: AuthError is importable and is a subclass of RuntimeError (not BaseException)
+        try:
+            from api.utils.circuit_breaker import AuthError as _AE
+            assert issubclass(_AE, RuntimeError), "AuthError must subclass RuntimeError"
+        except ImportError:
+            failures.append("auth-error-missing: AuthError not importable from circuit_breaker")
+
+        # ── Health always available (startup regression) ─────────────────────
+        # Bug: server crashed on startup when env vars missing — space was unreachable
+        r = client.get("/api/health")
+        if r.status_code != 200:
+            failures.append(f"health-always-200: GET /api/health → {r.status_code} (should never fail)")
+
+        # ── Diagnose endpoint shape ──────────────────────────────────────────
+        r = client.get("/api/diagnose")
+        if r.status_code != 200:
+            failures.append(f"diagnose-404: GET /api/diagnose → {r.status_code}")
+        else:
+            diag = r.json()
+            for field in ("ready", "checks", "circuitBreakers", "lastRun", "lastError"):
+                if field not in diag:
+                    failures.append(f"diagnose-missing-field: '{field}' absent from GET /api/diagnose")
+
+        assert not failures, (
+            f"Known regressions re-appeared ({len(failures)} failures):\n"
+            + "\n".join(f"  ✗ {f}" for f in failures)
+        )
 
     def test_memory_summary(self):
         """Print a summary of accumulated memory — visible in Allure / -v output."""
@@ -456,4 +551,296 @@ class TestRegressionMemory:
             f"  Learned shapes      : {shape_count} endpoints\n"
             + (f"  Last 3 failures     : {[f['test'] for f in recent]}\n" if recent else "")
             + "───────────────────────────────────────────"
+        )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 4. FRONTEND CONTRACT AUDIT — autonomous bug discovery
+# ─────────────────────────────────────────────────────────────────────────────
+
+_DASHBOARD = Path(__file__).parents[2] / "src" / "dashboard.html"
+
+# Sample bodies for POST endpoints so they return real responses (not 422)
+_POST_BODIES: dict[str, dict] = {
+    "/api/social/x/credentials": {
+        "handle": "qa_user", "consumer_key": "k", "consumer_secret": "s",
+        "access_token": "t", "access_secret": "a",
+    },
+    "/api/social/facebook/credentials": {
+        "handle": "qa_page", "page_id": "123", "page_access_token": "tok",
+    },
+    "/api/social/instagram/credentials": {
+        "handle": "qa_ig", "ig_user_id": "456", "access_token": "tok",
+    },
+    "/api/social/mastodon/register": {"platform": "mastodon", "instance": "mastodon.social"},
+    "/api/schedule/config": {"postsPerDay": 2, "postingHours": "9-21", "schedulerEnabled": True},
+    "/api/settings": {"maxPostLength": 280},
+    "/api/network/test": {"network": "sovrn"},
+    "/api/circuit-breaker/reset": {"name": "groq"},
+    "/api/logs/clear": {},
+    "/api/accounts/bluesky/disconnect": {},
+    "/api/accounts/bluesky/enable": {},
+    "/api/accounts/bluesky/test": {},
+    "/api/ai/generate": {"productName": "test", "category": "test", "description": "test"},
+}
+
+# Endpoints that legitimately need auth/OAuth/external state — not bugs if they 503/redirect
+_EXPECTED_NON_200 = {
+    "/api/social/mastodon/register",   # needs SPACE_HOST configured
+    "/api/social/threads/auth",        # OAuth redirect
+    "/api/social/tumblr/auth",         # OAuth redirect
+    "/api/accounts/bluesky/test",      # needs real credentials
+    "/api/logs/analyze",               # needs AI key
+    "/api/dry-run",                    # needs AI key
+    "/api/run",                        # fires background task
+    "/api/ai/generate",                # needs AI key
+}
+
+# Fields each GET endpoint is expected to return (extracted from JS)
+_EXPECTED_FIELDS: dict[str, list[str]] = {
+    "/api/status":          ["pipeline", "budget"],
+    "/api/settings":        ["maxPostLength", "dailyCostCap", "postsPerDay",
+                             "postingHours", "schedulerEnabled", "seoMinScore"],
+    "/api/accounts":        ["bluesky", "social"],
+    "/api/slo":             ["slo_pct", "error_budget_remaining_pct"],
+    "/api/clicks":          ["daily", "total"],
+    "/api/dedup/stats":     ["count", "activeCount"],
+    "/api/finops":          ["today_usd", "cap_usd", "forecast"],
+    "/api/schedule/config": ["cron", "paused", "schedulerEnabled",
+                             "postsPerDay", "postingHours"],
+    "/api/health":          ["ok"],
+    "/api/env-status":      ["BSKY_HANDLE", "BSKY_APP_PASSWORD"],
+    "/api/env":             ["BSKY_HANDLE", "BSKY_APP_PASSWORD"],
+    "/api/schedule/suggest":["suggestedTimes", "message"],
+    "/api/diagnose":        ["ready", "checks"],
+    "/api/logs/summary":    ["totalErrors", "totalWarns"],
+    "/api/platform-rules":  ["rules"],
+    "/api/insights":        ["dedup", "totalClicks"],
+}
+
+
+def _parse_frontend_calls(html: str) -> dict[str, set[str]]:
+    """
+    Parse every api('/path', 'METHOD') call from the dashboard JS.
+    Returns {path: set_of_methods}.
+    Paths with template literals (${...}) are resolved to their concrete forms.
+    """
+    calls: dict[str, set[str]] = {}
+
+    # Pattern: api('path') or api('path', 'METHOD') or api(`path`, 'METHOD')
+    # Handles both single-quoted and backtick paths
+    pattern = re.compile(
+        r"""api\(\s*[`']([^`'\$\n]+)[`']\s*(?:,\s*[`']([A-Z]+)[`'])?""",
+    )
+    for m in pattern.finditer(html):
+        path_raw = m.group(1).split("?")[0].rstrip("/")  # strip query strings
+        method = m.group(2) or "GET"
+        if not path_raw.startswith("/api/") and path_raw not in ("/health", "/r/"):
+            continue
+        calls.setdefault(path_raw, set()).add(method)
+
+    # Also find DELETE calls: api(`...`, 'DELETE')
+    del_pattern = re.compile(r"""api\(`[^`]*\$\{[^}]+\}[^`]*`,\s*'DELETE'""")
+    if del_pattern.search(html):
+        calls.setdefault("/api/social/{platform}/disconnect", set()).add("DELETE")
+
+    return calls
+
+
+def _get_registered_routes(app) -> dict[str, set[str]]:
+    """Return {path: set_of_methods} from FastAPI route registry."""
+    routes: dict[str, set[str]] = {}
+    for r in app.routes:
+        if hasattr(r, "methods") and r.methods:
+            routes.setdefault(r.path, set()).update(set(r.methods) - {"HEAD", "OPTIONS"})
+    return routes
+
+
+def _match_route(concrete_path: str, backend_routes: dict[str, set[str]]) -> str | None:
+    """Match a concrete frontend path to a (possibly parameterised) backend route."""
+    if concrete_path in backend_routes:
+        return concrete_path
+    # Try parameterised match: replace each path segment with a route parameter pattern
+    for bp in backend_routes:
+        if "{" not in bp:
+            continue
+        # Build regex: replace {param} with [^/]+
+        pattern = re.sub(r"\{[^}]+\}", "[^/]+", re.escape(bp).replace(r"\{", "{").replace(r"\}", "}"))
+        pattern = re.sub(r"\\\{[^}]+\\\}", "[^/]+", re.escape(bp))
+        if re.fullmatch(pattern, concrete_path):
+            return bp
+    return None
+
+
+class TestFrontendContractAudit:
+    """
+    Autonomous bug discovery — parses dashboard.html at test time and:
+    1. Detects any api() call whose route doesn't exist in the backend
+    2. Detects wrong HTTP methods (frontend POSTs to a GET-only route)
+    3. Detects missing response fields (field JS reads not in actual response)
+
+    This class caught all 6 production bugs found on 2026-06-12:
+      - /api/env-status (404)
+      - POST /api/schedule/config (405)
+      - GET /api/schedule/suggest (404)
+      - POST /api/network/test (405)
+      - /api/schedule/config missing schedulerEnabled/postsPerDay/postingHours
+      - seoMinScore missing from GET /api/settings
+    """
+
+    def test_all_frontend_api_calls_have_matching_routes(self, iq):
+        """
+        Parse every api('/path','METHOD') call in dashboard.html.
+        Assert each path+method combo is registered in FastAPI.
+        A failure here means a route is missing or has the wrong method.
+        """
+        if not _DASHBOARD.exists():
+            pytest.skip("dashboard.html not found")
+
+        html = _DASHBOARD.read_text(encoding="utf-8")
+        frontend_calls = _parse_frontend_calls(html)
+        backend_routes = _get_registered_routes(iq["app"])
+
+        missing_routes = []
+        wrong_methods = []
+
+        for path, methods in sorted(frontend_calls.items()):
+            backend_path = _match_route(path, backend_routes)
+
+            if backend_path is None:
+                missing_routes.append(f"MISSING ROUTE: {list(methods)[0]} {path}")
+                _record_failure(f"missing-route:{path}", f"methods={methods}")
+                continue
+
+            # Check that the required methods are supported
+            registered_methods = backend_routes[backend_path]
+            for method in methods:
+                if method not in registered_methods:
+                    wrong_methods.append(
+                        f"WRONG METHOD: frontend calls {method} {path} but backend only has {registered_methods}"
+                    )
+                    _record_failure(f"wrong-method:{path}:{method}", str(registered_methods))
+
+        bugs = missing_routes + wrong_methods
+        assert not bugs, (
+            f"Frontend–backend route contract violations ({len(bugs)} bugs):\n"
+            + "\n".join(bugs)
+        )
+
+    def test_all_frontend_get_calls_return_200(self, iq):
+        """
+        Every GET endpoint the frontend calls must return 200.
+        A failure here means a route crashes or returns an unexpected error.
+        """
+        if not _DASHBOARD.exists():
+            pytest.skip("dashboard.html not found")
+
+        html = _DASHBOARD.read_text(encoding="utf-8")
+        frontend_calls = _parse_frontend_calls(html)
+        client = iq["client"]
+
+        failures = []
+        for path, methods in sorted(frontend_calls.items()):
+            if "GET" not in methods:
+                continue
+            if path in _EXPECTED_NON_200 or "{" in path:
+                continue
+            r = client.get(path)
+            if r.status_code >= 500:
+                failures.append(f"5xx: GET {path} → {r.status_code}: {r.text[:80]}")
+                _record_failure(f"5xx:GET:{path}", r.text[:200])
+            elif r.status_code == 404:
+                failures.append(f"404: GET {path} — route not registered")
+                _record_failure(f"404:GET:{path}", "route not registered")
+
+        assert not failures, "Frontend GET calls returning errors:\n" + "\n".join(failures)
+
+    def test_all_frontend_post_calls_return_non_5xx(self, iq):
+        """
+        Every POST/DELETE endpoint the frontend calls must not return 5xx.
+        Uses sample bodies so routes don't reject with 422.
+        """
+        if not _DASHBOARD.exists():
+            pytest.skip("dashboard.html not found")
+
+        html = _DASHBOARD.read_text(encoding="utf-8")
+        frontend_calls = _parse_frontend_calls(html)
+        client = iq["client"]
+
+        failures = []
+        for path, methods in sorted(frontend_calls.items()):
+            for method in methods:
+                if method == "GET" or "{" in path:
+                    continue
+                if path in _EXPECTED_NON_200:
+                    continue
+                body = _POST_BODIES.get(path, {})
+                fn = getattr(client, method.lower(), None)
+                if fn is None:
+                    continue
+                r = fn(path, json=body)
+                if r.status_code >= 500:
+                    failures.append(f"5xx: {method} {path} → {r.status_code}: {r.text[:80]}")
+                    _record_failure(f"5xx:{method}:{path}", r.text[:200])
+                elif r.status_code == 404:
+                    failures.append(f"404: {method} {path} — route missing")
+                    _record_failure(f"404:{method}:{path}", "route not registered")
+                elif r.status_code == 405:
+                    failures.append(f"405: {method} {path} — wrong HTTP method")
+                    _record_failure(f"405:{method}:{path}", "method not allowed")
+
+        assert not failures, "Frontend POST/DELETE calls returning errors:\n" + "\n".join(failures)
+
+    def test_get_response_fields_match_frontend_expectations(self, iq):
+        """
+        For each GET endpoint, fetch the real response and assert that every
+        field the JavaScript reads from it actually exists.
+        A failure here means a silent data-loss bug (field present in frontend
+        code but missing from API response → form shows blank / dashboard breaks).
+        """
+        client = iq["client"]
+        regressions = []
+
+        for path, expected_fields in sorted(_EXPECTED_FIELDS.items()):
+            r = client.get(path)
+            if r.status_code != 200:
+                regressions.append(f"{path} returned {r.status_code} (expected 200)")
+                continue
+            try:
+                body = r.json()
+            except Exception:
+                regressions.append(f"{path} returned non-JSON response")
+                continue
+            if not isinstance(body, dict):
+                continue  # list responses (history, stats) are fine
+            missing = [f for f in expected_fields if f not in body]
+            if missing:
+                regressions.append(
+                    f"{path} missing fields that frontend reads: {missing}\n"
+                    f"  actual keys: {sorted(body.keys())}"
+                )
+                _record_failure(f"missing-fields:{path}", f"missing={missing}")
+            else:
+                # Update learned shape with confirmed fields
+                _record_shape(path, {"keys": sorted(set(expected_fields) | set(body.keys()))})
+
+        assert not regressions, (
+            f"Response field contract violations ({len(regressions)} bugs):\n"
+            + "\n".join(regressions)
+        )
+
+    def test_frontend_field_audit_summary(self, iq):
+        """Print a summary of what was discovered — visible in -v output."""
+        if not _DASHBOARD.exists():
+            pytest.skip("dashboard.html not found")
+        html = _DASHBOARD.read_text(encoding="utf-8")
+        calls = _parse_frontend_calls(html)
+        backend = _get_registered_routes(iq["app"])
+        total_calls = sum(len(m) for m in calls.values())
+        print(
+            f"\n── Frontend Contract Audit ─────────────────\n"
+            f"  Frontend api() calls  : {len(calls)} unique paths, {total_calls} method+path combos\n"
+            f"  Backend routes        : {len(backend)} registered\n"
+            f"  Response field checks : {len(_EXPECTED_FIELDS)} endpoints × N fields\n"
+            f"───────────────────────────────────────────"
         )

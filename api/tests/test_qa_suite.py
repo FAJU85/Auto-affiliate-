@@ -392,8 +392,49 @@ class TestScheduleRoundTrip:
         r = qa["client"].get("/api/schedule/config")
         assert r.status_code == 200
         d = r.json()
-        # /api/schedule/config returns cron, nextRun, paused
-        assert "cron" in d or "paused" in d
+        # Now returns all schedule fields
+        for field in ("cron", "paused", "schedulerEnabled", "postsPerDay", "postingHours"):
+            assert field in d, f"schedule/config missing field: {field}"
+
+    def test_schedule_config_post_saves_settings(self, qa):
+        """POST /api/schedule/config must persist postsPerDay and postingHours."""
+        r = qa["client"].post("/api/schedule/config", json={
+            "postsPerDay": 4, "postingHours": "10-20", "schedulerEnabled": True,
+        })
+        assert r.status_code == 200
+        assert r.json()["ok"] is True
+        d = qa["client"].get("/api/schedule/config").json()
+        assert d["postsPerDay"] == 4
+        assert d["postingHours"] == "10-20"
+
+    def test_schedule_suggest_returns_times(self, qa):
+        """GET /api/schedule/suggest must return suggested posting times."""
+        r = qa["client"].get("/api/schedule/suggest?n=3")
+        assert r.status_code == 200
+        d = r.json()
+        assert "suggestedTimes" in d
+        assert len(d["suggestedTimes"]) == 3
+        assert "label" in d["suggestedTimes"][0]
+
+    def test_env_status_alias_works(self, qa):
+        """/api/env-status must be an alias for /api/env."""
+        r1 = qa["client"].get("/api/env")
+        r2 = qa["client"].get("/api/env-status")
+        assert r1.status_code == 200
+        assert r2.status_code == 200
+        assert r1.json() == r2.json(), "/api/env-status returns different data than /api/env"
+
+    def test_network_test_accepts_post(self, qa):
+        """POST /api/network/test must work (frontend uses POST)."""
+        r = qa["client"].post("/api/network/test", json={"network": "sovrn"})
+        assert r.status_code == 200
+        assert "network" in r.json()
+
+    def test_seo_min_score_roundtrip(self, qa):
+        """seoMinScore must persist through save/reload."""
+        qa["client"].post("/api/settings", json={"seoMinScore": 65})
+        d = qa["client"].get("/api/settings").json()
+        assert d.get("seoMinScore") == 65, "seoMinScore silently dropped"
 
     def test_pause_and_resume(self, qa):
         r = qa["client"].post("/api/schedule/pause")

@@ -1,5 +1,223 @@
 {
   "failures": [],
+  "regressions": [
+    {
+      "id": "env-status-404",
+      "commit": "f69a4e1",
+      "date": "2026-06-12",
+      "bug": "GET /api/env-status returned 404 \u2014 frontend called /api/env-status but only /api/env existed",
+      "fix": "Added /api/env-status alias route in main.py",
+      "assertion": "GET /api/env-status returns 200"
+    },
+    {
+      "id": "schedule-config-post-405",
+      "commit": "f69a4e1",
+      "date": "2026-06-12",
+      "bug": "POST /api/schedule/config returned 405 \u2014 Save Schedule button in dashboard did nothing",
+      "fix": "Added POST /api/schedule/config handler",
+      "assertion": "POST /api/schedule/config with valid body returns 200"
+    },
+    {
+      "id": "schedule-suggest-404",
+      "commit": "f69a4e1",
+      "date": "2026-06-12",
+      "bug": "GET /api/schedule/suggest returned 404 \u2014 Suggest Times button was broken",
+      "fix": "Added GET /api/schedule/suggest endpoint",
+      "assertion": "GET /api/schedule/suggest returns 200 with suggestedTimes field"
+    },
+    {
+      "id": "network-test-post-405",
+      "commit": "f69a4e1",
+      "date": "2026-06-12",
+      "bug": "POST /api/network/test returned 405 \u2014 frontend sends POST, backend was GET-only",
+      "fix": "Added @app.post decorator alongside @app.get on network_test handler",
+      "assertion": "POST /api/network/test returns non-5xx"
+    },
+    {
+      "id": "circuit-breaker-reset-all-404",
+      "commit": "f69a4e1",
+      "date": "2026-06-12",
+      "bug": "POST /api/circuit-breakers/all/reset returned 404 \u2014 {name} wildcard caught 'all' before specific route",
+      "fix": "Added explicit /all/reset alias and reordered routes before {name}/reset wildcard",
+      "assertion": "POST /api/circuit-breakers/all/reset returns 200"
+    },
+    {
+      "id": "seo-min-score-missing-defaults",
+      "commit": "f69a4e1",
+      "date": "2026-06-12",
+      "bug": "seoMinScore was sent by frontend but not in DEFAULTS \u2014 reset to undefined on reload",
+      "fix": "Added seoMinScore: 50 to DEFAULTS in settings.py",
+      "assertion": "GET /api/settings response includes seoMinScore key"
+    },
+    {
+      "id": "bsky-enabled-missing-defaults",
+      "commit": "3704682",
+      "date": "2026-06-12",
+      "bug": "bskyEnabled not in DEFAULTS \u2014 response shape was unstable across fresh sessions",
+      "fix": "Added bskyEnabled: True to DEFAULTS in settings.py",
+      "assertion": "GET /api/settings response includes bskyEnabled key"
+    },
+    {
+      "id": "schedule-config-fields-missing",
+      "commit": "f69a4e1",
+      "date": "2026-06-12",
+      "bug": "GET /api/schedule/config only returned cron+nextRun+paused \u2014 frontend also reads schedulerEnabled, postsPerDay, postingHours",
+      "fix": "Enriched schedule_config() to include those fields from settings",
+      "assertion": "GET /api/schedule/config includes schedulerEnabled, postsPerDay, postingHours"
+    },
+    {
+      "id": "settings-validation-missing",
+      "commit": "7778cc6",
+      "date": "2026-06-12",
+      "bug": "POST /api/settings accepted any value \u2014 negative cost cap, zero postsPerDay, string maxPostLength all silently persisted",
+      "fix": "Added _SETTINGS_VALIDATORS dict and _validate_settings() in main.py",
+      "assertion": "POST /api/settings with negative dailyCostCap returns ok=false"
+    },
+    {
+      "id": "posting-hours-range-not-validated",
+      "commit": "7778cc6",
+      "date": "2026-06-12",
+      "bug": "postingHours regex accepted '25-99' \u2014 hours outside 0-23 were silently stored",
+      "fix": "Added range check: 0 <= hour <= 23 after regex match",
+      "assertion": "POST /api/settings with postingHours '25-99' returns ok=false"
+    },
+    {
+      "id": "circuit-breaker-tripped-by-auth-error",
+      "commit": "478c7af",
+      "date": "2026-06-12",
+      "bug": "X Twitter 403 (wrong OAuth permissions) raised RuntimeError which tripped the circuit breaker, halting all subsequent posts",
+      "fix": "Added AuthError class to circuit_breaker.py; call() skips failure counting for AuthError",
+      "assertion": "AuthError raised inside circuit breaker call() does not increment failure counter"
+    },
+    {
+      "id": "get-registered-routes-overwrites-methods",
+      "commit": "3704682",
+      "date": "2026-06-12",
+      "bug": "_get_registered_routes used dict assignment so POST overwrote GET for dual-method routes; test falsely reported GET /api/settings as missing",
+      "fix": "Changed to routes.setdefault(path, set()).update(methods)",
+      "assertion": "Routes with both GET and POST show both methods in registry"
+    },
+    {
+      "id": "x-facebook-instagram-credentials-lost-on-refresh",
+      "commit": "db8131a",
+      "date": "2026-06-12",
+      "bug": "X, Facebook, Instagram credentials disappeared after page refresh \u2014 not persisted to social-connections.json",
+      "fix": "Store credentials to social-connections.json on save",
+      "assertion": "GET /api/accounts returns connected field for social platforms"
+    },
+    {
+      "id": "social-credential-routes-missing",
+      "commit": "current",
+      "date": "2026-06-14",
+      "bug": "POST /api/social/x/credentials, /facebook/credentials, /instagram/credentials returned 404 \u2014 dashboard Save button silently dropped all X/Facebook/Instagram credentials",
+      "fix": "Added four credential save routes in main.py; Bluesky client now reads from social-connections.json as fallback when env vars not set",
+      "assertion": "POST /api/social/x/credentials with handle returns ok=true"
+    },
+    {
+      "id": "dedup-ttl-slo-collapse",
+      "commit": "6c768d9",
+      "date": "2026-06-12",
+      "bug": "Dedup TTL was 168h \u2014 all products blocked for a week, SLO collapsed to 58%",
+      "fix": "Reduced dedup TTL to 24h",
+      "assertion": "GET /api/dedup/stats returns ttlHours <= 48"
+    },
+    {
+      "id": "dashboard-crash-missing-env-vars",
+      "commit": "90f6a44",
+      "date": "2026-06-01",
+      "bug": "Server crashed on startup when BSKY_HANDLE/BSKY_APP_PASSWORD env vars not set in HF Space",
+      "fix": "Made env var loading graceful \u2014 missing vars report error in /api/diagnose instead of crashing",
+      "assertion": "GET /api/health returns 200 even without BSKY_HANDLE set"
+    },
+    {
+      "id": "admitad-xml-amp-not-decoded",
+      "commit": "bbe7e84",
+      "date": "2026-06-01",
+      "bug": "Admitad XML feed URLs contained &amp; \u2014 affiliate links were broken in posts",
+      "fix": "Added html.unescape() when parsing XML feed URLs",
+      "assertion": "pipeline handles HTML entities in product URLs"
+    },
+    {
+      "id": "affiliate-link-caption-mismatch",
+      "commit": "da0b260",
+      "date": "2026-06-01",
+      "bug": "Caption described product from network A but deeplink pointed to network B \u2014 misleading posts",
+      "fix": "Ensured caption and deeplink always come from the same product source",
+      "assertion": "POST /api/run returns consistent product source for caption and deeplink"
+    },
+    {
+      "id": "bluesky-oauth-iframe-blocked",
+      "commit": "8e7b3dc",
+      "date": "2026-06-01",
+      "bug": "Bluesky OAuth opened in same iframe \u2014 blocked by HuggingFace iframe sandbox",
+      "fix": "Added target=_blank to OAuth link so it opens in new tab",
+      "assertion": "GET /api/accounts does not crash \u2014 bluesky auth flow reachable"
+    },
+    {
+      "id": "bluesky-session-rate-limit",
+      "commit": "3fc0a9c",
+      "date": "2026-06-01",
+      "bug": "createSession called on every pipeline run \u2014 hit Bluesky rate limit (30/5min)",
+      "fix": "Persist Bluesky session to disk, reuse until expired",
+      "assertion": "Repeated POST /api/run calls don't hammer Bluesky auth"
+    },
+    {
+      "id": "aliexpress-blank-screen",
+      "commit": "b73407a",
+      "date": "2026-06-01",
+      "bug": "AliExpress affiliate links led to blank screen \u2014 triple-layer redirect chain was broken",
+      "fix": "Keep deep_link.htm path, clean dl_target_url parameter",
+      "assertion": "AliExpress product URLs contain proper tracking parameters"
+    },
+    {
+      "id": "no-plain-non-affiliate-links",
+      "commit": "861d5de",
+      "date": "2026-06-01",
+      "bug": "Pipeline sometimes posted plain (non-affiliate) Amazon URLs \u2014 zero revenue",
+      "fix": "Added guard: never post if deeplink == original URL without monetization",
+      "assertion": "GET /api/status shows source-tracked product in lastRun"
+    },
+    {
+      "id": "json-not-imported-main",
+      "commit": "current",
+      "date": "2026-06-14",
+      "bug": "NameError: json not imported in main.py \u2014 _load_social_connections and _save_social_connections crashed on every call because json was only imported locally as _json in middleware",
+      "fix": "Added import json at top of main.py",
+      "assertion": "POST /api/social/bluesky/credentials returns ok=true"
+    },
+    {
+      "id": "bluesky-handle-dead-overwrite",
+      "commit": "current",
+      "date": "2026-06-14",
+      "bug": "save_bluesky_credentials assigned handle twice \u2014 first line set handle from body.get('handle') or body.get('password'), second line immediately overwrote it with body.get('handle') only, making first assignment dead code",
+      "fix": "Removed dead first assignment",
+      "assertion": "POST /api/social/bluesky/credentials with handle+password returns ok=true"
+    },
+    {
+      "id": "facebook-instagram-tumblr-403-trips-circuit-breaker",
+      "commit": "current",
+      "date": "2026-06-14",
+      "bug": "Facebook/Instagram/Tumblr raised RuntimeError on 401/403 (expired token), incorrectly incrementing circuit breaker failure counter and eventually halting all posts to those platforms",
+      "fix": "Changed 401/403 responses in _post_facebook, _post_instagram, _post_tumblr to raise AuthError (which circuit breaker skips for failure counting)",
+      "assertion": "AuthError raised inside circuit breaker call() does not increment failure counter"
+    },
+    {
+      "id": "bluesky-auth-error-treated-as-rate-limit",
+      "commit": "current",
+      "date": "2026-06-14",
+      "bug": "pipeline.py Bluesky except RuntimeError block checked 'rate' in str(e) to detect rate limits \u2014 AuthError (subclass of RuntimeError) could have been caught there and auto-paused the pipeline as if rate-limited",
+      "fix": "Added explicit except AuthError handler before except RuntimeError in pipeline Bluesky block",
+      "assertion": "AuthError from Bluesky does not set pipeline STATE['paused']"
+    },
+    {
+      "id": "arabic-ai-captions",
+      "commit": "cabc624",
+      "date": "2026-06-14",
+      "bug": "Groq/Mistral generated Arabic-language captions when product names/descriptions were in Arabic \u2014 captions rejected as unusable, wasting AI budget on every run",
+      "fix": "Prepend 'You must respond in English only' to every system prompt; added Arabic Unicode range check to _looks_usable()",
+      "assertion": "AI caption for Arabic product name is in English"
+    }
+  ],
   "learned_shapes": {
     "/api/status": {
       "keys": [
@@ -15,6 +233,7 @@
     "/api/settings": {
       "keys": [
         "alertThreshold",
+        "bskyEnabled",
         "cronSchedule",
         "ctaPhrases",
         "dailyCostCap",
@@ -26,6 +245,7 @@
         "publishPlatforms",
         "rateLimitWaitMs",
         "schedulerEnabled",
+        "seoMinScore",
         "spaceHost"
       ]
     },
@@ -70,24 +290,96 @@
       "keys": [
         "cron",
         "nextRun",
-        "paused"
+        "paused",
+        "postingHours",
+        "postsPerDay",
+        "schedulerEnabled"
       ]
     },
     "/api/health": {
       "keys": [
         "ok"
       ]
+    },
+    "/api/diagnose": {
+      "keys": [
+        "checks",
+        "circuitBreakers",
+        "lastError",
+        "lastRun",
+        "pipelineRunning",
+        "ready"
+      ]
+    },
+    "/api/env": {
+      "keys": [
+        "ADMITAD_CLIENT_ID",
+        "BSKY_APP_PASSWORD",
+        "BSKY_HANDLE",
+        "CRON_SCHEDULE",
+        "GROQ_API_KEY",
+        "MISTRAL_API_KEY",
+        "SOVRN_API_KEY",
+        "SPACE_HOST",
+        "TAKEADS_API_KEY",
+        "TRAVELPAYOUTS_TOKEN"
+      ]
+    },
+    "/api/env-status": {
+      "keys": [
+        "ADMITAD_CLIENT_ID",
+        "BSKY_APP_PASSWORD",
+        "BSKY_HANDLE",
+        "CRON_SCHEDULE",
+        "GROQ_API_KEY",
+        "MISTRAL_API_KEY",
+        "SOVRN_API_KEY",
+        "SPACE_HOST",
+        "TAKEADS_API_KEY",
+        "TRAVELPAYOUTS_TOKEN"
+      ]
+    },
+    "/api/insights": {
+      "keys": [
+        "dedup",
+        "networkHealth",
+        "totalClicks"
+      ]
+    },
+    "/api/logs/summary": {
+      "keys": [
+        "byComponent",
+        "lastError",
+        "totalErrors",
+        "totalWarns"
+      ]
+    },
+    "/api/platform-rules": {
+      "keys": [
+        "ok",
+        "rules"
+      ]
+    },
+    "/api/schedule/suggest": {
+      "keys": [
+        "basedOn",
+        "message",
+        "ok",
+        "suggestedTimes"
+      ]
     }
   },
-  "run_count": 7,
+  "run_count": 80,
   "known_routes": [
     "/",
     "/api/accounts",
+    "/api/circuit-breakers",
     "/api/clicks",
     "/api/debug",
     "/api/dedup/stats",
     "/api/diagnose",
     "/api/env",
+    "/api/env-status",
     "/api/finops",
     "/api/health",
     "/api/history",
@@ -99,9 +391,14 @@
     "/api/networks",
     "/api/platform-rules",
     "/api/schedule/config",
+    "/api/schedule/suggest",
     "/api/settings",
     "/api/slo",
+    "/api/social/bluesky/credentials",
+    "/api/social/facebook/credentials",
+    "/api/social/instagram/credentials",
     "/api/social/status",
+    "/api/social/x/credentials",
     "/api/stats",
     "/api/status",
     "/health"

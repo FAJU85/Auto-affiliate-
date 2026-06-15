@@ -14,6 +14,7 @@ import httpx
 
 from .utils import logger
 from .utils.circuit_breaker import (
+    AuthError,
     mastodon_cb  as _mastodon_cb,
     x_cb         as _x_cb,
     threads_cb   as _threads_cb,
@@ -150,7 +151,7 @@ async def _post_mastodon(caption: str, deeplink: str, image: bytes | None = None
     conns = _load_connections()
     c = conns.get("mastodon", {})
     if not c.get("connected") or not c.get("access_token"):
-        raise RuntimeError("Mastodon not connected — add credentials in Accounts")
+        raise AuthError("Mastodon not connected — add credentials in Accounts")
 
     instance     = c.get("instance", "https://mastodon.social").rstrip("/")
     access_token = c["access_token"]
@@ -236,7 +237,7 @@ async def _post_x(caption: str, deeplink: str, image: bytes | None = None) -> st
     conns = _load_connections()
     c = conns.get("x", {})
     if not c.get("connected"):
-        raise RuntimeError("X (Twitter) not connected — add credentials in Accounts")
+        raise AuthError("X (Twitter) not connected — add credentials in Accounts")
 
     consumer_key    = c.get("consumer_key", "")
     consumer_secret = c.get("consumer_secret", "")
@@ -244,7 +245,7 @@ async def _post_x(caption: str, deeplink: str, image: bytes | None = None) -> st
     access_secret   = c.get("access_secret", "")
 
     if not all([consumer_key, consumer_secret, access_token, access_secret]):
-        raise RuntimeError("X credentials incomplete — add all 4 API keys in Accounts")
+        raise AuthError("X credentials incomplete — add all 4 API keys in Accounts")
 
     text = f"{caption}\n{deeplink}" if deeplink else caption
     if len(text) > 280:
@@ -268,7 +269,7 @@ async def _post_x(caption: str, deeplink: str, image: bytes | None = None) -> st
             json=body,
         )
     if r.status_code == 403:
-        raise RuntimeError(
+        raise AuthError(
             "X post blocked (403) — app needs 'Read and Write' OAuth 1.0a permissions. "
             "Fix: developer.twitter.com → your app → Settings → User authentication settings → "
             "enable OAuth 1.0a with Read+Write → regenerate and re-enter your Access Token & Secret."
@@ -291,7 +292,7 @@ async def _post_facebook(caption: str, deeplink: str, image_url: str | None = No
     conns = _load_connections()
     c = conns.get("facebook", {})
     if not c.get("connected") or not c.get("page_access_token"):
-        raise RuntimeError("Facebook not connected — add Page Access Token in Accounts")
+        raise AuthError("Facebook not connected — add Page Access Token in Accounts")
 
     page_id    = c.get("page_id", "me")
     page_token = c["page_access_token"]
@@ -319,6 +320,8 @@ async def _post_facebook(caption: str, deeplink: str, image_url: str | None = No
             })
 
     if r.status_code not in (200, 201):
+        if r.status_code in (401, 403):
+            raise AuthError(f"Facebook auth error HTTP {r.status_code} — page token expired or invalid. Reconnect in Accounts.")
         raise RuntimeError(f"Facebook API HTTP {r.status_code}: {r.text[:300]}")
     post_id = r.json().get("id", "")
     uri = f"https://facebook.com/{post_id}" if post_id else "https://facebook.com"
@@ -340,12 +343,12 @@ async def _post_instagram(caption: str, deeplink: str, image_url: str | None = N
     conns = _load_connections()
     c = conns.get("instagram", {})
     if not c.get("connected") or not c.get("access_token"):
-        raise RuntimeError("Instagram not connected — add credentials in Accounts")
+        raise AuthError("Instagram not connected — add credentials in Accounts")
 
     ig_user_id   = c.get("ig_user_id", "")
     access_token = c["access_token"]
     if not ig_user_id:
-        raise RuntimeError("Instagram ig_user_id missing — reconnect in Accounts")
+        raise AuthError("Instagram ig_user_id missing — reconnect in Accounts")
 
     if not image_url:
         raise RuntimeError(
@@ -366,6 +369,8 @@ async def _post_instagram(caption: str, deeplink: str, image_url: str | None = N
             "access_token": access_token,
         })
         if r1.status_code not in (200, 201):
+            if r1.status_code in (401, 403):
+                raise AuthError(f"Instagram auth error HTTP {r1.status_code} — token expired or invalid. Reconnect in Accounts.")
             raise RuntimeError(f"Instagram container HTTP {r1.status_code}: {r1.text[:300]}")
         container_id = r1.json().get("id")
         if not container_id:
@@ -400,7 +405,7 @@ async def _post_threads(caption: str, deeplink: str,
     conns = _load_connections()
     c = conns.get("threads", {})
     if not c.get("connected") or not c.get("access_token"):
-        raise RuntimeError("Threads not connected — connect via OAuth in Accounts")
+        raise AuthError("Threads not connected — connect via OAuth in Accounts")
 
     access_token = c["access_token"]
     user_id      = c.get("user_id", "me")
@@ -444,9 +449,13 @@ async def _post_threads(caption: str, deeplink: str,
 
         r1 = await client.post(f"{base}/{user_id}/threads", params=container_params)
         if r1.status_code not in (200, 201):
-            # If image fails, retry as text-only
+            # If image fails, retry as text-only — but make the fallback explicit in logs
             if image_url and r1.status_code in (400, 422):
-                logger.warn(f"Threads image container failed ({r1.status_code}) — retrying as text", "threads")
+                logger.warn(
+                    f"Threads image rejected (HTTP {r1.status_code}) — "
+                    f"falling back to text-only post. Image URL: {image_url[:80]}",
+                    "threads",
+                )
                 r1 = await client.post(f"{base}/{user_id}/threads", params={
                     "media_type": "TEXT", "text": text, "access_token": access_token,
                 })
@@ -476,12 +485,12 @@ async def _post_tumblr(caption: str, deeplink: str) -> str:
     conns = _load_connections()
     c = conns.get("tumblr", {})
     if not c.get("connected") or not c.get("access_token"):
-        raise RuntimeError("Tumblr not connected — connect via OAuth in Accounts")
+        raise AuthError("Tumblr not connected — connect via OAuth in Accounts")
 
     access_token = c["access_token"]
     blog_name    = c.get("handle", "")
     if not blog_name:
-        raise RuntimeError("Tumblr handle/blog name missing — reconnect in Accounts")
+        raise AuthError("Tumblr handle/blog name missing — reconnect in Accounts")
 
     text = f"{caption}\n{deeplink}" if deeplink else caption
 
@@ -492,6 +501,8 @@ async def _post_tumblr(caption: str, deeplink: str) -> str:
             json={"content": [{"type": "text", "text": text}]},
         )
     if r.status_code not in (200, 201):
+        if r.status_code in (401, 403):
+            raise AuthError(f"Tumblr auth error HTTP {r.status_code} — token expired or revoked. Reconnect in Accounts.")
         raise RuntimeError(f"Tumblr post failed HTTP {r.status_code}: {r.text[:200]}")
     post_id = r.json().get("response", {}).get("id", "")
     uri = f"https://{blog_name}.tumblr.com/post/{post_id}" if post_id else f"https://{blog_name}.tumblr.com"
@@ -527,24 +538,38 @@ async def post_to_tumblr(caption: str, deeplink: str) -> str:
 
 
 async def post_to_platform(platform: str, caption: str, deeplink: str,
-                           image: bytes | None = None, product: dict | None = None) -> str | None:
-    """Post to a single platform. Returns URI on success, logs and returns None on failure."""
+                           image: bytes | None = None,
+                           image_url: str | None = None,
+                           product: dict | None = None) -> str | None:
+    """Post to a single platform. Returns URI on success, logs and returns None on failure.
+
+    image     — raw bytes for platforms that upload binary (Bluesky, Mastodon, X)
+    image_url — public HTTPS URL for platforms that fetch images server-side
+                (Facebook, Instagram, Threads). Populated from product.imageUrl
+                or from the Amazon og:image URL found during pipeline image fetch.
+    """
+    # Prefer the pipeline-resolved image_url; fall back to product field
+    resolved_url = image_url or (product or {}).get("imageUrl")
     try:
         if platform == "mastodon":
             return await post_to_mastodon(caption, deeplink, image, product)
         if platform == "x":
             return await post_to_x(caption, deeplink, image)
         if platform == "threads":
-            image_url = (product or {}).get("imageUrl")
-            return await post_to_threads(caption, deeplink, image_url, product)
+            return await post_to_threads(caption, deeplink, resolved_url, product)
         if platform == "tumblr":
             return await post_to_tumblr(caption, deeplink)
         if platform == "facebook":
-            image_url = (product or {}).get("imageUrl")
-            return await post_to_facebook(caption, deeplink, image_url)
+            return await post_to_facebook(caption, deeplink, resolved_url)
         if platform == "instagram":
-            image_url = (product or {}).get("imageUrl")
-            return await post_to_instagram(caption, deeplink, image_url)
+            if not resolved_url:
+                logger.warn(
+                    "Instagram skipped — no public image URL available for this product. "
+                    "Instagram requires an image for every post.",
+                    "instagram",
+                )
+                return None
+            return await post_to_instagram(caption, deeplink, resolved_url)
         logger.warn("Unknown platform — skipping", platform)
         return None
     except RuntimeError as err:
