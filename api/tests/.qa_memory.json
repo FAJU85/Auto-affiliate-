@@ -289,6 +289,7 @@
     "/api/schedule/config": {
       "keys": [
         "cron",
+        "cronExpressions",
         "nextRun",
         "paused",
         "postingHours",
@@ -363,16 +364,18 @@
     "/api/schedule/suggest": {
       "keys": [
         "basedOn",
+        "hourlyData",
         "message",
         "ok",
         "suggestedTimes"
       ]
     }
   },
-  "run_count": 80,
+  "run_count": 128,
   "known_routes": [
     "/",
     "/api/accounts",
+    "/api/architecture",
     "/api/circuit-breakers",
     "/api/clicks",
     "/api/debug",
@@ -381,6 +384,7 @@
     "/api/env",
     "/api/env-status",
     "/api/finops",
+    "/api/grafana-dashboard",
     "/api/health",
     "/api/history",
     "/api/history.csv",
@@ -388,6 +392,7 @@
     "/api/logs",
     "/api/logs/summary",
     "/api/metrics",
+    "/api/metrics-prom",
     "/api/networks",
     "/api/platform-rules",
     "/api/schedule/config",
@@ -401,6 +406,7 @@
     "/api/social/x/credentials",
     "/api/stats",
     "/api/status",
-    "/health"
+    "/health",
+    "/metrics"
   ]
 }

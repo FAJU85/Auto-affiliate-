@@ -203,6 +203,8 @@ async def _post_mastodon(caption: str, deeplink: str, image: bytes | None = None
             json=payload,
         )
     if r.status_code not in (200, 201):
+        if r.status_code in (401, 403):
+            raise AuthError(f"Mastodon auth error HTTP {r.status_code} — token expired or invalid. Reconnect in Accounts.")
         raise RuntimeError(f"HTTP {r.status_code}: {r.text[:300]}")
     uri = r.json().get("url", "")
     logger.info(f"Posted {uri}", "mastodon")
@@ -460,6 +462,8 @@ async def _post_threads(caption: str, deeplink: str,
                     "media_type": "TEXT", "text": text, "access_token": access_token,
                 })
         if r1.status_code not in (200, 201):
+            if r1.status_code in (401, 403):
+                raise AuthError(f"Threads auth error HTTP {r1.status_code} — token expired or invalid. Reconnect in Accounts.")
             raise RuntimeError(f"Threads container HTTP {r1.status_code}: {r1.text[:200]}")
         container_id = r1.json().get("id")
         if not container_id:
@@ -472,6 +476,8 @@ async def _post_threads(caption: str, deeplink: str,
             "access_token": access_token,
         })
     if r2.status_code not in (200, 201):
+        if r2.status_code in (401, 403):
+            raise AuthError(f"Threads auth error HTTP {r2.status_code} — token expired or invalid. Reconnect in Accounts.")
         raise RuntimeError(f"Threads publish HTTP {r2.status_code}: {r2.text[:200]}")
     post_id = r2.json().get("id", "")
 

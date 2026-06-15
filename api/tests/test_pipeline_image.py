@@ -22,8 +22,8 @@ class TestFetchAmazonOgImage:
             mc.return_value.__aenter__.return_value.get = AsyncMock(
                 side_effect=[page_resp, img_resp]
             )
-            result = await _fetch_amazon_og_image("https://amazon.com/dp/B123")
-        assert result == b"fakeimagedata"
+            result_bytes, result_url = await _fetch_amazon_og_image("https://amazon.com/dp/B123")
+        assert result_bytes == b"fakeimagedata"
 
     @pytest.mark.asyncio
     async def test_returns_none_when_page_not_200(self):
@@ -33,8 +33,8 @@ class TestFetchAmazonOgImage:
 
         with patch("httpx.AsyncClient") as mc:
             mc.return_value.__aenter__.return_value.get = AsyncMock(return_value=page_resp)
-            result = await _fetch_amazon_og_image("https://amazon.com/dp/B123")
-        assert result is None
+            result_bytes, result_url = await _fetch_amazon_og_image("https://amazon.com/dp/B123")
+        assert result_bytes is None
 
     @pytest.mark.asyncio
     async def test_returns_none_when_no_og_tag(self):
@@ -45,21 +45,20 @@ class TestFetchAmazonOgImage:
 
         with patch("httpx.AsyncClient") as mc:
             mc.return_value.__aenter__.return_value.get = AsyncMock(return_value=page_resp)
-            result = await _fetch_amazon_og_image("https://amazon.com/dp/B123")
-        assert result is None
+            result_bytes, result_url = await _fetch_amazon_og_image("https://amazon.com/dp/B123")
+        assert result_bytes is None
 
     @pytest.mark.asyncio
     async def test_returns_none_on_exception(self):
         from api.pipeline import _fetch_amazon_og_image
         with patch("httpx.AsyncClient") as mc:
             mc.return_value.__aenter__.return_value.get = AsyncMock(side_effect=Exception("timeout"))
-            result = await _fetch_amazon_og_image("https://amazon.com/dp/B123")
-        assert result is None
+            result_bytes, result_url = await _fetch_amazon_og_image("https://amazon.com/dp/B123")
+        assert result_bytes is None
 
     @pytest.mark.asyncio
     async def test_falls_back_to_media_amazon_pattern(self):
         from api.pipeline import _fetch_amazon_og_image
-        # og:image not present, but media-amazon.com URL is
         html = 'content="https://m.media-amazon.com/images/I/abc.jpg"'
         page_resp = MagicMock()
         page_resp.status_code = 200
@@ -74,8 +73,8 @@ class TestFetchAmazonOgImage:
             mc.return_value.__aenter__.return_value.get = AsyncMock(
                 side_effect=[page_resp, img_resp]
             )
-            result = await _fetch_amazon_og_image("https://amazon.com/dp/B123")
-        assert result == b"amazonimage"
+            result_bytes, result_url = await _fetch_amazon_og_image("https://amazon.com/dp/B123")
+        assert result_bytes == b"amazonimage"
 
     @pytest.mark.asyncio
     async def test_returns_none_when_image_not_image_content_type(self):
@@ -94,8 +93,8 @@ class TestFetchAmazonOgImage:
             mc.return_value.__aenter__.return_value.get = AsyncMock(
                 side_effect=[page_resp, img_resp]
             )
-            result = await _fetch_amazon_og_image("https://amazon.com/dp/B123")
-        assert result is None
+            result_bytes, result_url = await _fetch_amazon_og_image("https://amazon.com/dp/B123")
+        assert result_bytes is None
 
 
 class TestFindImageAmazonFallback:
@@ -106,17 +105,17 @@ class TestFindImageAmazonFallback:
             "siteUrl": "https://amazon.com/dp/B123",
             "deeplink": "https://amazon.com/dp/B123",
         }
-        with patch.object(pipeline, "_fetch_amazon_og_image", AsyncMock(return_value=b"ogimg")):
-            result = await pipeline._find_image(amazon_product)
-        assert result == b"ogimg"
+        with patch.object(pipeline, "_fetch_amazon_og_image", AsyncMock(return_value=(b"ogimg", "https://img.url"))):
+            result_bytes, result_url = await pipeline._find_image(amazon_product)
+        assert result_bytes == b"ogimg"
 
     @pytest.mark.asyncio
     async def test_returns_none_when_amazon_scrape_fails(self):
         from api import pipeline
         amazon_product = {"siteUrl": "https://amazon.com/dp/B456"}
         with patch.object(pipeline, "_fetch_amazon_og_image", AsyncMock(side_effect=Exception("scrape failed"))):
-            result = await pipeline._find_image(amazon_product)
-        assert result is None
+            result_bytes, result_url = await pipeline._find_image(amazon_product)
+        assert result_bytes is None
 
     @pytest.mark.asyncio
     async def test_skips_amazon_for_non_amazon_url(self):

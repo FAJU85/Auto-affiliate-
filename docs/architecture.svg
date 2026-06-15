@@ -1,0 +1,175 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 700" font-family="Inter, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#555"/>
+    </marker>
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="1" dy="1" stdDeviation="2" flood-opacity="0.15"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1100" height="700" fill="#f8fafc"/>
+  <text x="550" y="32" text-anchor="middle" font-size="20" font-weight="bold" fill="#1e293b">Auto-Affiliate Bot — System Architecture</text>
+
+  <!-- ── SCHEDULER ─────────────────────────────────────────── -->
+  <rect x="20" y="60" width="160" height="60" rx="10" fill="#dbeafe" stroke="#3b82f6" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="100" y="85" text-anchor="middle" font-size="13" font-weight="bold" fill="#1d4ed8">APScheduler</text>
+  <text x="100" y="102" text-anchor="middle" font-size="10" fill="#1d4ed8">cron: 0 * * * *</text>
+  <text x="100" y="116" text-anchor="middle" font-size="9" fill="#64748b">AsyncIO / UTC</text>
+
+  <!-- ── PIPELINE ───────────────────────────────────────────── -->
+  <rect x="250" y="50" width="200" height="80" rx="10" fill="#ede9fe" stroke="#7c3aed" stroke-width="2" filter="url(#shadow)"/>
+  <text x="350" y="78" text-anchor="middle" font-size="14" font-weight="bold" fill="#6d28d9">Pipeline</text>
+  <text x="350" y="96" text-anchor="middle" font-size="10" fill="#6d28d9">run_pipeline() / 5 min timeout</text>
+  <text x="350" y="111" text-anchor="middle" font-size="9" fill="#7c3aed">dedup · cost guard · guardian</text>
+  <text x="350" y="124" text-anchor="middle" font-size="9" fill="#64748b">api/pipeline.py</text>
+
+  <!-- SCHEDULER → PIPELINE -->
+  <line x1="180" y1="90" x2="248" y2="90" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="214" y="84" text-anchor="middle" font-size="9" fill="#555">trigger</text>
+
+  <!-- ── AFFILIATE FEEDS ────────────────────────────────────── -->
+  <rect x="20" y="200" width="180" height="140" rx="10" fill="#fef9c3" stroke="#ca8a04" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="110" y="222" text-anchor="middle" font-size="12" font-weight="bold" fill="#92400e">Affiliate Feeds</text>
+  <text x="110" y="240" text-anchor="middle" font-size="10" fill="#92400e">① SOVRN Commerce</text>
+  <text x="110" y="256" text-anchor="middle" font-size="10" fill="#92400e">② TakeAds</text>
+  <text x="110" y="272" text-anchor="middle" font-size="10" fill="#92400e">③ Admitad XML</text>
+  <text x="110" y="288" text-anchor="middle" font-size="10" fill="#92400e">④ Travelpayouts</text>
+  <text x="110" y="308" text-anchor="middle" font-size="9" fill="#64748b">api/feeds/</text>
+  <text x="110" y="323" text-anchor="middle" font-size="9" fill="#64748b">priority waterfall</text>
+
+  <!-- PIPELINE → FEEDS -->
+  <line x1="350" y1="130" x2="200" y2="230" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="295" y="186" text-anchor="middle" font-size="9" fill="#555">_get_product()</text>
+
+  <!-- ── AI CAPTION ─────────────────────────────────────────── -->
+  <rect x="250" y="200" width="180" height="130" rx="10" fill="#fce7f3" stroke="#db2777" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="340" y="222" text-anchor="middle" font-size="12" font-weight="bold" fill="#9d174d">AI Caption</text>
+  <text x="340" y="240" text-anchor="middle" font-size="10" fill="#9d174d">① Groq llama-3.3-70b</text>
+  <text x="340" y="256" text-anchor="middle" font-size="10" fill="#9d174d">② Mistral small</text>
+  <text x="340" y="272" text-anchor="middle" font-size="10" fill="#9d174d">③ Template fallback</text>
+  <text x="340" y="292" text-anchor="middle" font-size="9" fill="#64748b">English-only guard</text>
+  <text x="340" y="308" text-anchor="middle" font-size="9" fill="#64748b">api/ai/text.py</text>
+
+  <!-- PIPELINE → AI -->
+  <line x1="350" y1="130" x2="340" y2="198" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- ── IMAGE FETCH ────────────────────────────────────────── -->
+  <rect x="480" y="200" width="160" height="110" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="560" y="222" text-anchor="middle" font-size="12" font-weight="bold" fill="#15803d">Image Fetch</text>
+  <text x="560" y="240" text-anchor="middle" font-size="10" fill="#15803d">① imageUrl field</text>
+  <text x="560" y="256" text-anchor="middle" font-size="10" fill="#15803d">② Amazon og:image</text>
+  <text x="560" y="274" text-anchor="middle" font-size="9" fill="#64748b">bytes → Bsky/Mastodon/X</text>
+  <text x="560" y="289" text-anchor="middle" font-size="9" fill="#64748b">URL → FB/IG/Threads</text>
+  <text x="560" y="304" text-anchor="middle" font-size="9" fill="#64748b">non-blocking fallback</text>
+
+  <!-- PIPELINE → IMAGE -->
+  <line x1="450" y1="90" x2="560" y2="198" stroke="#555" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- ── PUBLISHERS ─────────────────────────────────────────── -->
+  <rect x="700" y="50" width="370" height="370" rx="12" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="885" y="76" text-anchor="middle" font-size="13" font-weight="bold" fill="#475569">Publishing Platforms</text>
+
+  <!-- Bluesky -->
+  <rect x="715" y="90" width="155" height="50" rx="8" fill="#dbeafe" stroke="#3b82f6" stroke-width="1.2"/>
+  <text x="792" y="112" text-anchor="middle" font-size="12" font-weight="bold" fill="#1d4ed8">🦋 Bluesky</text>
+  <text x="792" y="129" text-anchor="middle" font-size="9" fill="#64748b">AT Protocol · cb+retry</text>
+
+  <!-- Mastodon -->
+  <rect x="715" y="155" width="155" height="50" rx="8" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.2"/>
+  <text x="792" y="177" text-anchor="middle" font-size="12" font-weight="bold" fill="#6d28d9">🐘 Mastodon</text>
+  <text x="792" y="194" text-anchor="middle" font-size="9" fill="#64748b">OAuth2 · image upload</text>
+
+  <!-- X -->
+  <rect x="715" y="220" width="155" height="50" rx="8" fill="#f1f5f9" stroke="#475569" stroke-width="1.2"/>
+  <text x="792" y="242" text-anchor="middle" font-size="12" font-weight="bold" fill="#1e293b">𝕏 X (Twitter)</text>
+  <text x="792" y="259" text-anchor="middle" font-size="9" fill="#64748b">OAuth1.0a · Read+Write</text>
+
+  <!-- Facebook -->
+  <rect x="885" y="90" width="170" height="50" rx="8" fill="#dbeafe" stroke="#1d4ed8" stroke-width="1.2"/>
+  <text x="970" y="112" text-anchor="middle" font-size="12" font-weight="bold" fill="#1d4ed8">📘 Facebook</text>
+  <text x="970" y="129" text-anchor="middle" font-size="9" fill="#64748b">Graph API · Page token</text>
+
+  <!-- Instagram -->
+  <rect x="885" y="155" width="170" height="50" rx="8" fill="#fce7f3" stroke="#db2777" stroke-width="1.2"/>
+  <text x="970" y="177" text-anchor="middle" font-size="12" font-weight="bold" fill="#9d174d">📸 Instagram</text>
+  <text x="970" y="194" text-anchor="middle" font-size="9" fill="#64748b">Graph API · image URL req.</text>
+
+  <!-- Threads -->
+  <rect x="885" y="220" width="170" height="50" rx="8" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.2"/>
+  <text x="970" y="242" text-anchor="middle" font-size="12" font-weight="bold" fill="#15803d">🧵 Threads</text>
+  <text x="970" y="259" text-anchor="middle" font-size="9" fill="#64748b">Meta Graph API · OAuth2</text>
+
+  <!-- Tumblr -->
+  <rect x="715" y="285" width="155" height="50" rx="8" fill="#fef9c3" stroke="#ca8a04" stroke-width="1.2"/>
+  <text x="792" y="307" text-anchor="middle" font-size="12" font-weight="bold" fill="#92400e">📝 Tumblr</text>
+  <text x="792" y="324" text-anchor="middle" font-size="9" fill="#64748b">OAuth2 · Bearer token</text>
+
+  <!-- PIPELINE → PUBLISHERS -->
+  <line x1="450" y1="90" x2="698" y2="115" stroke="#7c3aed" stroke-width="2" stroke-dasharray="6,3" marker-end="url(#arrow)"/>
+  <text x="580" y="95" text-anchor="middle" font-size="9" fill="#7c3aed">post_to_platform()</text>
+
+  <!-- ── OBSERVABILITY ──────────────────────────────────────── -->
+  <rect x="20" y="410" width="620" height="130" rx="10" fill="#fff7ed" stroke="#ea580c" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="330" y="432" text-anchor="middle" font-size="13" font-weight="bold" fill="#c2410c">Observability Stack</text>
+
+  <rect x="35" y="445" width="130" height="82" rx="7" fill="#ffedd5" stroke="#ea580c" stroke-width="1"/>
+  <text x="100" y="463" text-anchor="middle" font-size="10" font-weight="bold" fill="#c2410c">Prometheus</text>
+  <text x="100" y="479" text-anchor="middle" font-size="9" fill="#64748b">GET /metrics</text>
+  <text x="100" y="493" text-anchor="middle" font-size="9" fill="#64748b">4 Golden Signals</text>
+  <text x="100" y="507" text-anchor="middle" font-size="9" fill="#64748b">circuit breakers</text>
+  <text x="100" y="521" text-anchor="middle" font-size="9" fill="#64748b">SLO / cost / clicks</text>
+
+  <rect x="180" y="445" width="130" height="82" rx="7" fill="#fef3c7" stroke="#d97706" stroke-width="1"/>
+  <text x="245" y="463" text-anchor="middle" font-size="10" font-weight="bold" fill="#b45309">Grafana</text>
+  <text x="245" y="479" text-anchor="middle" font-size="9" fill="#64748b">GET /api/grafana-dashboard</text>
+  <text x="245" y="493" text-anchor="middle" font-size="9" fill="#64748b">Import JSON → panels</text>
+  <text x="245" y="507" text-anchor="middle" font-size="9" fill="#64748b">SLO, spend, latency</text>
+  <text x="245" y="521" text-anchor="middle" font-size="9" fill="#64748b">circuit breaker table</text>
+
+  <rect x="325" y="445" width="130" height="82" rx="7" fill="#f0fdf4" stroke="#16a34a" stroke-width="1"/>
+  <text x="390" y="463" text-anchor="middle" font-size="10" font-weight="bold" fill="#15803d">SLO Engine</text>
+  <text x="390" y="479" text-anchor="middle" font-size="9" fill="#64748b">GET /api/slo</text>
+  <text x="390" y="493" text-anchor="middle" font-size="9" fill="#64748b">target: 90%</text>
+  <text x="390" y="507" text-anchor="middle" font-size="9" fill="#64748b">budget alert &lt;20%</text>
+  <text x="390" y="521" text-anchor="middle" font-size="9" fill="#64748b">circuit breaker at 0%</text>
+
+  <rect x="470" y="445" width="155" height="82" rx="7" fill="#ede9fe" stroke="#7c3aed" stroke-width="1"/>
+  <text x="547" y="463" text-anchor="middle" font-size="10" font-weight="bold" fill="#6d28d9">FinOps</text>
+  <text x="547" y="479" text-anchor="middle" font-size="9" fill="#64748b">GET /api/finops</text>
+  <text x="547" y="493" text-anchor="middle" font-size="9" fill="#64748b">daily AI spend (USD)</text>
+  <text x="547" y="507" text-anchor="middle" font-size="9" fill="#64748b">cap enforcement</text>
+  <text x="547" y="521" text-anchor="middle" font-size="9" fill="#64748b">GET /api/clicks</text>
+
+  <!-- ── DATA PERSISTENCE ───────────────────────────────────── -->
+  <rect x="700" y="450" width="375" height="130" rx="10" fill="#f8fafc" stroke="#64748b" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="887" y="472" text-anchor="middle" font-size="13" font-weight="bold" fill="#334155">Data Persistence (/data)</text>
+  <text x="790" y="493" text-anchor="start" font-size="9" fill="#475569">📄 settings.json — user config</text>
+  <text x="790" y="509" text-anchor="start" font-size="9" fill="#475569">📄 runs.json — pipeline history (500)</text>
+  <text x="790" y="525" text-anchor="start" font-size="9" fill="#475569">📄 bsky-session.json — token cache (80min TTL)</text>
+  <text x="790" y="541" text-anchor="start" font-size="9" fill="#475569">📄 social-connections.json — platform creds</text>
+  <text x="790" y="557" text-anchor="start" font-size="9" fill="#475569">📄 dedup-store.json — posted URLs (24h TTL)</text>
+  <text x="790" y="573" text-anchor="start" font-size="9" fill="#475569">📄 budget.json — daily AI cost tracker</text>
+
+  <!-- ── DASHBOARD ──────────────────────────────────────────── -->
+  <rect x="20" y="570" width="260" height="80" rx="10" fill="#ecfdf5" stroke="#059669" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="150" y="592" text-anchor="middle" font-size="12" font-weight="bold" fill="#065f46">Dashboard (SPA)</text>
+  <text x="150" y="609" text-anchor="middle" font-size="9" fill="#064e3b">src/dashboard.html — single file</text>
+  <text x="150" y="623" text-anchor="middle" font-size="9" fill="#064e3b">FastAPI served at GET /</text>
+  <text x="150" y="637" text-anchor="middle" font-size="9" fill="#064e3b">Status · Settings · Accounts · Schedule</text>
+
+  <!-- ── CLICK TRACKING ────────────────────────────────────── -->
+  <rect x="300" y="570" width="220" height="80" rx="10" fill="#fdf2f8" stroke="#db2777" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="410" y="592" text-anchor="middle" font-size="12" font-weight="bold" fill="#831843">Click Tracking</text>
+  <text x="410" y="609" text-anchor="middle" font-size="9" fill="#831843">GET /r/{id} → 302 deeplink</text>
+  <text x="410" y="623" text-anchor="middle" font-size="9" fill="#831843">metrics.record_click()</text>
+  <text x="410" y="637" text-anchor="middle" font-size="9" fill="#831843">GET /api/clicks · /api/history</text>
+
+  <!-- Legend -->
+  <rect x="545" y="570" width="520" height="80" rx="8" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="805" y="590" text-anchor="middle" font-size="11" font-weight="bold" fill="#475569">Circuit Breakers (AuthError skips counting)</text>
+  <text x="570" y="608" font-size="9" fill="#64748b">🔒 bluesky · mastodon · x · facebook · instagram · threads · tumblr</text>
+  <text x="570" y="623" font-size="9" fill="#64748b">🔒 groq · mistral · sovrn  (threshold: 3–5 failures → open → 60s recovery)</text>
+  <text x="570" y="638" font-size="9" fill="#64748b">POST /api/circuit-breakers/{name}/reset  ·  POST /api/circuit-breakers/all/reset</text>
+</svg>

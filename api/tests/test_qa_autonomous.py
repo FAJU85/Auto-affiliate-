@@ -96,7 +96,7 @@ class TestUnitCircuitBreaker:
                 except AuthError:
                     pass
 
-        asyncio.get_event_loop().run_until_complete(run())
+        asyncio.run(run())
         assert cb._failures == 0
         assert cb.state == "closed"
 
@@ -114,7 +114,7 @@ class TestUnitCircuitBreaker:
                 except RuntimeError:
                     pass
 
-        asyncio.get_event_loop().run_until_complete(run())
+        asyncio.run(run())
         assert cb._failures == 3
         assert cb.state == "open"
 
@@ -477,6 +477,7 @@ class TestE2EPipeline:
              patch.object(pipeline, "_find_image", AsyncMock(return_value=(b"imgbytes", "https://img.url/test.jpg"))), \
              patch("api.pipeline.ai_text.generate_post_text", AsyncMock(return_value="Great headphones at $279 — grab yours")), \
              patch("api.pipeline.post_to_bluesky", AsyncMock(return_value="https://bsky.app/profile/test/post/123")), \
+             patch("api.pipeline.check_allowed", return_value=(True, "")), \
              patch.object(m, "was_posted_within", return_value=False), \
              patch.object(m, "mark_posted", return_value=None), \
              patch.object(m, "record_run", return_value=None):
