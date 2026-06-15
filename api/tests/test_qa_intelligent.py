@@ -31,7 +31,6 @@ import os
 import re
 import time
 from pathlib import Path
-from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient

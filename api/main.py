@@ -413,6 +413,11 @@ async def api_slo():
     return slo
 
 
+@app.get("/api/circuit-breakers")
+async def list_circuit_breakers():
+    return cb_statuses()
+
+
 @app.post("/api/circuit-breakers/reset-all")
 async def reset_all_circuit_breakers():
     cb_reset_all()

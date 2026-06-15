@@ -12,7 +12,6 @@ Run:
 """
 
 import asyncio
-import html
 import json
 import os
 import re
@@ -404,7 +403,7 @@ class TestIntegrationFeedsWithMocks:
             client_inst.stream = fake_stream
             mc.return_value.__aenter__ = AsyncMock(return_value=client_inst)
             mc.return_value.__aexit__ = AsyncMock(return_value=False)
-            product = await admitad.get_admitad_product()
+            await admitad.get_admitad_product()
 
         # May be None due to mock complexity — but must not crash
         # The parser itself is tested in unit tests; here we verify no exception raised
@@ -465,7 +464,9 @@ class TestE2EPipeline:
         monkeypatch.setenv("BSKY_HANDLE", "test.bsky.social")
         monkeypatch.setenv("BSKY_APP_PASSWORD", "test-password")  # pragma: allowlist secret
         import api.utils.settings as so
-        so._cache = None; so.DATA_DIR = tmp_path; so.SETTINGS_FILE = tmp_path / "settings.json"
+        so._cache = None
+        so.DATA_DIR = tmp_path
+        so.SETTINGS_FILE = tmp_path / "settings.json"
         import api.utils.metrics as m
         import api.pipeline as pipeline
 
@@ -492,10 +493,13 @@ class TestE2EPipeline:
         monkeypatch.setenv("BSKY_HANDLE", "test.bsky.social")
         monkeypatch.setenv("BSKY_APP_PASSWORD", "test-app-password")
         import api.utils.settings as so
-        so._cache = None; so.DATA_DIR = tmp_path; so.SETTINGS_FILE = tmp_path / "settings.json"
+        so._cache = None
+        so.DATA_DIR = tmp_path
+        so.SETTINGS_FILE = tmp_path / "settings.json"
         import api.utils.metrics as m
         import api.pipeline as pipeline
-        pipeline.STATE["running"] = False; pipeline.STATE["paused"] = False
+        pipeline.STATE["running"] = False
+        pipeline.STATE["paused"] = False
 
         with patch.object(pipeline, "_get_product", AsyncMock(return_value=self._make_product())), \
              patch.object(m, "was_posted_within", return_value=True), \
@@ -511,7 +515,9 @@ class TestE2EPipeline:
         monkeypatch.setenv("DATA_DIR", str(tmp_path))
         monkeypatch.setenv("TAKEADS_API_KEY", "test-key")
         import api.utils.settings as so
-        so._cache = None; so.DATA_DIR = tmp_path; so.SETTINGS_FILE = tmp_path / "settings.json"
+        so._cache = None
+        so.DATA_DIR = tmp_path
+        so.SETTINGS_FILE = tmp_path / "settings.json"
         import api.pipeline as pipeline
 
         takeads_product = self._make_product(source="takeads")
@@ -533,9 +539,12 @@ class TestE2EPipeline:
         for key in ("SOVRN_API_KEY", "TAKEADS_API_KEY", "ADMITAD_FEED_URL", "TRAVELPAYOUTS_TOKEN"):
             monkeypatch.delenv(key, raising=False)
         import api.utils.settings as so
-        so._cache = None; so.DATA_DIR = tmp_path; so.SETTINGS_FILE = tmp_path / "settings.json"
+        so._cache = None
+        so.DATA_DIR = tmp_path
+        so.SETTINGS_FILE = tmp_path / "settings.json"
         import api.pipeline as pipeline
-        pipeline.STATE["running"] = False; pipeline.STATE["paused"] = False
+        pipeline.STATE["running"] = False
+        pipeline.STATE["paused"] = False
         import api.utils.metrics as m
 
         with patch.object(m, "record_run", return_value=None):

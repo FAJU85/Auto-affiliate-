@@ -369,10 +369,11 @@
       ]
     }
   },
-  "run_count": 72,
+  "run_count": 80,
   "known_routes": [
     "/",
     "/api/accounts",
+    "/api/circuit-breakers",
     "/api/clicks",
     "/api/debug",
     "/api/dedup/stats",
