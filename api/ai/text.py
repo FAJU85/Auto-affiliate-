@@ -108,6 +108,9 @@ def _build_prompts(product: dict, trends: list, platform: str | None = None) -> 
     system = base_system + cta_instruction
     if platform and platform in _PLATFORM_TONE:
         system = system + "\n\nPLATFORM STYLE: " + _PLATFORM_TONE[platform]
+    ab_style = product.get("_ab_style")
+    if ab_style:
+        system = system + "\n\nA/B VARIANT STYLE: " + ab_style
 
     template = s.get("postUserTemplate", "{name}")
     try:

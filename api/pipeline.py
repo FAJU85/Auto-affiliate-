@@ -30,6 +30,7 @@ from .utils.telemetry import Timer
 from .utils.product_scorer import pick_best, score_product
 from .utils import retry_queue
 from .utils.price_tracker import record_price, check_price_drop
+from .utils import ab_test as ab
 
 STATIC_TRENDS = [
     "summer deals", "gift ideas", "tech upgrades", "home essentials",
@@ -360,11 +361,21 @@ async def _execute(started: float) -> dict:
     # If product already has a public imageUrl, prefer that for URL-based platforms
     image_url = image_url or product.get("imageUrl")
 
-    # ── Phase 4: Tracking URL ──
+    # ── Phase 4: Tracking URL + A/B assignment ──
     deeplink = product.get("deeplink") or product.get("siteUrl") or ""
     if not deeplink:
         return _record({"success": False, "error": "Product has no URL"})
     tracking_id, redirect = _tracking_url(deeplink)
+
+    # Assign A/B variant for this post — B gets a curiosity-hook caption style
+    ab_variant = ab.assign_variant(tracking_id)
+    if ab_variant == "B" and not price_drop:
+        # Re-generate caption with variant B style injected via system prompt modifier
+        variant_style = ab.get_variant_style("B")
+        ab_product = {**product, "_ab_style": variant_style}
+        caption = await ai_text.generate_post_text(ab_product, trends)
+        logger.info(f"A/B variant B caption: {caption[:60]}…", "ab")
+    logger.info(f"A/B variant: {ab_variant}", "ab")
 
     # ── Phase 5: Post to all enabled platforms ──
     recent_runs = metrics.get_recent_runs(500)

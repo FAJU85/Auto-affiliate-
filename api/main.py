@@ -1228,7 +1228,9 @@ async def ai_generate(request: Request):
 
 @app.get("/r/{tracking_id}")
 async def redirect(tracking_id: str):
+    from .utils import ab_test as _ab
     metrics.record_click(tracking_id)
+    _ab.record_click(tracking_id)
     target = pipeline.resolve_redirect(tracking_id)
     if target:
         return RedirectResponse(target, status_code=302)
@@ -1342,6 +1344,13 @@ async def revenue_summary():
         "by_network": by_network,
         "daily": daily_list,
     }
+
+
+@app.get("/api/ab-results")
+async def ab_results():
+    """A/B caption test results — CTR per variant and winner if statistically clear."""
+    from .utils import ab_test as _ab
+    return _ab.get_results()
 
 
 # ── Link-in-bio landing page ───────────────────────────────────────────────
