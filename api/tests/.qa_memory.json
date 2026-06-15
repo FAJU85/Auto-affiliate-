@@ -371,7 +371,7 @@
       ]
     }
   },
-  "run_count": 142,
+  "run_count": 145,
   "known_routes": [
     "/",
     "/api/accounts",
@@ -408,7 +408,9 @@
     "/api/social/x/credentials",
     "/api/stats",
     "/api/status",
+    "/bio",
     "/health",
+    "/links",
     "/metrics"
   ]
 }
