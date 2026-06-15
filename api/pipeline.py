@@ -27,6 +27,7 @@ from .utils import budget as budget_util
 from .utils import logger, metrics, settings
 from .utils.telemetry import Timer
 from .utils.product_scorer import pick_best, score_product
+from .utils import retry_queue
 
 STATIC_TRENDS = [
     "summer deals", "gift ideas", "tech upgrades", "home essentials",
@@ -378,6 +379,7 @@ async def _execute(started: float) -> dict:
                     STATE["pausedUntil"] = time.time() + RATE_LIMIT_COOLDOWN
                     logger.warn(f"Rate-limited — auto-paused for {RATE_LIMIT_COOLDOWN}s: {_msg}", "bluesky")
                 logger.error(f"Post failed: {_msg}", "bluesky")
+                retry_queue.enqueue("bluesky", plat_caption, redirect, product, error=_msg)
         else:
             logger.info("Attempting post…", platform)
             uri = await post_to_platform(
@@ -391,6 +393,8 @@ async def _execute(started: float) -> dict:
                 logger.info(f"Posted OK → {uri}", platform)
             else:
                 logger.error("Post returned no URI — check connection in Accounts", platform)
+                retry_queue.enqueue(platform, plat_caption, redirect, product,
+                                    image_url=image_url, error="no URI returned")
 
     if not any_success:
         return _record({"success": False, "error": f"All platforms failed: {list(platforms)}"})
@@ -414,6 +418,51 @@ async def _execute(started: float) -> dict:
         "trackingId": tracking_id,
         "durationMs": duration_ms,
     })
+
+
+# ── Retry runner (called every 15 minutes by APScheduler) ─────────────────────
+
+async def retry_failed_posts() -> dict:
+    """Re-attempt queued failed posts. Called on a 15-minute schedule."""
+    due = retry_queue.get_due()
+    if not due:
+        return {"retried": 0, "succeeded": 0, "failed": 0}
+
+    succeeded = 0
+    failed = 0
+    for entry in due:
+        platform = entry["platform"]
+        caption = entry["caption"]
+        redirect = entry["redirect_url"]
+        product = entry["product"]
+        image_url = entry.get("image_url")
+
+        try:
+            if platform == "bluesky":
+                uri = await post_to_bluesky(caption, redirect, None, product)
+            else:
+                uri = await post_to_platform(
+                    platform, caption, redirect,
+                    image=None, image_url=image_url, product=product,
+                )
+            if uri:
+                logger.info(f"Retry succeeded → {uri}", f"retry:{platform}")
+                retry_queue.mark_success(entry)
+                succeeded += 1
+            else:
+                retry_queue.mark_failed(entry, error="no URI on retry")
+                failed += 1
+        except AuthError as e:
+            # Permanent auth failure — drop from queue, no point retrying
+            retry_queue.mark_failed(entry, error=f"auth:{e}")
+            failed += 1
+        except Exception as e:  # noqa: BLE001
+            retry_queue.mark_failed(entry, error=str(e))
+            failed += 1
+
+    retry_queue.clear_expired()
+    logger.info(f"Retry run: {len(due)} due, {succeeded} OK, {failed} failed", "retry")
+    return {"retried": len(due), "succeeded": succeeded, "failed": failed}
 
 
 # ── SLO calculation ──────────────────────────────────────────────────────────

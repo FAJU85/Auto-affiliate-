@@ -64,6 +64,10 @@ def _schedule_job() -> None:
         pipeline.run_pipeline, CronTrigger.from_crontab(_cron()),
         id="pipeline", replace_existing=True,
     )
+    scheduler.add_job(
+        pipeline.retry_failed_posts, CronTrigger.from_crontab("*/15 * * * *"),
+        id="retry_queue", replace_existing=True,
+    )
 
 
 def _next_run() -> str | None:
