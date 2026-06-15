@@ -400,6 +400,8 @@ async def _execute(started: float) -> dict:
 SLO_TARGET = 90.0  # 90% — realistic for a bot posting hourly via third-party APIs
                    # 99.9% would deplete budget on any single transient failure
 
+_SLO_MIN_RUNS = 5  # require at least this many runs before reporting error budget exhaustion
+
 def calculate_slo(window: int = 500) -> dict:
     """Calculate 30-day SLO compliance and error budget."""
     runs = metrics.get_recent_runs(window)
@@ -414,6 +416,10 @@ def calculate_slo(window: int = 500) -> dict:
     allowed_failure_rate = (100 - SLO_TARGET) / 100
     actual_failure_rate  = (total - success) / total
     budget_consumed = min(1.0, actual_failure_rate / allowed_failure_rate) * 100 if allowed_failure_rate > 0 else 100.0
+    # Do not report budget exhausted until we have a statistically meaningful run count.
+    # A single startup failure (e.g. "No platforms configured") must not trigger HALT.
+    if total < _SLO_MIN_RUNS:
+        budget_consumed = min(budget_consumed, 99.9)  # never shows as fully exhausted
     return {
         "slo_pct": slo_pct,
         "slo_target": SLO_TARGET,
