@@ -21,6 +21,7 @@ from .feeds.sovrn import get_sovrn_product
 from .feeds.takeads import get_takeads_product
 from .feeds.admitad import get_admitad_product
 from .feeds.travelpayouts import get_travelpayouts_product
+from .feeds.amazon import get_amazon_product
 from .social_post import post_to_platform
 from .utils.platform_guardian import check_allowed
 from .utils import budget as budget_util
@@ -89,6 +90,8 @@ async def _get_product() -> dict | None:
         tasks.append(_try("Admitad", get_admitad_product, "admitad_fetch"))
     if os.environ.get("TRAVELPAYOUTS_TOKEN"):
         tasks.append(_try("Travelpayouts", get_travelpayouts_product, "travelpayouts_fetch"))
+    if os.environ.get("AMAZON_ASSOCIATE_TAG"):
+        tasks.append(_try("Amazon", get_amazon_product, "amazon_fetch"))
 
     if not tasks:
         logger.warn("All product networks unconfigured — no product available", "pipeline")
