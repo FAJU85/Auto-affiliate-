@@ -51,7 +51,40 @@ def _fmt_price(product: dict) -> str:
     return f"{sym}{price}" if sym else f"{price} {cur}"
 
 
-def _build_prompts(product: dict, trends: list) -> tuple[str, str]:
+# Platform-specific tone modifiers applied on top of the base system prompt
+_PLATFORM_TONE: dict[str, str] = {
+    "bluesky": (
+        "Write in a warm, conversational tone — like recommending to a friend. "
+        "2-3 short sentences max. No hashtags needed."
+    ),
+    "mastodon": (
+        "Write in a discovery-friendly tone. Include 2-3 relevant hashtags at the end "
+        "so people can find it by interest (e.g. #tech #deals)."
+    ),
+    "x": (
+        "Write punchy and direct — this is Twitter. Under 220 characters including the CTA. "
+        "1-2 hashtags max."
+    ),
+    "instagram": (
+        "Write visually and aspirationally — people see the photo first. "
+        "2-3 sentences + 5-8 relevant hashtags at the end for discoverability."
+    ),
+    "threads": (
+        "Write casually and visually. Short punchy hook, then 1-2 sentences. "
+        "3-5 hashtags at the end."
+    ),
+    "facebook": (
+        "Write in a friendly, value-focused tone — no hashtags. "
+        "Lead with the benefit to the buyer. 2-4 sentences."
+    ),
+    "tumblr": (
+        "Write with aesthetic flair — evocative and slightly editorial. "
+        "2-3 sentences, no hashtags in the body."
+    ),
+}
+
+
+def _build_prompts(product: dict, trends: list, platform: str | None = None) -> tuple[str, str]:
     s = settings.get_settings()
     trend = (trends[0] if trends else product.get("category", "trending"))
 
@@ -73,6 +106,8 @@ def _build_prompts(product: dict, trends: list) -> tuple[str, str]:
             "Match the psychological angle to the product type."
         )
     system = base_system + cta_instruction
+    if platform and platform in _PLATFORM_TONE:
+        system = system + "\n\nPLATFORM STYLE: " + _PLATFORM_TONE[platform]
 
     template = s.get("postUserTemplate", "{name}")
     try:
@@ -281,4 +316,20 @@ async def generate_post_text(product: dict, trends: list | None = None) -> str:
                 return cleaned
             logger.warn(f"AI caption rejected (unusable): {repr(cleaned[:80])}")
     logger.warn("AI providers unavailable or unusable — using template")
+    return _template(product, trends)
+
+
+async def generate_platform_caption(product: dict, trends: list | None = None, platform: str | None = None) -> str:
+    """Generate a caption tuned to the target platform's style and audience."""
+    trends = trends or []
+    system, user = _build_prompts(product, trends, platform=platform)
+    for provider in (_try_groq, _try_mistral):
+        out = await provider(system, user)
+        if out and out.strip():
+            cleaned = _clean(out)
+            if _looks_usable(cleaned):
+                logger.info(f"Caption [{platform or 'generic'}] ({len(cleaned)} chars): {cleaned[:80]}…")
+                return cleaned
+            logger.warn(f"AI caption rejected (unusable) [{platform}]: {repr(cleaned[:80])}")
+    logger.warn(f"AI providers unavailable — using template [{platform}]")
     return _template(product, trends)

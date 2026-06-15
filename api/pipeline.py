@@ -321,7 +321,7 @@ async def _execute(started: float) -> dict:
             "product": product.get("name"), "productSource": product.get("source"),
         })
 
-    # ── Phase 2: Caption ──
+    # ── Phase 2: Caption (base — used when platform-specific fails or for single platform) ──
     trends = await get_trends()
     with Timer("caption_gen"):
         caption = await ai_text.generate_post_text(product, trends)
@@ -345,8 +345,16 @@ async def _execute(started: float) -> dict:
     uris = {}
     primary_uri = ""
     any_success = False
+    # Pre-generate per-platform captions concurrently when posting to multiple platforms
+    platform_captions: dict[str, str] = {}
+    if len(platforms) > 1:
+        async def _gen_caption(plat: str) -> None:
+            c = await ai_text.generate_platform_caption(product, trends, platform=plat)
+            platform_captions[plat] = c
+        await asyncio.gather(*[_gen_caption(p) for p in platforms])
 
     for platform in platforms:
+        plat_caption = platform_captions.get(platform, caption)
         # Anti-ban guardian: check daily limit, interval, and posting hours
         allowed, reason = check_allowed(platform, recent_runs)
         if not allowed:
@@ -356,7 +364,7 @@ async def _execute(started: float) -> dict:
         if platform == "bluesky":
             try:
                 with Timer("bluesky_publish"):
-                    uri = await post_to_bluesky(caption, redirect, image, product)
+                    uri = await post_to_bluesky(plat_caption, redirect, image, product)
                 uris["bluesky"] = uri
                 primary_uri = primary_uri or uri
                 any_success = True
@@ -373,7 +381,7 @@ async def _execute(started: float) -> dict:
         else:
             logger.info("Attempting post…", platform)
             uri = await post_to_platform(
-                platform, caption, redirect,
+                platform, plat_caption, redirect,
                 image=image, image_url=image_url, product=product,
             )
             if uri:
