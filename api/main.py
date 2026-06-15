@@ -840,7 +840,12 @@ async def test_bluesky():
     from .bluesky_client import _bsky_credentials
     handle, password = _bsky_credentials()
     if not handle or not password:
-        return {"ok": False, "error": "Bluesky credentials not set — enter them in Accounts or set BSKY_HANDLE / BSKY_APP_PASSWORD in Space Secrets"}
+        missing = []
+        if not handle:
+            missing.append("BSKY_HANDLE")
+        if not password:
+            missing.append("BSKY_APP_PASSWORD")
+        return {"ok": False, "error": f"Bluesky credentials not set — enter them in Accounts or set {chr(39).join(missing) if len(missing)==1 else ' and '.join(missing)} in Space Secrets"}
 
     _last_bsky_test = time.time()
     try:

@@ -53,8 +53,9 @@ class TestGetProduct:
 
     @pytest.mark.asyncio
     async def test_returns_sovrn_product_when_available(self, monkeypatch):
+        monkeypatch.setenv("SOVRN_API_KEY", "fake")
         from api import pipeline
-        with patch.object(pipeline, "_try_sovrn", AsyncMock(return_value=PRODUCT)):
+        with patch("api.pipeline.get_sovrn_product", AsyncMock(return_value=PRODUCT)):
             result = await pipeline._get_product()
         assert result == PRODUCT
 
@@ -64,16 +65,15 @@ class TestTrySovrn:
     async def test_returns_none_without_key(self, monkeypatch):
         monkeypatch.delenv("SOVRN_API_KEY", raising=False)
         from api import pipeline
-        result = await pipeline._try_sovrn()
+        result = await pipeline._get_product()
         assert result is None
 
     @pytest.mark.asyncio
     async def test_returns_none_on_exception(self, monkeypatch):
         monkeypatch.setenv("SOVRN_API_KEY", "fake")
         from api import pipeline
-        # Patch at the pipeline module boundary where _try_sovrn calls get_sovrn_product
         with patch("api.pipeline.get_sovrn_product", AsyncMock(side_effect=RuntimeError("network error"))):
-            result = await pipeline._try_sovrn()
+            result = await pipeline._get_product()
         assert result is None
 
 

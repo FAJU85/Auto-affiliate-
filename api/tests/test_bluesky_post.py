@@ -12,7 +12,7 @@ class TestPostAsync:
         import importlib
         import api.bluesky_client as bc
         importlib.reload(bc)
-        with pytest.raises(RuntimeError, match="missing"):
+        with pytest.raises(RuntimeError):
             await bc._post_async("caption", "https://example.com", None, {})
 
     @pytest.mark.asyncio

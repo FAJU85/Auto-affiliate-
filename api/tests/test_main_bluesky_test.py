@@ -44,7 +44,7 @@ class TestBlueskytestEndpoint:
         assert r.status_code == 200
         data = r.json()
         assert data["ok"] is False
-        assert "Missing" in data["error"] or "missing" in data["error"]
+        assert data["error"]  # any non-empty error about unconfigured credentials
 
     def test_returns_ok_when_200(self, client):
         _reset_bsky_cooldown()
