@@ -29,6 +29,7 @@ from .utils import logger, metrics, settings
 from .utils.telemetry import Timer
 from .utils.product_scorer import pick_best, score_product
 from .utils import retry_queue
+from .utils.price_tracker import record_price, check_price_drop
 
 STATIC_TRENDS = [
     "summer deals", "gift ideas", "tech upgrades", "home essentials",
@@ -318,6 +319,18 @@ async def _execute(started: float) -> dict:
         return _record({"success": False, "error": "No product available from any network"})
     logger.info(f"Product: {product.get('name', '?')!r} via {product.get('source', '?')}", "pipeline")
 
+    # ── Price drop detection ──
+    price_drop = check_price_drop(product)
+    if price_drop:
+        logger.info(
+            f"Price drop detected: {price_drop['name']!r} "
+            f"${price_drop['old_price']:.2f} → ${price_drop['new_price']:.2f} "
+            f"(-{price_drop['drop_pct']:.0%})",
+            "price"
+        )
+    # Record current price for future comparison (always, win or lose)
+    record_price(product)
+
     # ── Guard: dedup (1h hard block — prevents exact repeat within same session) ──
     if metrics.was_posted_within(product.get("siteUrl"), product.get("name"), hours=1):
         return _record({
@@ -328,7 +341,16 @@ async def _execute(started: float) -> dict:
     # ── Phase 2: Caption (base — used when platform-specific fails or for single platform) ──
     trends = await get_trends()
     with Timer("caption_gen"):
-        caption = await ai_text.generate_post_text(product, trends)
+        if price_drop:
+            # Price-drop captions bypass the normal template to highlight the deal
+            drop_product = {**product, "description": (
+                f"PRICE DROP {price_drop['drop_pct']:.0%} OFF! "
+                f"Was ${price_drop['old_price']:.2f}, now ${price_drop['new_price']:.2f}. "
+                f"{product.get('description', '')}"
+            )}
+            caption = await ai_text.generate_post_text(drop_product, trends)
+        else:
+            caption = await ai_text.generate_post_text(product, trends)
     logger.info(f"Caption ({len(caption)} chars): {caption[:80]}…", "ai")
 
     # ── Phase 3: Image (non-blocking — failure is fine) ──
