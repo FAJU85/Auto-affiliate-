@@ -1,0 +1,147 @@
+{
+  "sprint": {
+    "id": "sprint-01",
+    "name": "Foundation & Core Pipeline",
+    "goal": "Establish affiliate feed ingestion, AI caption generation, and multi-platform social posting with monitoring.",
+    "start_date": "2026-06-15",
+    "end_date": "2026-06-29",
+    "velocity_points": 34
+  },
+  "user_stories": [
+    {
+      "id": "US-001",
+      "title": "Affiliate Network Integration — SOVRN",
+      "description": "As a pipeline operator, I want to pull product feeds from SOVRN so that I have a primary source of affiliate products.",
+      "acceptance_criteria": [
+        "GET /api/feeds/sovrn returns at least 5 products when credentials are valid",
+        "Circuit breaker trips after 3 consecutive 5xx errors",
+        "AuthError is raised (not RuntimeError) on 403 responses"
+      ],
+      "priority": "high",
+      "points": 5,
+      "status": "done",
+      "tags": ["affiliate", "feeds", "sovrn"]
+    },
+    {
+      "id": "US-002",
+      "title": "Affiliate Network Integration — TakeAds",
+      "description": "As a pipeline operator, I want to pull CPC products from TakeAds so that I have a secondary affiliate source.",
+      "acceptance_criteria": [
+        "TakeAds API key is read from environment",
+        "Top 5 products by commission are returned",
+        "Fallback to next network when TakeAds fails"
+      ],
+      "priority": "high",
+      "points": 5,
+      "status": "done",
+      "tags": ["affiliate", "feeds", "takeads"]
+    },
+    {
+      "id": "US-003",
+      "title": "Affiliate Network Integration — Admitad",
+      "description": "As a pipeline operator, I want to parse Admitad XML feeds so that I can access a wide product catalogue.",
+      "acceptance_criteria": [
+        "XML YML catalogue parsed correctly",
+        "rzekl.com wrapper and aff_short_key preserved in all links",
+        "Top 5 products by commissionRate selected"
+      ],
+      "priority": "high",
+      "points": 5,
+      "status": "done",
+      "tags": ["affiliate", "feeds", "admitad"]
+    },
+    {
+      "id": "US-004",
+      "title": "Affiliate Network Integration — Travelpayouts",
+      "description": "As a pipeline operator, I want travel affiliate products from Travelpayouts as a fourth fallback source.",
+      "acceptance_criteria": [
+        "Travel products fetched and normalised to standard product schema",
+        "Used only when higher-priority networks fail"
+      ],
+      "priority": "medium",
+      "points": 3,
+      "status": "done",
+      "tags": ["affiliate", "feeds", "travelpayouts"]
+    },
+    {
+      "id": "US-005",
+      "title": "Bluesky Social Posting",
+      "description": "As a marketer, I want affiliate posts published to Bluesky so that I reach the decentralised social audience.",
+      "acceptance_criteria": [
+        "Post includes image blob upload via AT Protocol",
+        "Affiliate URL embedded as card link",
+        "AuthError raised on 403 — circuit breaker NOT tripped",
+        "Caption under 300 chars"
+      ],
+      "priority": "high",
+      "points": 5,
+      "status": "done",
+      "tags": ["social", "bluesky"]
+    },
+    {
+      "id": "US-006",
+      "title": "Mastodon Social Posting",
+      "description": "As a marketer, I want affiliate posts published to Mastodon so that I reach the Fediverse audience.",
+      "acceptance_criteria": [
+        "Media uploaded then attached to status",
+        "AuthError on 401/403",
+        "Instance URL configurable via settings"
+      ],
+      "priority": "high",
+      "points": 3,
+      "status": "done",
+      "tags": ["social", "mastodon"]
+    },
+    {
+      "id": "US-007",
+      "title": "Meta Platforms Posting (Instagram / Facebook / Threads)",
+      "description": "As a marketer, I want posts on Instagram, Facebook, and Threads so that I reach the Meta ecosystem.",
+      "acceptance_criteria": [
+        "_find_image() returns (bytes, url) — Meta platforms use url path",
+        "Graph API container + publish pattern followed",
+        "AuthError on token expiry"
+      ],
+      "priority": "medium",
+      "points": 5,
+      "status": "done",
+      "tags": ["social", "meta", "instagram", "facebook", "threads"]
+    },
+    {
+      "id": "US-008",
+      "title": "Dashboard — Real-Time Status",
+      "description": "As an operator, I want a single-page dashboard showing pipeline runs, platform status, and spend so I can monitor health at a glance.",
+      "acceptance_criteria": [
+        "Dashboard served at /",
+        "Shows last 10 run history entries",
+        "Platform status badges green/red per circuit breaker state",
+        "Daily spend vs cap displayed"
+      ],
+      "priority": "high",
+      "points": 5,
+      "status": "done",
+      "tags": ["dashboard", "frontend"]
+    },
+    {
+      "id": "US-009",
+      "title": "Prometheus / Grafana Monitoring",
+      "description": "As an SRE, I want Prometheus scraping /metrics and Grafana dashboards so that I can observe system health over time.",
+      "acceptance_criteria": [
+        "GET /metrics returns valid Prometheus text exposition",
+        "docker-compose.monitoring.yml starts Prometheus + Grafana",
+        "Grafana reachable on port 3001",
+        "Prometheus scrape config points at app host:7860"
+      ],
+      "priority": "medium",
+      "points": 3,
+      "status": "in_progress",
+      "tags": ["monitoring", "prometheus", "grafana", "devops"]
+    }
+  ],
+  "definition_of_done": [
+    "Unit tests pass (pytest)",
+    "No ruff lint errors",
+    "Circuit breaker logic verified",
+    "Credentials never committed",
+    "All DEFAULTS keys present in api/utils/settings.py"
+  ]
+}

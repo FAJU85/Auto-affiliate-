@@ -1,0 +1,169 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" modified="2026-06-15T00:00:00.000Z" agent="Claude Code" version="21.0.0" type="device">
+  <diagram id="auto-affiliate-arch" name="Auto-Affiliate Architecture">
+    <mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- ===== AFFILIATE FEEDS CLUSTER ===== -->
+        <mxCell id="feeds-bg" value="Affiliate Networks" style="swimlane;startSize=30;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="40" y="120" width="260" height="300" as="geometry" />
+        </mxCell>
+        <mxCell id="sovrn" value="SOVRN" style="rounded=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;" vertex="1" parent="feeds-bg">
+          <mxGeometry x="20" y="50" width="100" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="takeads" value="TakeAds" style="rounded=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;" vertex="1" parent="feeds-bg">
+          <mxGeometry x="140" y="50" width="100" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="admitad" value="Admitad XML" style="rounded=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;" vertex="1" parent="feeds-bg">
+          <mxGeometry x="20" y="120" width="100" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="travelpayouts" value="Travelpayouts" style="rounded=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;" vertex="1" parent="feeds-bg">
+          <mxGeometry x="140" y="120" width="100" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="feeds-note" value="Priority: SOVRN → TakeAds → Admitad → Travelpayouts" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=10;fontStyle=2;" vertex="1" parent="feeds-bg">
+          <mxGeometry x="10" y="190" width="240" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="cb-feeds" value="⚡ Circuit Breakers" style="rounded=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;" vertex="1" parent="feeds-bg">
+          <mxGeometry x="60" y="240" width="140" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- ===== FASTAPI BACKEND ===== -->
+        <mxCell id="fastapi-bg" value="FastAPI Backend (port 7860)" style="swimlane;startSize=30;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="380" y="80" width="340" height="420" as="geometry" />
+        </mxCell>
+        <mxCell id="main" value="api/main.py&#xa;(Routes + App)" style="rounded=1;fillColor=#82b366;strokeColor=#6c8ebf;fontColor=#ffffff;fontStyle=1;" vertex="1" parent="fastapi-bg">
+          <mxGeometry x="100" y="50" width="140" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="pipeline" value="api/pipeline.py&#xa;run_pipeline()" style="rounded=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" vertex="1" parent="fastapi-bg">
+          <mxGeometry x="100" y="130" width="140" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="apscheduler" value="APScheduler&#xa;(Hourly Cron)" style="rounded=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;" vertex="1" parent="fastapi-bg">
+          <mxGeometry x="20" y="210" width="120" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="social_post" value="api/social_post.py&#xa;(Per-Platform Logic)" style="rounded=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="fastapi-bg">
+          <mxGeometry x="160" y="210" width="150" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="settings" value="api/utils/settings.py&#xa;(Persistent Settings)" style="rounded=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="fastapi-bg">
+          <mxGeometry x="20" y="290" width="140" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="metrics" value="api/utils/metrics.py&#xa;(History + Dedup)" style="rounded=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="fastapi-bg">
+          <mxGeometry x="180" y="290" width="140" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="ai-text" value="api/ai/text.py&#xa;(Groq / Mistral)" style="rounded=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="fastapi-bg">
+          <mxGeometry x="20" y="360" width="140" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="cb-social" value="⚡ Circuit Breaker + AuthError" style="rounded=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;" vertex="1" parent="fastapi-bg">
+          <mxGeometry x="170" y="360" width="150" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- ===== SOCIAL PLATFORMS CLUSTER ===== -->
+        <mxCell id="social-bg" value="Social Platforms" style="swimlane;startSize=30;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=1;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="820" y="80" width="260" height="360" as="geometry" />
+        </mxCell>
+        <mxCell id="bluesky" value="Bluesky&#xa;(AT Protocol)" style="rounded=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="social-bg">
+          <mxGeometry x="20" y="50" width="100" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="mastodon" value="Mastodon&#xa;(ActivityPub)" style="rounded=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="social-bg">
+          <mxGeometry x="140" y="50" width="100" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="twitter" value="X / Twitter&#xa;(v2 API)" style="rounded=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="social-bg">
+          <mxGeometry x="20" y="120" width="100" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="instagram" value="Instagram&#xa;(Graph API)" style="rounded=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="social-bg">
+          <mxGeometry x="140" y="120" width="100" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="facebook" value="Facebook&#xa;(Graph API)" style="rounded=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="social-bg">
+          <mxGeometry x="20" y="190" width="100" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="threads" value="Threads&#xa;(Graph API)" style="rounded=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="social-bg">
+          <mxGeometry x="140" y="190" width="100" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="tumblr" value="Tumblr&#xa;(OAuth 1.0a)" style="rounded=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;" vertex="1" parent="social-bg">
+          <mxGeometry x="80" y="265" width="100" height="45" as="geometry" />
+        </mxCell>
+
+        <!-- ===== DASHBOARD ===== -->
+        <mxCell id="dashboard" value="src/dashboard.html&#xa;(Single-Page UI)" style="rounded=1;fillColor=#e6d0de;strokeColor=#ae4132;fontStyle=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="380" y="560" width="200" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="browser" value="Browser / User" style="shape=mxgraph.flowchart.start_2;fillColor=#f5f5f5;strokeColor=#666666;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="430" y="680" width="100" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- ===== MONITORING CLUSTER ===== -->
+        <mxCell id="monitoring-bg" value="Monitoring Stack" style="swimlane;startSize=30;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="820" y="500" width="260" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="prometheus" value="Prometheus&#xa;(scrapes /metrics)" style="rounded=1;fillColor=#ff8000;strokeColor=#d6b656;fontColor=#ffffff;fontStyle=1;" vertex="1" parent="monitoring-bg">
+          <mxGeometry x="20" y="50" width="100" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="grafana" value="Grafana&#xa;(port 3001)" style="rounded=1;fillColor=#f46800;strokeColor=#d6b656;fontColor=#ffffff;fontStyle=1;" vertex="1" parent="monitoring-bg">
+          <mxGeometry x="140" y="50" width="100" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="data-dir" value="/data (HF Persistent Volume)&#xa;settings.json · metrics.json · history" style="rounded=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=10;" vertex="1" parent="monitoring-bg">
+          <mxGeometry x="20" y="130" width="220" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- ===== EDGES: Feeds → FastAPI ===== -->
+        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.5;entryX=0;entryY=0.35;" edge="1" source="feeds-bg" target="fastapi-bg" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ===== EDGES: FastAPI → Social ===== -->
+        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;exitX=1;exitY=0.4;entryX=0;entryY=0.4;" edge="1" source="fastapi-bg" target="social-bg" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ===== EDGES: FastAPI → Dashboard ===== -->
+        <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;exitX=0.3;exitY=1;entryX=0.5;entryY=0;" edge="1" source="fastapi-bg" target="dashboard" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ===== EDGES: Dashboard → Browser ===== -->
+        <mxCell id="e4" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="dashboard" target="browser" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ===== EDGES: FastAPI → Prometheus ===== -->
+        <mxCell id="e5" style="edgeStyle=orthogonalEdgeStyle;exitX=0.8;exitY=1;entryX=0.5;entryY=0;dashed=1;" edge="1" source="fastapi-bg" target="monitoring-bg" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="654" y="540" />
+              <mxPoint x="950" y="540" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ===== EDGES: Prometheus → Grafana ===== -->
+        <mxCell id="e6" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="prometheus" target="grafana" parent="monitoring-bg">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ===== LEGEND ===== -->
+        <mxCell id="legend-bg" value="Legend" style="swimlane;startSize=20;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="40" y="480" width="260" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="l1" value="" style="rounded=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="legend-bg">
+          <mxGeometry x="10" y="30" width="30" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="l1t" value="External / 3rd-party service" style="text;html=1;strokeColor=none;fillColor=none;align=left;" vertex="1" parent="legend-bg">
+          <mxGeometry x="50" y="30" width="200" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="l2" value="" style="rounded=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="legend-bg">
+          <mxGeometry x="10" y="60" width="30" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="l2t" value="Internal app component" style="text;html=1;strokeColor=none;fillColor=none;align=left;" vertex="1" parent="legend-bg">
+          <mxGeometry x="50" y="60" width="200" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="l3" value="" style="rounded=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="legend-bg">
+          <mxGeometry x="10" y="90" width="30" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="l3t" value="Circuit Breaker / Auth boundary" style="text;html=1;strokeColor=none;fillColor=none;align=left;" vertex="1" parent="legend-bg">
+          <mxGeometry x="50" y="90" width="200" height="20" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
