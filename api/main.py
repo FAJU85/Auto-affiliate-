@@ -332,6 +332,21 @@ async def resume():
 @app.get("/api/schedule/config")
 async def schedule_config():
     s = settings.get_settings()
+    # Compute next 5 scheduled run times for the dashboard preview widget
+    cron_exprs: list[str] = []
+    try:
+        from apscheduler.triggers.cron import CronTrigger as _CT
+        trigger = _CT.from_crontab(_cron())
+        from datetime import timedelta
+        nxt = datetime.now(timezone.utc)
+        for _ in range(5):
+            fire = trigger.get_next_fire_time(nxt, nxt)
+            if fire is None:
+                break
+            cron_exprs.append(fire.strftime("%Y-%m-%dT%H:%M:%SZ"))
+            nxt = fire + timedelta(seconds=1)
+    except Exception:  # noqa: BLE001
+        pass
     return {
         "cron":             _cron(),
         "nextRun":          _next_run(),
@@ -339,6 +354,7 @@ async def schedule_config():
         "schedulerEnabled": s.get("schedulerEnabled", True),
         "postsPerDay":      s.get("postsPerDay", 1),
         "postingHours":     s.get("postingHours", "8-22"),
+        "cronExpressions":  cron_exprs,
     }
 
 
@@ -376,11 +392,35 @@ async def schedule_suggest(n: int = 1):
     for i in range(min(n, 8)):
         h = (start + step * i) % 24
         suggested.append({"label": f"{h:02d}:00 UTC", "hour": h})
+    # Build hourly engagement heatmap from run history (successful posts by hour)
+    runs = metrics.get_recent_runs(500)
+    hour_scores: dict[int, list[int]] = {h: [] for h in range(24)}
+    engagement_data = False
+    for r in runs:
+        if not r.get("success"):
+            continue
+        ts = r.get("timestamp", "")
+        try:
+            hour = int(str(ts)[11:13]) if len(str(ts)) >= 13 else -1
+            if 0 <= hour <= 23:
+                # Score = 1 base + click bonus
+                score = 1 + int(r.get("clicks", 0))
+                hour_scores[hour].append(score)
+                engagement_data = True
+        except Exception:  # noqa: BLE001
+            pass
+    hourly_data = [
+        {"hour": h, "avgScore": round(sum(v) / len(v), 2) if v else 0, "count": len(v)}
+        for h, v in sorted(hour_scores.items())
+        if h >= start and h <= end  # only show hours in posting window
+    ]
+
     return {
         "ok": True,
         "suggestedTimes": suggested,
+        "hourlyData": hourly_data,
         "message": f"Based on your posting window ({hours}), spread {n} post(s) evenly.",
-        "basedOn": "posting-hours",
+        "basedOn": "engagement-analysis" if engagement_data else "posting-hours",
     }
 
 
