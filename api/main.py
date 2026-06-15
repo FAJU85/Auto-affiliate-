@@ -31,6 +31,7 @@ from .utils import budget, logger, metrics, settings
 from .utils.snapshot import record_response
 from .utils.circuit_breaker import all_statuses as cb_statuses, reset_breaker, reset_all as cb_reset_all
 from .utils.telemetry import golden_signals
+from .utils.prometheus import build_prometheus_output
 
 DASHBOARD = Path(__file__).resolve().parent.parent / "src" / "dashboard.html"
 
@@ -392,6 +393,163 @@ async def api_metrics():
         "golden_signals": golden_signals(),
         "circuit_breakers": cb_statuses(),
         "slo": pipeline.calculate_slo(500),
+    }
+
+
+@app.get("/metrics", response_class=PlainTextResponse)
+@app.get("/api/metrics-prom", response_class=PlainTextResponse)
+async def prometheus_metrics():
+    """Prometheus text-format scrape endpoint for Grafana.
+
+    Add as a scrape target in prometheus.yml:
+      - job_name: affiliate-bot
+        static_configs:
+          - targets: ['your-space.hf.space']
+        metrics_path: /metrics
+    """
+    return PlainTextResponse(build_prometheus_output(), media_type="text/plain; version=0.0.4")
+
+
+@app.get("/api/architecture")
+async def architecture():
+    """System architecture overview — components, data flows, and dependencies."""
+    return {
+        "system": "Auto-Affiliate Bot",
+        "description": "Scheduled pipeline that fetches affiliate products, generates AI captions, and posts to social platforms.",
+        "components": {
+            "scheduler": {
+                "type": "APScheduler (AsyncIO)",
+                "role": "Triggers pipeline on cron schedule",
+                "config_key": "cronSchedule",
+                "default": "0 * * * *",
+            },
+            "pipeline": {
+                "type": "async Python",
+                "phases": ["product_fetch", "dedup_check", "caption_gen", "image_fetch", "tracking_url", "multi_platform_post"],
+                "circuit_breakers": ["bluesky", "groq", "mistral", "sovrn"],
+                "timeout_s": 300,
+            },
+            "affiliate_feeds": {
+                "priority_order": ["SOVRN", "TakeAds", "Admitad", "Travelpayouts"],
+                "env_keys": ["SOVRN_API_KEY", "TAKEADS_API_KEY", "ADMITAD_FEED_URL", "TRAVELPAYOUTS_TOKEN"],
+            },
+            "ai_caption": {
+                "providers": ["Groq (llama-3.3-70b)", "Mistral (mistral-small)"],
+                "fallback": "template",
+                "language_guard": "English-only enforcement",
+            },
+            "publishing": {
+                "platforms": ["bluesky", "mastodon", "x", "facebook", "instagram", "threads", "tumblr"],
+                "auth_types": {"credentials": ["bluesky", "x", "facebook", "instagram"], "oauth2": ["mastodon", "threads", "tumblr"]},
+                "circuit_breakers": ["bluesky", "mastodon", "x", "facebook", "instagram", "threads", "tumblr"],
+            },
+            "observability": {
+                "metrics": ["/api/metrics (JSON)", "/metrics (Prometheus)", "/api/slo", "/api/finops"],
+                "logs": "/api/logs",
+                "alerts": "SLO error budget < 20% → warning; < 0% → circuit breaker",
+                "grafana_scrape": "/metrics or /api/metrics-prom",
+            },
+            "data_persistence": {
+                "files": {
+                    "settings.json": "user configuration",
+                    "runs.json": "pipeline run history (last 500)",
+                    "bsky-session.json": "Bluesky session cache",
+                    "social-connections.json": "platform credentials",
+                    "budget.json": "daily AI cost tracker",
+                    "dedup-store.json": "product dedup cache (24h TTL)",
+                },
+                "data_dir": "/data (configurable via DATA_DIR env var)",
+            },
+        },
+        "data_flows": [
+            "Scheduler → pipeline.run_pipeline()",
+            "pipeline → _get_product() [SOVRN→TakeAds→Admitad→Travelpayouts]",
+            "pipeline → ai_text.generate_post_text() [Groq→Mistral→template]",
+            "pipeline → _find_image() [imageUrl→Amazon og:image scrape]",
+            "pipeline → _tracking_url() → /r/{id} redirect",
+            "pipeline → post_to_bluesky() / post_to_platform() [per enabled platform]",
+            "Click → GET /r/{id} → 302 → affiliate deeplink + metrics.record_click()",
+        ],
+        "sdlc_integrations": {
+            "prometheus": "GET /metrics — scrape with Prometheus, visualise in Grafana",
+            "grafana_dashboard": "GET /api/grafana-dashboard — import JSON into Grafana",
+            "healthcheck": "GET /health — Docker/Kubernetes liveness probe",
+            "openapi": "GET /docs — Swagger UI, GET /openapi.json — OpenAPI 3.0 spec",
+        },
+    }
+
+
+@app.get("/api/grafana-dashboard")
+async def grafana_dashboard():
+    """Return a ready-to-import Grafana dashboard JSON targeting /metrics."""
+    space_host = settings.get_settings().get("spaceHost") or os.environ.get("SPACE_HOST", "localhost:7860")
+    return {
+        "title": "Auto-Affiliate Bot",
+        "uid": "affiliate-bot-v1",
+        "schemaVersion": 38,
+        "refresh": "30s",
+        "time": {"from": "now-1h", "to": "now"},
+        "__inputs": [{"name": "DS_PROMETHEUS", "label": "Prometheus", "type": "datasource", "pluginId": "prometheus"}],
+        "templating": {"list": []},
+        "panels": [
+            {
+                "id": 1, "title": "SLO Compliance %", "type": "stat", "gridPos": {"x": 0, "y": 0, "w": 4, "h": 4},
+                "targets": [{"expr": "affiliate_slo_pct", "legendFormat": "SLO %"}],
+                "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"},
+                "fieldConfig": {"defaults": {"thresholds": {"steps": [{"value": 0, "color": "red"}, {"value": 90, "color": "yellow"}, {"value": 99, "color": "green"}]}, "unit": "percent"}},
+            },
+            {
+                "id": 2, "title": "Error Budget Remaining %", "type": "gauge", "gridPos": {"x": 4, "y": 0, "w": 4, "h": 4},
+                "targets": [{"expr": "affiliate_error_budget_remaining_pct", "legendFormat": "Budget %"}],
+                "fieldConfig": {"defaults": {"min": 0, "max": 100, "unit": "percent", "thresholds": {"steps": [{"value": 0, "color": "red"}, {"value": 20, "color": "yellow"}, {"value": 50, "color": "green"}]}}},
+            },
+            {
+                "id": 3, "title": "Daily AI Spend vs Cap", "type": "bargauge", "gridPos": {"x": 8, "y": 0, "w": 4, "h": 4},
+                "targets": [
+                    {"expr": "affiliate_daily_spend_usd", "legendFormat": "Spent"},
+                    {"expr": "affiliate_daily_cost_cap_usd", "legendFormat": "Cap"},
+                ],
+                "fieldConfig": {"defaults": {"unit": "currencyUSD"}},
+            },
+            {
+                "id": 4, "title": "Pipeline State", "type": "stat", "gridPos": {"x": 12, "y": 0, "w": 4, "h": 4},
+                "targets": [
+                    {"expr": "affiliate_pipeline_running", "legendFormat": "Running"},
+                    {"expr": "affiliate_pipeline_paused", "legendFormat": "Paused"},
+                ],
+            },
+            {
+                "id": 5, "title": "Total Clicks", "type": "stat", "gridPos": {"x": 16, "y": 0, "w": 4, "h": 4},
+                "targets": [{"expr": "affiliate_clicks_total", "legendFormat": "Clicks"}],
+                "fieldConfig": {"defaults": {"unit": "short"}},
+            },
+            {
+                "id": 6, "title": "Circuit Breakers", "type": "table", "gridPos": {"x": 0, "y": 4, "w": 8, "h": 6},
+                "targets": [{"expr": "affiliate_circuit_breaker_open", "legendFormat": "{{breaker}}", "instant": True}],
+            },
+            {
+                "id": 7, "title": "Component Latency P99 (ms)", "type": "timeseries", "gridPos": {"x": 8, "y": 4, "w": 16, "h": 6},
+                "targets": [{"expr": "affiliate_latency_p99_ms", "legendFormat": "{{component}}"}],
+                "fieldConfig": {"defaults": {"unit": "ms"}},
+            },
+            {
+                "id": 8, "title": "Pipeline Runs (total / success)", "type": "timeseries", "gridPos": {"x": 0, "y": 10, "w": 12, "h": 6},
+                "targets": [
+                    {"expr": "affiliate_pipeline_runs_total", "legendFormat": "Total runs"},
+                    {"expr": "affiliate_pipeline_success_total", "legendFormat": "Successes"},
+                ],
+            },
+            {
+                "id": 9, "title": "Component Error Rate %", "type": "timeseries", "gridPos": {"x": 12, "y": 10, "w": 12, "h": 6},
+                "targets": [{"expr": "affiliate_error_rate_pct", "legendFormat": "{{component}}"}],
+                "fieldConfig": {"defaults": {"unit": "percent"}},
+            },
+        ],
+        "_import_instructions": {
+            "step1": f"Add Prometheus scrape target: {space_host}/metrics",
+            "step2": "In Grafana: Dashboards → Import → paste this JSON",
+            "step3": "Select your Prometheus datasource as DS_PROMETHEUS",
+        },
     }
 
 
