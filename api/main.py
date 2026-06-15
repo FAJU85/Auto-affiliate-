@@ -64,6 +64,10 @@ def _schedule_job() -> None:
         pipeline.run_pipeline, CronTrigger.from_crontab(_cron()),
         id="pipeline", replace_existing=True,
     )
+    scheduler.add_job(
+        pipeline.retry_failed_posts, CronTrigger.from_crontab("*/15 * * * *"),
+        id="retry_queue", replace_existing=True,
+    )
 
 
 def _next_run() -> str | None:
@@ -1224,8 +1228,230 @@ async def ai_generate(request: Request):
 
 @app.get("/r/{tracking_id}")
 async def redirect(tracking_id: str):
+    from .utils import ab_test as _ab
     metrics.record_click(tracking_id)
+    _ab.record_click(tracking_id)
     target = pipeline.resolve_redirect(tracking_id)
     if target:
         return RedirectResponse(target, status_code=302)
     return RedirectResponse("/", status_code=302)
+
+
+# ── Affiliate conversion postbacks ─────────────────────────────────────────
+
+@app.post("/api/affiliate/postback")
+async def affiliate_postback(request: Request):
+    """Receive affiliate conversion postbacks from networks.
+
+    Networks call this URL when a user makes a purchase via our affiliate link.
+    SOVRN:       POST /api/affiliate/postback?tid={tracking_id}&commission={amount}&network=sovrn
+    TakeAds:     POST /api/affiliate/postback?tid={tracking_id}&commission={amount}&network=takeads
+    Generic:     JSON body with tracking_id, commission_usd, network, order_id
+
+    Security: validate the source via a shared secret in production.
+    """
+    import hmac as _hmac
+    import hashlib as _hl
+
+    # Accept both query-params (GET-style postbacks) and JSON body
+    params = dict(request.query_params)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    tracking_id = (
+        params.get("tid") or params.get("tracking_id")
+        or body.get("tracking_id") or body.get("tid") or ""
+    ).strip()
+    try:
+        commission_usd = float(
+            params.get("commission") or params.get("commission_usd")
+            or body.get("commission_usd") or body.get("commission") or 0
+        )
+    except (ValueError, TypeError):
+        commission_usd = 0.0
+    network = (
+        params.get("network") or body.get("network") or "unknown"
+    ).strip().lower()
+    order_id = (
+        params.get("order_id") or body.get("order_id") or ""
+    ).strip()
+
+    # Optional shared-secret validation (set POSTBACK_SECRET in Space Secrets)
+    secret = os.environ.get("POSTBACK_SECRET", "")
+    if secret:
+        sig = params.get("sig") or body.get("sig") or ""
+        expected = _hmac.new(secret.encode(), tracking_id.encode(), _hl.sha256).hexdigest()
+        if not _hmac.compare_digest(sig, expected):
+            return JSONResponse({"ok": False, "error": "invalid signature"}, status_code=403)
+
+    if not tracking_id:
+        return {"ok": False, "error": "tracking_id required"}
+    if commission_usd < 0:
+        return {"ok": False, "error": "commission must be non-negative"}
+
+    result = metrics.record_conversion(tracking_id, commission_usd, network, order_id)
+    if not result:
+        logger.warn(f"Postback for unknown tracking_id={tracking_id!r} — no matching run")
+        return {"ok": False, "error": "tracking_id not found"}
+
+    logger.info(
+        f"Conversion recorded: {tracking_id} +${commission_usd:.2f} via {network}",
+        "postback",
+    )
+    return {
+        "ok": True,
+        "tracking_id": tracking_id,
+        "commission_usd": commission_usd,
+        "network": network,
+        "total_commission_usd": result.get("totalCommissionUsd", 0),
+    }
+
+
+@app.get("/api/revenue")
+async def revenue_summary():
+    """Revenue dashboard — conversions, commission by network, daily breakdown."""
+    runs = metrics.get_recent_runs(500)
+    total_commission = metrics.get_total_commission()
+    by_network = metrics.get_commission_by_network()
+    conversion_count = metrics.get_conversion_count()
+    total_clicks = metrics.get_total_clicks()
+
+    # Daily revenue breakdown
+    from collections import defaultdict as _dd
+    daily: dict = _dd(lambda: {"conversions": 0, "commission_usd": 0.0, "clicks": 0})
+    for r in runs:
+        day = str(r.get("timestamp", ""))[:10]
+        if not day:
+            continue
+        daily[day]["clicks"] += int(r.get("clicks", 0))
+        for c in r.get("conversions", []):
+            daily[day]["conversions"] += 1
+            daily[day]["commission_usd"] = round(
+                daily[day]["commission_usd"] + c.get("commission_usd", 0), 4
+            )
+
+    daily_list = [{"date": d, **v} for d, v in sorted(daily.items())][-30:]
+
+    epc = round(total_commission / total_clicks, 4) if total_clicks else 0.0  # earnings per click
+
+    return {
+        "total_commission_usd": total_commission,
+        "conversion_count": conversion_count,
+        "total_clicks": total_clicks,
+        "epc_usd": epc,
+        "by_network": by_network,
+        "daily": daily_list,
+    }
+
+
+@app.get("/api/ab-results")
+async def ab_results():
+    """A/B caption test results — CTR per variant and winner if statistically clear."""
+    from .utils import ab_test as _ab
+    return _ab.get_results()
+
+
+# ── Link-in-bio landing page ───────────────────────────────────────────────
+
+@app.get("/bio", response_class=HTMLResponse)
+@app.get("/links", response_class=HTMLResponse)
+async def link_in_bio():
+    """Public link-in-bio page — Instagram bio link target.
+
+    Shows the last 10 successful posts as product cards with:
+    - Product name + description
+    - Price
+    - Affiliate tracking link (via /r/{tracking_id})
+    - Category badge
+
+    No authentication required — this is the public storefront.
+    """
+    space_host = settings.get_settings().get("spaceHost") or os.environ.get("SPACE_HOST", "")
+    base_url = f"https://{space_host}" if space_host else ""
+
+    runs = metrics.get_recent_runs(200)
+    successful = [
+        r for r in reversed(runs)
+        if r.get("success") and r.get("deeplink") and r.get("product")
+    ][:10]
+
+    def _card(r: dict) -> str:
+        name     = r.get("product", "Product")
+        price    = r.get("price")
+        category = r.get("category", "")
+        image    = r.get("imageUrl") or r.get("postImageUrl") or ""
+        tid      = r.get("trackingId", "")
+        link     = f"{base_url}/r/{tid}" if tid and base_url else r.get("deeplink", "#")
+        price_str = f"${price:.2f}" if isinstance(price, (int, float)) else (str(price) if price else "")
+        img_html = (
+            f'<img src="{image}" alt="{name}" loading="lazy" '
+            f'onerror="this.style.display=\'none\'">'
+            if image else
+            '<div class="no-img">🛒</div>'
+        )
+        badge = f'<span class="badge">{category}</span>' if category else ""
+        return f"""
+        <a class="card" href="{link}" target="_blank" rel="noopener noreferrer">
+          <div class="card-img">{img_html}</div>
+          <div class="card-body">
+            {badge}
+            <h3>{name}</h3>
+            {f'<p class="price">{price_str}</p>' if price_str else ""}
+            <span class="cta">Shop Now →</span>
+          </div>
+        </a>"""
+
+    cards_html = "\n".join(_card(r) for r in successful)
+    if not cards_html:
+        cards_html = '<p class="empty">No products yet — check back soon! 🛍️</p>'
+
+    handle = settings.get_settings().get("bioHandle", "@auto.affiliate")
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex">
+  <title>{handle} — Latest Deals</title>
+  <style>
+    :root {{
+      --bg: #0f0f0f; --surface: #1a1a1a; --border: #2a2a2a;
+      --accent: #6366f1; --text: #e5e5e5; --muted: #888; --radius: 14px;
+    }}
+    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+    body {{ background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; }}
+    header {{ text-align: center; padding: 2rem 1rem 1rem; }}
+    header h1 {{ font-size: 1.4rem; font-weight: 700; letter-spacing: -0.02em; }}
+    header p {{ color: var(--muted); font-size: 0.9rem; margin-top: 0.3rem; }}
+    .grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; padding: 1rem; max-width: 960px; margin: 0 auto; }}
+    .card {{ display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; text-decoration: none; color: inherit; transition: transform 0.15s, box-shadow 0.15s; }}
+    .card:hover {{ transform: translateY(-3px); box-shadow: 0 8px 32px rgba(99,102,241,0.18); }}
+    .card-img {{ aspect-ratio: 4/3; overflow: hidden; background: var(--border); display: flex; align-items: center; justify-content: center; }}
+    .card-img img {{ width: 100%; height: 100%; object-fit: cover; }}
+    .no-img {{ font-size: 3rem; }}
+    .card-body {{ padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem; flex: 1; }}
+    .badge {{ display: inline-block; background: rgba(99,102,241,0.15); color: var(--accent); border: 1px solid rgba(99,102,241,0.3); border-radius: 99px; font-size: 0.7rem; padding: 0.15rem 0.6rem; width: fit-content; }}
+    h3 {{ font-size: 0.95rem; font-weight: 600; line-height: 1.35; }}
+    .price {{ font-size: 1.1rem; font-weight: 700; color: var(--accent); }}
+    .cta {{ margin-top: auto; font-size: 0.85rem; font-weight: 600; color: var(--accent); }}
+    .empty {{ text-align: center; color: var(--muted); padding: 3rem; font-size: 1.1rem; }}
+    footer {{ text-align: center; color: var(--muted); font-size: 0.75rem; padding: 2rem 1rem; }}
+    footer a {{ color: var(--muted); }}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>{handle}</h1>
+    <p>Latest deals — updated automatically ✨</p>
+  </header>
+  <main class="grid">
+    {cards_html}
+  </main>
+  <footer>
+    <p>Links may be affiliate links — we earn a small commission at no extra cost to you.</p>
+  </footer>
+</body>
+</html>"""

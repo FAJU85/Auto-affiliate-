@@ -157,6 +157,60 @@ def get_total_clicks() -> int:
     return sum(int(r.get("clicks", 0)) for r in _load().get("runs", []))
 
 
+
+
+# ── Conversions ─────────────────────────────────────────────────────────────
+
+def record_conversion(tracking_id: str, commission_usd: float, network: str, order_id: str = "") -> dict | None:
+    """Record an affiliate conversion (postback from network).
+
+    Called when a network pings POST /api/affiliate/postback after a purchase.
+    Links the commission back to the run record that generated the click.
+    """
+    data = _load()
+    target = None
+    for r in data.get("runs", []):
+        if r.get("trackingId") == tracking_id:
+            conversions = r.setdefault("conversions", [])
+            conversions.append({
+                "ts": _now(),
+                "commission_usd": round(commission_usd, 4),
+                "network": network,
+                "order_id": order_id,
+            })
+            r["totalCommissionUsd"] = round(
+                sum(c["commission_usd"] for c in conversions), 4
+            )
+            target = r
+            break
+    if target:
+        _save(data)
+    return target
+
+
+def get_total_commission() -> float:
+    """Sum all recorded commission across all run history."""
+    return round(
+        sum(
+            sum(c.get("commission_usd", 0) for c in r.get("conversions", []))
+            for r in _load().get("runs", [])
+        ),
+        4,
+    )
+
+
+def get_commission_by_network() -> dict:
+    """Commission earned per affiliate network."""
+    out: dict = {}
+    for r in _load().get("runs", []):
+        for c in r.get("conversions", []):
+            net = c.get("network", "unknown")
+            out[net] = round(out.get(net, 0.0) + c.get("commission_usd", 0), 4)
+    return out
+
+
+def get_conversion_count() -> int:
+    return sum(len(r.get("conversions", [])) for r in _load().get("runs", []))
 def clear_run_history() -> int:
     """Purge all run records — resets SLO baseline. Use after fixing a systematic failure."""
     data = _load()

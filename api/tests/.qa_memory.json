@@ -371,10 +371,11 @@
       ]
     }
   },
-  "run_count": 129,
+  "run_count": 145,
   "known_routes": [
     "/",
     "/api/accounts",
+    "/api/affiliate/postback",
     "/api/architecture",
     "/api/circuit-breakers",
     "/api/clicks",
@@ -395,6 +396,7 @@
     "/api/metrics-prom",
     "/api/networks",
     "/api/platform-rules",
+    "/api/revenue",
     "/api/schedule/config",
     "/api/schedule/suggest",
     "/api/settings",
@@ -406,7 +408,9 @@
     "/api/social/x/credentials",
     "/api/stats",
     "/api/status",
+    "/bio",
     "/health",
+    "/links",
     "/metrics"
   ]
 }
