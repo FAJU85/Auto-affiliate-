@@ -3,18 +3,18 @@
 from api.utils.platform_queue import get_enabled_platforms, PlatformResult, summarize_results
 
 
-BLUESKY_CREDS = {"bskyHandle": "user.bsky.social", "bskyAppPassword": "secret"}
+BLUESKY_CREDS = {"bskyHandle": "user.bsky.social", "bskyAppPassword": "secret"}  # pragma: allowlist secret
 MASTODON_CREDS = {"mastodonInstance": "https://mastodon.social", "mastodonToken": "tok"}
 X_CREDS = {
     "twitterApiKey": "k",
     "twitterApiSecret": "s",
     "twitterAccessToken": "at",
-    "twitterAccessSecret": "as",
+    "twitterAccessSecret": "as",  # pragma: allowlist secret
 }
 INSTAGRAM_CREDS = {"instagramToken": "ig_tok"}
 FACEBOOK_CREDS = {"facebookToken": "fb_tok"}
 THREADS_CREDS = {"threadsToken": "th_tok"}
-TUMBLR_CREDS = {"tumblrApiKey": "tk", "tumblrApiSecret": "ts", "tumblrBlogName": "myblog"}
+TUMBLR_CREDS = {"tumblrApiKey": "tk", "tumblrApiSecret": "ts", "tumblrBlogName": "myblog"}  # pragma: allowlist secret
 
 
 def test_no_creds_returns_empty():
