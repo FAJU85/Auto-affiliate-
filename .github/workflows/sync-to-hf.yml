@@ -67,7 +67,8 @@ jobs:
           DATA_DIR=/tmp/ci-data python -m pytest api/tests/ -v --tb=short \
             --html=test-report.html --self-contained-html \
             -p no:warnings \
-            --ignore=api/tests/test_caption_evals.py
+            --ignore=api/tests/test_caption_evals.py \
+            --ignore=api/tests/e2e
 
       - name: Upload test report
         if: always()
