@@ -28,6 +28,7 @@ from fastapi.responses import (
 from . import pipeline
 from .ai import text as ai_text
 from .utils import budget, logger, metrics, settings
+from .utils.retry_queue import queue_depth as _retry_queue_depth
 from .utils.snapshot import record_response
 from .utils.circuit_breaker import all_statuses as cb_statuses, reset_breaker, reset_all as cb_reset_all
 from .utils.telemetry import golden_signals
@@ -258,6 +259,7 @@ async def status():
         "runs": metrics.get_recent_runs(20),
         "missingVars": _missing_vars(),
         "circuit_breakers": cb_statuses(),
+        "retry_queue_depth": _retry_queue_depth(),
         # top-level lastRun for dashboard compatibility
         "lastRun": last_run,
     }
