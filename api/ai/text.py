@@ -347,10 +347,13 @@ async def generate_platform_caption(product: dict, trends: list | None = None, p
     # Inject optimized hashtags for platforms that benefit from them
     if platform and platform.lower() in ("instagram", "mastodon", "threads", "x"):
         from ..utils.hashtag_optimizer import optimized_hashtags, inject_hashtags
+        from ..utils.caption_length import PLATFORM_LIMITS
         tags = optimized_hashtags(product, platform=platform, runs=runs)
         if tags:
             candidate = inject_hashtags(caption, tags)
-            if len(candidate) <= MAX_CHARS:
+            plat_limit = PLATFORM_LIMITS.get(platform.lower(), PLATFORM_LIMITS["default"])
+            if len(candidate) <= plat_limit:
                 caption = candidate
 
-    return caption[:MAX_CHARS] if len(caption) > MAX_CHARS else caption
+    from ..utils.caption_length import trim_caption
+    return trim_caption(caption, platform or "default")
