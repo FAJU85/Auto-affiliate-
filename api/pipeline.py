@@ -358,6 +358,11 @@ async def _execute(started: float) -> dict:
     product = ensure_category(product)
     logger.info(f"Product category: {product.get('category')}", "pipeline")
 
+    # ── Guard: product blacklist ──
+    from .utils.blacklist import is_blacklisted as _is_blacklisted
+    if _is_blacklisted(product):
+        return {"ok": False, "skipped": True, "reason": "product_blacklisted"}
+
     # ── Phase 2: Caption (base — used when platform-specific fails or for single platform) ──
     trends = await get_trends()
     with Timer("caption_gen"):
