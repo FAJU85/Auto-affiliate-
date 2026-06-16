@@ -1507,6 +1507,22 @@ async def feeds_health():
     return {"feeds": all_feeds_health()}
 
 
+@app.get("/api/commission-rates")
+async def commission_rates():
+    from .utils.commission_rates import get_all_rates
+    return get_all_rates()
+
+
+@app.post("/api/commission-rates")
+async def set_commission_rate(body: dict):
+    from .utils.commission_rates import set_rate
+    try:
+        set_rate(body.get("network", "default"), float(body.get("rate", 0.05)))
+        return {"ok": True}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 # ── Link-in-bio landing page ───────────────────────────────────────────────
 
 @app.get("/bio", response_class=HTMLResponse)
