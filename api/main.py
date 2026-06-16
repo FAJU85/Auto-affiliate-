@@ -1585,6 +1585,12 @@ async def full_health():
     return get_full_health()
 
 
+@app.get("/api/audit")
+async def system_audit():
+    from .utils.system_audit import run_audit
+    return run_audit()
+
+
 @app.post("/api/geo-filter")
 async def geo_filter_products(body: dict):
     from .utils.geo_filter import filter_by_region
