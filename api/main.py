@@ -1433,6 +1433,40 @@ async def analytics_summary(days: int = 30):
     return summarize_runs(runs, days=days)
 
 
+# ── Blacklist management ──────────────────────────────────────────────────────
+
+@app.get("/api/blacklist")
+async def get_blacklist():
+    from .utils.blacklist import get_blacklist
+    return get_blacklist()
+
+
+@app.post("/api/blacklist/product")
+async def blacklist_product(body: dict):
+    from .utils.blacklist import add_product
+    add_product(body.get("name", ""))
+    return {"ok": True}
+
+
+@app.post("/api/blacklist/domain")
+async def blacklist_domain(body: dict):
+    from .utils.blacklist import add_domain
+    add_domain(body.get("domain", ""))
+    return {"ok": True}
+
+
+@app.delete("/api/blacklist/product")
+async def remove_blacklist_product(name: str):
+    from .utils.blacklist import remove_product
+    return {"removed": remove_product(name)}
+
+
+@app.delete("/api/blacklist/domain")
+async def remove_blacklist_domain(domain: str):
+    from .utils.blacklist import remove_domain
+    return {"removed": remove_domain(domain)}
+
+
 # ── Link-in-bio landing page ───────────────────────────────────────────────
 
 @app.get("/bio", response_class=HTMLResponse)
