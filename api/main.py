@@ -1546,6 +1546,25 @@ async def cancel_queued_post(item_id: str):
     return {"cancelled": cancel(item_id)}
 
 
+
+# ── Build registry ─────────────────────────────────────────────────────────
+
+@app.get("/api/builds")
+async def list_builds():
+    from .utils.build_registry import get_builds
+    builds = get_builds()
+    return {"builds": builds, "total": len(builds)}
+
+
+@app.get("/api/builds/{number}")
+async def get_build_by_number(number: int):
+    from .utils.build_registry import get_build
+    build = get_build(number)
+    if build is None:
+        raise HTTPException(status_code=404, detail="Build not found")
+    return build
+
+
 # ── Link-in-bio landing page ───────────────────────────────────────────────
 
 @app.get("/bio", response_class=HTMLResponse)
