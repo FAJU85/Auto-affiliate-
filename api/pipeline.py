@@ -27,7 +27,7 @@ from .utils.platform_guardian import check_allowed
 from .utils import budget as budget_util
 from .utils import logger, metrics, settings
 from .utils.telemetry import Timer
-from .utils.product_scorer import pick_best, score_product
+from .utils.product_scorer import pick_best, pick_best_with_freshness, score_product
 from .utils import retry_queue
 from .utils.price_tracker import record_price, check_price_drop
 from .utils import ab_test as ab
@@ -105,11 +105,14 @@ async def _get_product() -> dict | None:
         logger.warn("All product networks failed — no product available", "pipeline")
         return None
 
-    best = pick_best(candidates)
-    if len(candidates) > 1:
-        score = score_product(best)
+    runs = metrics.get_recent_runs(500)
+    best = pick_best_with_freshness(candidates, runs)
+    if len(candidates) > 1 and best:
+        from .utils.product_scorer import score_product as _sp
+        score = _sp(best)
         logger.info(
-            f"Scored {len(candidates)} candidates — best: {best['name']!r} "            f"({best['source']}) score={score.total:.0%}",
+            f"Scored {len(candidates)} candidates — best: {best['name']!r} "
+            f"({best['source']}) score={score.total:.0%}",
             "pipeline",
         )
     return best
