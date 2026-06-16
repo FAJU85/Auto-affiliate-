@@ -511,6 +511,45 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
           <tbody id="top-posts-body"><tr><td colspan="6" style="text-align:center;color:var(--dim);padding:32px">Loading…</td></tr></tbody>
         </table>
       </div>
+
+      <!-- ── Run History Stats ── -->
+      <div style="margin-top:24px">
+        <div class="sec-hdr">
+          <div><div class="sec-title">Run History</div><div class="sec-sub">Pipeline execution stats by period</div></div>
+          <div class="sec-ctrl" id="analytics-period-btns">
+            <button class="btn btn-secondary" id="abtn-7"  onclick="loadAnalytics(7)"  style="font-size:12px;padding:5px 12px">7d</button>
+            <button class="btn btn-primary"   id="abtn-30" onclick="loadAnalytics(30)" style="font-size:12px;padding:5px 12px">30d</button>
+            <button class="btn btn-secondary" id="abtn-90" onclick="loadAnalytics(90)" style="font-size:12px;padding:5px 12px">90d</button>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;margin-bottom:20px">
+          <div class="card" style="padding:18px 20px">
+            <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Total Runs</div>
+            <div id="an-runs" style="font-size:26px;font-weight:700">—</div>
+          </div>
+          <div class="card" style="padding:18px 20px">
+            <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Success Rate</div>
+            <div id="an-success" style="font-size:26px;font-weight:700;color:var(--green)">—</div>
+          </div>
+          <div class="card" style="padding:18px 20px">
+            <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Total Clicks</div>
+            <div id="an-clicks" style="font-size:26px;font-weight:700;color:var(--cyan)">—</div>
+          </div>
+          <div class="card" style="padding:18px 20px">
+            <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Avg Clicks/Run</div>
+            <div id="an-avg" style="font-size:26px;font-weight:700;color:var(--accent)">—</div>
+          </div>
+        </div>
+
+        <div class="tbl-wrap">
+          <div class="card-hdr" style="padding:14px 16px 0"><div class="card-title">By Platform</div></div>
+          <table>
+            <thead><tr><th>Platform</th><th>Runs</th><th>Clicks</th></tr></thead>
+            <tbody id="an-platform-body"><tr><td colspan="3" style="text-align:center;color:var(--dim);padding:32px">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
     </div>
 
     <!-- ══ REVENUE ══ -->
@@ -1048,7 +1087,7 @@ let currentPage = 'overview';
 // ── NAV ────────────────────────────────────────────────────────
 const PAGE_META = {
   overview:  ['Overview',       'Pipeline status & KPIs'],
-  analytics: ['Analytics',      'Clicks, CTR & performance'],
+  analytics: ['Analytics',      'Post history, platform breakdown & click trends'],
   revenue:   ['Revenue',        'Commission earnings, A/B test & retry queue'],
   posts:     ['Post History',   'All published posts'],
   seo:       ['SEO',            'Search optimisation & keywords'],
@@ -1072,6 +1111,7 @@ function nav(p) {
   if (p==='settings') loadSettingsForm();
   if (p==='schedule') loadSchedule();
   if (p==='revenue')  loadRevenue();
+  if (p==='analytics') loadAnalytics();
 }
 
 // ── API ────────────────────────────────────────────────────────
@@ -1293,6 +1333,37 @@ async function loadRevenue() {
         </tr>`).join('')
       : '<tr><td colspan="4" style="color:var(--muted)">No data yet</td></tr>';
   }
+}
+
+async function loadAnalytics(days=30) {
+  // Update period button styles
+  [7,30,90].forEach(d => {
+    const btn = document.getElementById('abtn-'+d);
+    if (btn) {
+      btn.className = d===days ? 'btn btn-primary' : 'btn btn-secondary';
+      btn.style.cssText = 'font-size:12px;padding:5px 12px';
+    }
+  });
+  const d = await api(`/api/analytics/summary?days=${days}`);
+  if (!d) return;
+  const runs = d.total_runs || 0;
+  const successes = d.successful_runs ?? d.success_count ?? 0;
+  const successRate = runs > 0 ? Math.round(successes / runs * 100) : 0;
+  const totalClicks = d.total_clicks || 0;
+  const avgClicks = runs > 0 ? (totalClicks / runs).toFixed(1) : '0.0';
+  document.getElementById('an-runs').textContent = runs;
+  document.getElementById('an-success').textContent = successRate + '%';
+  document.getElementById('an-clicks').textContent = totalClicks;
+  document.getElementById('an-avg').textContent = avgClicks;
+  const platforms = d.by_platform || {};
+  const rows = Object.entries(platforms);
+  document.getElementById('an-platform-body').innerHTML = rows.length
+    ? rows.map(([platform, stats]) => `<tr>
+        <td style="text-transform:capitalize">${platform}</td>
+        <td>${stats.runs ?? stats.count ?? 0}</td>
+        <td>${stats.clicks ?? 0}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="3" style="text-align:center;color:var(--dim);padding:32px">No data yet</td></tr>';
 }
 
 async function loadNetworks() {
