@@ -1,62 +1,71 @@
-"""Geo-targeting filter for affiliate products."""
-
-COUNTRY_TLD_MAP: dict[str, str] = {
-    "UK": ".co.uk",
-    "DE": ".de",
-    "FR": ".fr",
-    "AU": ".com.au",
-    "CA": ".ca",
-    "US": ".com",
-    "IT": ".it",
-    "ES": ".es",
-    "NL": ".nl",
-    "BR": ".com.br",
+_REGION_COUNTRIES: dict[str, list[str]] = {
+    "eu": ["AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU",
+            "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE"],
+    "nordics": ["DK", "FI", "IS", "NO", "SE"],
+    "latam": ["AR", "BO", "BR", "CL", "CO", "CR", "CU", "DO", "EC", "SV", "GT", "HN",
+               "MX", "NI", "PA", "PY", "PE", "PR", "UY", "VE"],
+    "apac": ["AU", "CN", "HK", "IN", "ID", "JP", "KR", "MY", "NZ", "PH", "SG", "TW", "TH", "VN"],
+    "mena": ["AE", "BH", "EG", "IL", "IQ", "IR", "JO", "KW", "LB", "LY", "MA", "OM", "QA",
+              "SA", "SY", "TN", "TR", "YE"],
 }
 
-# Reverse map: TLD -> country code, ordered longest first to avoid .com shadowing .com.au
-_TLD_TO_COUNTRY: dict[str, str] = dict(
-    sorted(
-        ((tld, code) for code, tld in COUNTRY_TLD_MAP.items()),
-        key=lambda x: -len(x[0]),
-    )
-)
+
+def _normalize(code: str) -> str:
+    return code.strip().upper()
 
 
-def detect_product_region(product: dict) -> str | None:
-    """Infer region from product 'region' field or URL TLD."""
-    region = product.get("region")
-    if region:
-        return region.upper()
-
-    url = product.get("url", "")
-    if not url:
-        return None
-
-    # Strip query/fragment to check TLD
-    path = url.split("?")[0].split("#")[0]
-    # Extract domain portion
-    try:
-        domain = path.split("//", 1)[1].split("/")[0].lower()
-    except IndexError:
-        domain = path.lower()
-
-    for tld, code in _TLD_TO_COUNTRY.items():
-        if domain.endswith(tld) or ("." + domain.split(".", 1)[-1]).endswith(tld):
-            return code
-
-    return None
+def expand_regions(targets: list[str]) -> list[str]:
+    codes: list[str] = []
+    for t in targets:
+        key = t.lower()
+        if key in _REGION_COUNTRIES:
+            codes.extend(_REGION_COUNTRIES[key])
+        else:
+            codes.append(_normalize(t))
+    return list(dict.fromkeys(codes))
 
 
-def is_allowed_region(product: dict, allowed: list[str]) -> bool:
-    """Return True if product region is in allowed list, or allowed is empty, or region is unknown."""
-    if not allowed:
-        return True
-    region = detect_product_region(product)
-    if region is None:
-        return True
-    return region.upper() in [a.upper() for a in allowed]
+def is_allowed(
+    country: str,
+    allow: list[str] | None = None,
+    block: list[str] | None = None,
+) -> bool:
+    code = _normalize(country)
+    if block:
+        blocked = expand_regions(block)
+        if code in blocked:
+            return False
+    if allow:
+        allowed = expand_regions(allow)
+        return code in allowed
+    return True
 
 
-def filter_by_region(products: list[dict], allowed: list[str]) -> list[dict]:
-    """Return only products passing is_allowed_region."""
-    return [p for p in products if is_allowed_region(p, allowed)]
+def filter_products(
+    products: list[dict],
+    country_field: str = "country",
+    allow: list[str] | None = None,
+    block: list[str] | None = None,
+) -> list[dict]:
+    result = []
+    for p in products:
+        country = p.get(country_field, "")
+        if not country:
+            result.append(p)
+            continue
+        if is_allowed(str(country), allow=allow, block=block):
+            result.append(p)
+    return result
+
+
+def geo_summary(countries: list[str]) -> dict:
+    counts: dict[str, int] = {}
+    for c in countries:
+        code = _normalize(c)
+        counts[code] = counts.get(code, 0) + 1
+    top = sorted(counts.items(), key=lambda x: x[1], reverse=True)
+    return {
+        "unique_countries": len(counts),
+        "top_countries": [{"country": c, "count": n} for c, n in top[:5]],
+        "counts": counts,
+    }
