@@ -433,6 +433,13 @@ async def schedule_suggest(n: int = 1):
 
 # ── Smart schedule ───────────────────────────────────────────────────────────
 
+@app.get("/api/schedule/next")
+async def schedule_next(tz_offset: int = 0):
+    runs = metrics.get_recent_runs(500)
+    from .utils.smart_schedule import next_fire_time
+    return next_fire_time(runs, tz_offset_hours=tz_offset)
+
+
 @app.get("/api/schedule/optimal")
 async def schedule_optimal():
     """Return peak engagement hours and optimal cron derived from run history."""
