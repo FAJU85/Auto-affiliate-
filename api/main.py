@@ -1565,6 +1565,14 @@ async def get_build_by_number(number: int):
     return build
 
 
+@app.post("/api/geo-filter")
+async def geo_filter_products(body: dict):
+    from .utils.geo_filter import filter_by_region
+    products = body.get("products", [])
+    allowed = body.get("allowed_regions", [])
+    return {"filtered": filter_by_region(products, allowed), "count": len(filter_by_region(products, allowed))}
+
+
 # ── Link-in-bio landing page ───────────────────────────────────────────────
 
 @app.get("/bio", response_class=HTMLResponse)
