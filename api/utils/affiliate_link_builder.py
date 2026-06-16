@@ -1,5 +1,5 @@
 import re
-from urllib.parse import urlencode, urlparse, parse_qs, urljoin
+from urllib.parse import urlencode, urlparse, parse_qs
 
 
 _NETWORKS = {

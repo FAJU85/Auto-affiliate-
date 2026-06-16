@@ -26,7 +26,7 @@ _SCHEMA: dict[str, dict] = {
 
 
 def _coerce(value: Any, expected_type: type) -> Any:
-    if expected_type == float and isinstance(value, int):
+    if expected_type is float and isinstance(value, int):
         return float(value)
     return value
 
