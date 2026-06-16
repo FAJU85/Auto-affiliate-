@@ -1,85 +1,82 @@
-"""Tests for api.utils.geo_filter."""
-
-from api.utils.geo_filter import (
-    detect_product_region,
-    filter_by_region,
-    is_allowed_region,
-)
+from api.utils.geo_filter import is_allowed, expand_regions, filter_products, geo_summary
 
 
-def test_empty_allowed_allows_all():
-    products = [{"url": "https://example.co.uk/item"}, {"url": "https://example.de/item"}]
-    assert filter_by_region(products, []) == products
+def test_is_allowed_no_rules():
+    assert is_allowed("DE") is True
 
 
-def test_detect_uk():
-    product = {"url": "https://www.shop.co.uk/product"}
-    assert detect_product_region(product) == "UK"
+def test_is_allowed_allowlist():
+    assert is_allowed("US", allow=["US", "CA"]) is True
+    assert is_allowed("DE", allow=["US", "CA"]) is False
 
 
-def test_detect_de():
-    product = {"url": "https://www.shop.de/product"}
-    assert detect_product_region(product) == "DE"
+def test_is_allowed_blocklist():
+    assert is_allowed("US", block=["US"]) is False
+    assert is_allowed("DE", block=["US"]) is True
 
 
-def test_detect_us():
-    product = {"url": "https://www.shop.com/product"}
-    assert detect_product_region(product) == "US"
+def test_block_takes_precedence():
+    assert is_allowed("US", allow=["US"], block=["US"]) is False
 
 
-def test_detect_au():
-    product = {"url": "https://www.shop.com.au/product"}
-    assert detect_product_region(product) == "AU"
+def test_case_insensitive():
+    assert is_allowed("de", allow=["DE"]) is True
 
 
-def test_detect_unknown_returns_none():
-    product = {"url": "https://example.xyz/product"}
-    assert detect_product_region(product) is None
+def test_expand_region_eu():
+    codes = expand_regions(["eu"])
+    assert "DE" in codes
+    assert "FR" in codes
+    assert len(codes) > 10
 
 
-def test_is_allowed_region_true_when_in_allowed():
-    product = {"url": "https://www.shop.co.uk/product"}
-    assert is_allowed_region(product, ["UK", "DE"]) is True
+def test_expand_region_mixed():
+    codes = expand_regions(["US", "nordics"])
+    assert "US" in codes
+    assert "SE" in codes
 
 
-def test_is_allowed_region_false_when_not_in_allowed():
-    product = {"url": "https://www.shop.de/product"}
-    assert is_allowed_region(product, ["UK"]) is False
+def test_expand_deduplicates():
+    codes = expand_regions(["eu", "DE"])
+    assert codes.count("DE") == 1
 
 
-def test_is_allowed_region_true_when_unknown():
-    product = {"url": "https://example.xyz/product"}
-    assert is_allowed_region(product, ["UK"]) is True
+def test_is_allowed_region_block():
+    assert is_allowed("DE", block=["eu"]) is False
+    assert is_allowed("US", block=["eu"]) is True
 
 
-def test_filter_by_region_returns_subset():
-    products = [
-        {"url": "https://www.shop.co.uk/item"},
-        {"url": "https://www.shop.de/item"},
-        {"url": "https://www.shop.fr/item"},
-    ]
-    result = filter_by_region(products, ["UK", "FR"])
-    assert len(result) == 2
-    assert products[0] in result
-    assert products[2] in result
+def test_filter_products_no_rules():
+    products = [{"name": "A", "country": "US"}, {"name": "B", "country": "DE"}]
+    assert len(filter_products(products)) == 2
 
 
-def test_case_insensitive_allowed():
-    product = {"url": "https://www.shop.co.uk/item"}
-    assert is_allowed_region(product, ["uk"]) is True
+def test_filter_products_allowlist():
+    products = [{"name": "A", "country": "US"}, {"name": "B", "country": "DE"}]
+    result = filter_products(products, allow=["US"])
+    assert len(result) == 1
+    assert result[0]["name"] == "A"
 
 
-def test_region_field_takes_precedence():
-    product = {"url": "https://www.shop.de/item", "region": "FR"}
-    assert detect_product_region(product) == "FR"
+def test_filter_products_no_country_passes():
+    products = [{"name": "A"}]
+    result = filter_products(products, allow=["US"])
+    assert len(result) == 1
 
 
-def test_region_field_overrides_url_for_filter():
-    product = {"url": "https://www.shop.de/item", "region": "FR"}
-    assert is_allowed_region(product, ["FR"]) is True
-    assert is_allowed_region(product, ["DE"]) is False
+def test_geo_summary_structure():
+    s = geo_summary(["US", "DE", "US", "FR"])
+    assert "unique_countries" in s
+    assert "top_countries" in s
+    assert "counts" in s
 
 
-def test_no_url_returns_none():
-    product = {}
-    assert detect_product_region(product) is None
+def test_geo_summary_counts():
+    s = geo_summary(["US", "US", "DE"])
+    assert s["unique_countries"] == 2
+    assert s["counts"]["US"] == 2
+
+
+def test_geo_summary_top_sorted():
+    s = geo_summary(["US", "US", "US", "DE", "DE", "FR"])
+    assert s["top_countries"][0]["country"] == "US"
