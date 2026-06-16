@@ -39,23 +39,27 @@ class TestProductScoreTotal:
         assert sc.total == pytest.approx(1.0)
 
     def test_zero_product_scores_0(self):
-        sc = ProductScore(commission=0.0, price_band=0.0, has_image=0.0, description=0.0)
+        sc = ProductScore(commission=0.0, price_band=0.0, has_image=0.0, description=0.0, freshness=0.0)
         assert sc.total == pytest.approx(0.0)
 
-    def test_commission_weight_is_40pct(self):
-        sc = ProductScore(commission=1.0, price_band=0.0, has_image=0.0, description=0.0)
-        assert sc.total == pytest.approx(0.40)
+    def test_commission_weight_is_35pct(self):
+        sc = ProductScore(commission=1.0, price_band=0.0, has_image=0.0, description=0.0, freshness=0.0)
+        assert sc.total == pytest.approx(0.35)
 
-    def test_price_weight_is_30pct(self):
-        sc = ProductScore(commission=0.0, price_band=1.0, has_image=0.0, description=0.0)
-        assert sc.total == pytest.approx(0.30)
+    def test_price_weight_is_25pct(self):
+        sc = ProductScore(commission=0.0, price_band=1.0, has_image=0.0, description=0.0, freshness=0.0)
+        assert sc.total == pytest.approx(0.25)
 
     def test_image_weight_is_20pct(self):
-        sc = ProductScore(commission=0.0, price_band=0.0, has_image=1.0, description=0.0)
+        sc = ProductScore(commission=0.0, price_band=0.0, has_image=1.0, description=0.0, freshness=0.0)
         assert sc.total == pytest.approx(0.20)
 
     def test_description_weight_is_10pct(self):
-        sc = ProductScore(commission=0.0, price_band=0.0, has_image=0.0, description=1.0)
+        sc = ProductScore(commission=0.0, price_band=0.0, has_image=0.0, description=1.0, freshness=0.0)
+        assert sc.total == pytest.approx(0.10)
+
+    def test_freshness_weight_is_10pct(self):
+        sc = ProductScore(commission=0.0, price_band=0.0, has_image=0.0, description=0.0, freshness=1.0)
         assert sc.total == pytest.approx(0.10)
 
     def test_str_contains_percentage(self):
