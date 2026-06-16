@@ -1,5 +1,4 @@
 import importlib
-import time
 
 
 def _m(tmp_path, monkeypatch):

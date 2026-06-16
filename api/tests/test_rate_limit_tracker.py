@@ -1,5 +1,4 @@
 import importlib
-import pytest
 
 
 def _m(tmp_path, monkeypatch):

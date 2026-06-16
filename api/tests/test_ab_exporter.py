@@ -29,7 +29,7 @@ def test_to_csv_has_header():
 
 def test_to_csv_has_rows():
     csv_out = to_csv(_RESULTS)
-    lines = [l for l in csv_out.strip().splitlines() if l]
+    lines = [line for line in csv_out.strip().splitlines() if line]
     assert len(lines) == 3  # header + 2 rows
 
 
@@ -59,7 +59,7 @@ def test_to_markdown_empty():
 
 def test_to_markdown_row_count():
     md = to_markdown(_RESULTS)
-    lines = [l for l in md.strip().splitlines() if l]
+    lines = [line for line in md.strip().splitlines() if line]
     assert len(lines) == 4  # header + sep + 2 rows
 
 
