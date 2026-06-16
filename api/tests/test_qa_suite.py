@@ -298,9 +298,9 @@ class TestSocialCredentialsRoundTrip:
         r = qa["client"].post("/api/social/x/credentials", json={
             "handle":          "xuser",
             "consumer_key":    "ck1",
-            "consumer_secret": "cs1",
+            "consumer_secret": "cs1",  # pragma: allowlist secret
             "access_token":    "at1",
-            "access_secret":   "as1",
+            "access_secret":   "as1",  # pragma: allowlist secret
         })
         assert r.status_code == 200
         assert r.json()["ok"] is True
@@ -318,8 +318,8 @@ class TestSocialCredentialsRoundTrip:
         """Security: actual secrets must not be returned verbatim."""
         qa["client"].post("/api/social/x/credentials", json={
             "handle": "xuser2",
-            "consumer_key": "REAL_CK", "consumer_secret": "REAL_CS",
-            "access_token": "REAL_AT", "access_secret": "REAL_AS",
+            "consumer_key": "REAL_CK", "consumer_secret": "REAL_CS",  # pragma: allowlist secret
+            "access_token": "REAL_AT", "access_secret": "REAL_AS",  # pragma: allowlist secret
         })
         d = qa["client"].get("/api/accounts").json()["social"]["x"]
         for field in ("consumer_key", "consumer_secret", "access_token", "access_secret"):
@@ -329,8 +329,8 @@ class TestSocialCredentialsRoundTrip:
         """Updating one field must not wipe the others."""
         qa["client"].post("/api/social/x/credentials", json={
             "handle": "xuser3",
-            "consumer_key": "ck_orig", "consumer_secret": "cs_orig",
-            "access_token": "at_orig", "access_secret": "as_orig",
+            "consumer_key": "ck_orig", "consumer_secret": "cs_orig",  # pragma: allowlist secret
+            "access_token": "at_orig", "access_secret": "as_orig",  # pragma: allowlist secret
         })
         # Now update only consumer_key
         qa["client"].post("/api/social/x/credentials", json={
@@ -373,8 +373,8 @@ class TestSocialCredentialsRoundTrip:
         # Save then disconnect
         qa["client"].post("/api/social/x/credentials", json={
             "handle": "disc_test",
-            "consumer_key": "ck", "consumer_secret": "cs",
-            "access_token": "at", "access_secret": "as",
+            "consumer_key": "ck", "consumer_secret": "cs",  # pragma: allowlist secret
+            "access_token": "at", "access_secret": "as",  # pragma: allowlist secret
         })
         r = qa["client"].delete("/api/social/x/disconnect")
         assert r.status_code == 200
