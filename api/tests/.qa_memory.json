@@ -372,7 +372,7 @@
       ]
     }
   },
-  "run_count": 154,
+  "run_count": 155,
   "known_routes": [
     "/",
     "/api/ab-results",
@@ -400,6 +400,7 @@
     "/api/platform-rules",
     "/api/revenue",
     "/api/schedule/config",
+    "/api/schedule/optimal",
     "/api/schedule/suggest",
     "/api/settings",
     "/api/slo",
