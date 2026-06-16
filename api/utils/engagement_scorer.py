@@ -1,67 +1,92 @@
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 
-
-_PLATFORM_WEIGHT: dict[str, float] = {
-    "instagram": 1.3,
-    "facebook": 1.2,
+_PLATFORM_WEIGHTS = {
+    "twitter": 1.0,
+    "instagram": 1.2,
+    "bluesky": 0.8,
+    "mastodon": 0.7,
+    "facebook": 0.9,
     "threads": 1.1,
-    "x": 1.0,
-    "bluesky": 0.9,
-    "mastodon": 0.9,
-    "tumblr": 0.8,
-    "default": 1.0,
+    "tumblr": 0.6,
 }
 
-_DECAY_HALF_LIFE_DAYS = 7.0
+_PEAK_HOURS = {9, 12, 13, 17, 18, 19, 20}  # UTC approximate peaks
+_PEAK_DAYS = {0, 1, 2, 3, 4}  # Mon–Fri
+
+_POSITIVE_SIGNALS = {"free", "deal", "sale", "discount", "off", "limited", "exclusive", "save", "win", "gift"}
+_NEGATIVE_SIGNALS = {"spam", "ad", "promo", "buy now"}
 
 
-def _parse_ts(ts: str) -> datetime | None:
-    try:
-        return datetime.fromisoformat(ts.replace("Z", "+00:00"))
-    except Exception:  # noqa: BLE001
-        return None
+def _content_score(text: str) -> float:
+    lower = text.lower()
+    words = set(lower.split())
+    pos = sum(1 for w in _POSITIVE_SIGNALS if w in words)
+    neg = sum(1 for w in _NEGATIVE_SIGNALS if w in lower)
+    has_hashtag = "#" in text
+    has_emoji = any(ord(c) > 127 for c in text)
+    has_url = "http" in lower
+    score = 0.5
+    score += pos * 0.05
+    score -= neg * 0.1
+    score += 0.1 if has_hashtag else 0
+    score += 0.05 if has_emoji else 0
+    score += 0.05 if has_url else 0
+    return min(1.0, max(0.0, round(score, 3)))
 
 
-def _age_decay(posted_at: datetime, now: datetime | None = None) -> float:
-    now = now or datetime.now(timezone.utc)
-    age_days = max((now - posted_at).total_seconds() / 86400, 0)
-    return 0.5 ** (age_days / _DECAY_HALF_LIFE_DAYS)
+def _time_score(dt: datetime) -> float:
+    score = 0.5
+    if dt.hour in _PEAK_HOURS:
+        score += 0.3
+    if dt.weekday() in _PEAK_DAYS:
+        score += 0.2
+    return min(1.0, score)
 
 
-def score_run(run: dict, now: datetime | None = None) -> float:
-    if not run.get("success"):
-        return 0.0
-    clicks = max(int(run.get("clicks", 0)), 0)
-    platform = (run.get("platform") or "default").lower()
-    weight = _PLATFORM_WEIGHT.get(platform, _PLATFORM_WEIGHT["default"])
-    ts = _parse_ts(run.get("timestamp", ""))
-    decay = _age_decay(ts, now) if ts else 0.5
-    return round(clicks * weight * decay, 4)
-
-
-def top_engaged_runs(runs: list[dict], n: int = 10, now: datetime | None = None) -> list[dict]:
-    scored = [
-        {**r, "_engagement": score_run(r, now)}
-        for r in runs
-        if r.get("success")
-    ]
-    scored.sort(key=lambda x: x["_engagement"], reverse=True)
-    return scored[:n]
-
-
-def engagement_summary(runs: list[dict], days: int = 30, now: datetime | None = None) -> dict:
-    now = now or datetime.now(timezone.utc)
-    cutoff = now - timedelta(days=days)
-    recent = [
-        r for r in runs
-        if r.get("success") and (_parse_ts(r.get("timestamp", "")) or datetime.min.replace(tzinfo=timezone.utc)) >= cutoff
-    ]
-    scores = [score_run(r, now) for r in recent]
-    total = round(sum(scores), 4)
+def score(
+    platform: str,
+    content: str,
+    post_time: datetime | None = None,
+) -> dict:
+    if post_time is None:
+        post_time = datetime.now(timezone.utc)
+    platform_weight = _PLATFORM_WEIGHTS.get(platform.lower(), 1.0)
+    content_s = _content_score(content)
+    time_s = _time_score(post_time)
+    raw = (content_s * 0.5 + time_s * 0.5) * platform_weight
+    normalized = min(1.0, round(raw, 3))
     return {
-        "period_days": days,
-        "runs_counted": len(recent),
-        "total_engagement": total,
-        "avg_engagement": round(total / len(scores), 4) if scores else 0.0,
-        "top_run": top_engaged_runs(recent, n=1, now=now)[0] if recent else None,
+        "platform": platform,
+        "content_score": content_s,
+        "time_score": time_s,
+        "platform_weight": platform_weight,
+        "engagement_score": normalized,
+        "grade": _grade(normalized),
     }
+
+
+def _grade(s: float) -> str:
+    if s >= 0.8:
+        return "A"
+    if s >= 0.6:
+        return "B"
+    if s >= 0.4:
+        return "C"
+    return "D"
+
+
+def score_batch(posts: list[dict]) -> list[dict]:
+    results = []
+    for p in posts:
+        s = score(
+            platform=p.get("platform", "twitter"),
+            content=p.get("content", ""),
+            post_time=p.get("post_time"),
+        )
+        results.append({**p, **s})
+    return results
+
+
+def best_platform(content: str, post_time: datetime | None = None) -> str:
+    scores = {p: score(p, content, post_time)["engagement_score"] for p in _PLATFORM_WEIGHTS}
+    return max(scores, key=lambda p: scores[p])

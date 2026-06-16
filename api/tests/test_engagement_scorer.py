@@ -1,80 +1,82 @@
-from datetime import datetime, timezone, timedelta
-from api.utils.engagement_scorer import score_run, top_engaged_runs, engagement_summary
+from datetime import datetime, timezone
+from api.utils.engagement_scorer import score, score_batch, best_platform
 
-_NOW = datetime(2026, 6, 16, 12, 0, 0, tzinfo=timezone.utc)
-
-
-def _run(clicks=5, platform="bluesky", days_ago=0, success=True):
-    ts = (_NOW - timedelta(days=days_ago)).isoformat()
-    return {"success": success, "clicks": clicks, "platform": platform, "timestamp": ts}
+_PEAK = datetime(2026, 6, 15, 12, 0, tzinfo=timezone.utc)   # Monday noon
+_OFFPEAK = datetime(2026, 6, 14, 3, 0, tzinfo=timezone.utc)  # Sunday 3am
 
 
-def test_failed_run_scores_zero():
-    assert score_run(_run(success=False)) == 0.0
+def test_score_structure():
+    r = score("twitter", "Great deal!", post_time=_PEAK)
+    for key in ("platform", "content_score", "time_score", "platform_weight", "engagement_score", "grade"):
+        assert key in r
 
 
-def test_zero_clicks_scores_zero():
-    assert score_run(_run(clicks=0), now=_NOW) == 0.0
+def test_score_range():
+    r = score("twitter", "Hello", post_time=_PEAK)
+    assert 0.0 <= r["engagement_score"] <= 1.0
 
 
-def test_positive_clicks_positive_score():
-    assert score_run(_run(clicks=5), now=_NOW) > 0
+def test_peak_time_higher_than_offpeak():
+    r_peak = score("twitter", "Hello", post_time=_PEAK)
+    r_off = score("twitter", "Hello", post_time=_OFFPEAK)
+    assert r_peak["time_score"] > r_off["time_score"]
 
 
-def test_instagram_scores_higher_than_tumblr():
-    ig = score_run(_run(clicks=10, platform="instagram"), now=_NOW)
-    tb = score_run(_run(clicks=10, platform="tumblr"), now=_NOW)
-    assert ig > tb
+def test_positive_signals_boost_content():
+    r1 = score("twitter", "Product", post_time=_PEAK)
+    r2 = score("twitter", "Free deal sale discount", post_time=_PEAK)
+    assert r2["content_score"] > r1["content_score"]
 
 
-def test_older_run_scores_lower():
-    new = score_run(_run(clicks=10, days_ago=0), now=_NOW)
-    old = score_run(_run(clicks=10, days_ago=14), now=_NOW)
-    assert new > old
+def test_hashtag_boosts_content():
+    r1 = score("twitter", "Good product", post_time=_PEAK)
+    r2 = score("twitter", "Good product #deals", post_time=_PEAK)
+    assert r2["content_score"] >= r1["content_score"]
 
 
-def test_unknown_platform_uses_default():
-    s = score_run(_run(clicks=5, platform="pinterest"), now=_NOW)
-    assert s > 0
+def test_platform_weight_applied():
+    r_ig = score("instagram", "Deal", post_time=_PEAK)
+    r_tumblr = score("tumblr", "Deal", post_time=_PEAK)
+    assert r_ig["engagement_score"] > r_tumblr["engagement_score"]
 
 
-def test_top_engaged_runs_sorted_desc():
-    runs = [_run(clicks=1), _run(clicks=10), _run(clicks=5)]
-    top = top_engaged_runs(runs, n=3, now=_NOW)
-    scores = [r["_engagement"] for r in top]
-    assert scores == sorted(scores, reverse=True)
+def test_grade_a_for_high_score():
+    r = score("instagram", "Free deal sale #discount", post_time=_PEAK)
+    assert r["grade"] in ("A", "B", "C", "D")
 
 
-def test_top_engaged_runs_respects_n():
-    runs = [_run(clicks=i) for i in range(10)]
-    assert len(top_engaged_runs(runs, n=3, now=_NOW)) == 3
+def test_grade_d_for_low_score():
+    r = score("tumblr", "meh", post_time=_OFFPEAK)
+    assert r["grade"] == "D"
 
 
-def test_top_engaged_excludes_failed():
-    runs = [_run(clicks=100, success=False), _run(clicks=1)]
-    top = top_engaged_runs(runs, now=_NOW)
-    assert all(r["success"] for r in top)
+def test_unknown_platform_defaults_weight():
+    r = score("unknown_platform", "Deal", post_time=_PEAK)
+    assert r["engagement_score"] > 0
 
 
-def test_engagement_summary_keys():
-    result = engagement_summary([], now=_NOW)
-    for key in ("period_days", "runs_counted", "total_engagement", "avg_engagement", "top_run"):
-        assert key in result
+def test_score_batch_empty():
+    assert score_batch([]) == []
 
 
-def test_engagement_summary_empty_runs():
-    result = engagement_summary([], now=_NOW)
-    assert result["total_engagement"] == 0.0
-    assert result["top_run"] is None
+def test_score_batch_structure():
+    posts = [{"platform": "twitter", "content": "Deal", "post_time": _PEAK}]
+    results = score_batch(posts)
+    assert len(results) == 1
+    assert "engagement_score" in results[0]
 
 
-def test_engagement_summary_filters_by_days():
-    runs = [_run(clicks=10, days_ago=60), _run(clicks=5, days_ago=1)]
-    result = engagement_summary(runs, days=30, now=_NOW)
-    assert result["runs_counted"] == 1
+def test_score_batch_preserves_fields():
+    posts = [{"platform": "twitter", "content": "Deal", "custom": "x", "post_time": _PEAK}]
+    r = score_batch(posts)[0]
+    assert r["custom"] == "x"
 
 
-def test_engagement_summary_avg_correct():
-    runs = [_run(clicks=10, days_ago=0), _run(clicks=10, days_ago=0)]
-    result = engagement_summary(runs, days=30, now=_NOW)
-    assert result["avg_engagement"] == result["total_engagement"] / 2
+def test_best_platform_returns_string():
+    bp = best_platform("Free deal sale", post_time=_PEAK)
+    assert isinstance(bp, str)
+
+
+def test_best_platform_is_known():
+    bp = best_platform("Great product deal", post_time=_PEAK)
+    assert bp in ("twitter", "instagram", "bluesky", "mastodon", "facebook", "threads", "tumblr")
