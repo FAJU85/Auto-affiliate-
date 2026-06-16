@@ -375,14 +375,17 @@
       ]
     }
   },
-  "run_count": 164,
+  "run_count": 166,
   "known_routes": [
     "/",
     "/api/ab-results",
     "/api/accounts",
+    "/api/activity",
+    "/api/activity/summary",
     "/api/affiliate/postback",
     "/api/analytics/summary",
     "/api/architecture",
+    "/api/audit",
     "/api/blacklist",
     "/api/builds",
     "/api/circuit-breakers",
@@ -400,6 +403,7 @@
     "/api/grafana-dashboard",
     "/api/hashtags",
     "/api/health",
+    "/api/health/full",
     "/api/history",
     "/api/history.csv",
     "/api/insights",
