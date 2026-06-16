@@ -372,7 +372,7 @@
       ]
     }
   },
-  "run_count": 158,
+  "run_count": 159,
   "known_routes": [
     "/",
     "/api/ab-results",
@@ -389,6 +389,7 @@
     "/api/env-status",
     "/api/finops",
     "/api/grafana-dashboard",
+    "/api/hashtags",
     "/api/health",
     "/api/history",
     "/api/history.csv",
