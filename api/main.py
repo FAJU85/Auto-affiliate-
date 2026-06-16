@@ -1126,13 +1126,24 @@ async def slo_reset():
 
 @app.get("/api/finops")
 async def finops():
-    """FinOps: daily spend, 30-day forecast, cap status."""
+    """FinOps: daily spend, 30-day forecast, cap status, ROI and spend alerts."""
     s   = settings.get_settings()
     cap = float(s.get("dailyCostCap", 2.0))
+    forecast = budget.get_monthly_forecast(cap)
+    alert = budget.spend_alert(cap)
+    runs = metrics.get_recent_runs(500)
+    rev_forecast = budget.revenue_forecast(runs)
+    roi = budget.compute_roi(
+        monthly_commission=rev_forecast["projected_monthly_usd"],
+        monthly_spend=forecast["monthly_est_usd"],
+    )
     return {
         "today_usd":  round(budget.get_daily_spend(), 6),
         "cap_usd":    cap,
-        "forecast":   budget.get_monthly_forecast(cap),
+        "forecast":   forecast,
+        "alert":      alert,
+        "roi":        roi,
+        "revenue_forecast": rev_forecast,
     }
 
 

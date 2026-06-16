@@ -4,6 +4,7 @@ FinOps:
   - Tracks actual API call costs per provider
   - Forecasts monthly spend based on daily run rate
   - Alerts when approaching cap
+  - Computes ROI vs affiliate commission revenue
 """
 
 import json
@@ -22,6 +23,10 @@ COST_PER_RUN = {
     "sovrn":   0.0000,   # free API
     "default": 0.001,    # conservative default
 }
+
+# Alert thresholds
+SPEND_ALERT_PCT = 80   # warn when daily spend > 80% of cap
+ROI_WARN_RATIO  = 1.0  # ROI below 1.0 means losing money
 
 
 def _today() -> str:
@@ -85,3 +90,93 @@ def get_monthly_forecast(cap: float = 2.0) -> dict:
         "cap_pct":        round(monthly_est / cap * 100, 1) if cap else 0.0,
         "on_track":       monthly_est <= cap,
     }
+
+
+def spend_alert(cap: float) -> dict | None:
+    """Return an alert dict if daily spend is approaching or exceeding cap.
+
+    Returns None when spend is comfortably within limits.
+    """
+    daily = get_daily_spend()
+    if cap <= 0:
+        return None
+    pct = daily / cap * 100
+    if pct >= 100:
+        return {
+            "level": "critical",
+            "message": f"Daily spend ${daily:.4f} has EXCEEDED cap ${cap:.2f}",
+            "pct_of_cap": round(pct, 1),
+        }
+    if pct >= SPEND_ALERT_PCT:
+        return {
+            "level": "warning",
+            "message": f"Daily spend ${daily:.4f} is {pct:.0f}% of cap ${cap:.2f}",
+            "pct_of_cap": round(pct, 1),
+        }
+    return None
+
+
+def compute_roi(monthly_commission: float, monthly_spend: float) -> dict:
+    """Compute ROI ratio and classify it.
+
+    ROI = commission / spend. >1 means profitable; <1 means losing money.
+    """
+    if monthly_spend <= 0:
+        roi = None  # no spend → infinite ROI (free tier)
+        status = "free"
+    else:
+        roi = round(monthly_commission / monthly_spend, 2)
+        if roi >= 10:
+            status = "excellent"
+        elif roi >= 3:
+            status = "good"
+        elif roi >= ROI_WARN_RATIO:
+            status = "ok"
+        else:
+            status = "poor"
+
+    return {
+        "roi": roi,
+        "status": status,
+        "monthly_commission_usd": round(monthly_commission, 4),
+        "monthly_spend_usd": round(monthly_spend, 4),
+        "profitable": roi is None or roi >= ROI_WARN_RATIO,
+    }
+
+
+def revenue_forecast(runs: list[dict], days_history: int = 30) -> dict:
+    """Project monthly commission revenue from recent run + conversion history.
+
+    Args:
+        runs: recent pipeline run records
+        days_history: how many days of history to use for projection
+    """
+    from datetime import timedelta
+
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=days_history)
+
+    successful = [
+        r for r in runs
+        if r.get("success") and _parse_ts(r.get("timestamp", "")) > cutoff
+    ]
+    total_clicks = sum(int(r.get("clicks", 0)) for r in successful)
+    # Commission: not tracked per-run yet, so estimate from click rate
+    # Rough industry benchmark: ~1-2% conversion, avg $5 commission per sale
+    avg_commission_per_click = 0.05  # conservative: $0.05 EPC
+    projected_monthly = round(total_clicks * avg_commission_per_click * (30 / max(days_history, 1)), 4)
+
+    return {
+        "posts_analysed": len(successful),
+        "total_clicks": total_clicks,
+        "days_history": days_history,
+        "projected_monthly_usd": projected_monthly,
+        "epc_assumption_usd": avg_commission_per_click,
+    }
+
+
+def _parse_ts(ts_str: str) -> datetime:
+    try:
+        return datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return datetime.min.replace(tzinfo=timezone.utc)
