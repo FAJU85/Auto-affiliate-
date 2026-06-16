@@ -1,147 +1,124 @@
-"""Tests for api/utils/blacklist.py — persistent product blacklist."""
-
 import importlib
-import json
+import pytest
 
 
-def _reload(monkeypatch, tmp_path):
+def _m(tmp_path, monkeypatch):
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
-    import api.utils.blacklist as bl
-    importlib.reload(bl)
-    return bl
+    import api.utils.blacklist as m
+    importlib.reload(m)
+    return m
 
 
-# ── Initial state ─────────────────────────────────────────────────────────────
-
-def test_initial_empty(monkeypatch, tmp_path):
-    bl = _reload(monkeypatch, tmp_path)
-    result = bl.get_blacklist()
-    assert result == {"products": [], "domains": []}
+def test_add_domain(tmp_path, monkeypatch):
+    m = _m(tmp_path, monkeypatch)
+    assert m.add("domains", "spam.com") is True
 
 
-# ── add_product ───────────────────────────────────────────────────────────────
-
-def test_add_product_persists(monkeypatch, tmp_path):
-    bl = _reload(monkeypatch, tmp_path)
-    bl.add_product("SpamBrand")
-    result = bl.get_blacklist()
-    assert "spambrand" in result["products"]
+def test_add_duplicate_returns_false(tmp_path, monkeypatch):
+    m = _m(tmp_path, monkeypatch)
+    m.add("domains", "spam.com")
+    assert m.add("domains", "spam.com") is False
 
 
-def test_add_product_lowercase(monkeypatch, tmp_path):
-    bl = _reload(monkeypatch, tmp_path)
-    bl.add_product("MixedCase")
-    assert "mixedcase" in bl.get_blacklist()["products"]
+def test_remove_domain(tmp_path, monkeypatch):
+    m = _m(tmp_path, monkeypatch)
+    m.add("domains", "spam.com")
+    assert m.remove("domains", "spam.com") is True
+    assert m.is_blocked_domain("https://spam.com/product") is False
 
 
-def test_add_product_no_duplicates(monkeypatch, tmp_path):
-    bl = _reload(monkeypatch, tmp_path)
-    bl.add_product("foo")
-    bl.add_product("foo")
-    bl.add_product("FOO")
-    assert bl.get_blacklist()["products"].count("foo") == 1
+def test_remove_nonexistent_returns_false(tmp_path, monkeypatch):
+    m = _m(tmp_path, monkeypatch)
+    assert m.remove("domains", "nothere.com") is False
 
 
-def test_add_product_written_to_file(monkeypatch, tmp_path):
-    bl = _reload(monkeypatch, tmp_path)
-    bl.add_product("testitem")
-    raw = json.loads((tmp_path / "blacklist.json").read_text())
-    assert "testitem" in raw["products"]
+def test_invalid_category_raises(tmp_path, monkeypatch):
+    m = _m(tmp_path, monkeypatch)
+    with pytest.raises(ValueError):
+        m.add("invalid", "foo")
 
 
-# ── add_domain ────────────────────────────────────────────────────────────────
-
-def test_add_domain_persists(monkeypatch, tmp_path):
-    bl = _reload(monkeypatch, tmp_path)
-    bl.add_domain("spam.com")
-    assert "spam.com" in bl.get_blacklist()["domains"]
-
-
-def test_add_domain_no_duplicates(monkeypatch, tmp_path):
-    bl = _reload(monkeypatch, tmp_path)
-    bl.add_domain("evil.com")
-    bl.add_domain("EVIL.COM")
-    assert bl.get_blacklist()["domains"].count("evil.com") == 1
+def test_is_blocked_domain(tmp_path, monkeypatch):
+    m = _m(tmp_path, monkeypatch)
+    m.add("domains", "spam.com")
+    assert m.is_blocked_domain("https://spam.com/item") is True
+    assert m.is_blocked_domain("https://legit.com/item") is False
 
 
-# ── is_blacklisted ────────────────────────────────────────────────────────────
-
-def test_is_blacklisted_false_for_clean_product(monkeypatch, tmp_path):
-    bl = _reload(monkeypatch, tmp_path)
-    product = {"name": "Great Widget", "siteUrl": "https://example.com/widget"}
-    assert bl.is_blacklisted(product) is False
-
-
-def test_is_blacklisted_true_for_name_substring(monkeypatch, tmp_path):
-    bl = _reload(monkeypatch, tmp_path)
-    bl.add_product("spam")
-    product = {"name": "Super Spam Gadget", "siteUrl": "https://legit.com/item"}
-    assert bl.is_blacklisted(product) is True
+def test_is_blocked_keyword(tmp_path, monkeypatch):
+    m = _m(tmp_path, monkeypatch)
+    m.add("keywords", "scam")
+    assert m.is_blocked_keyword("This is a scam product") is True
+    assert m.is_blocked_keyword("This is a great product") is False
 
 
-def test_is_blacklisted_case_insensitive_name(monkeypatch, tmp_path):
-    bl = _reload(monkeypatch, tmp_path)
-    bl.add_product("casino")
-    product = {"name": "CASINO Royale Deal", "siteUrl": "https://legit.com/item"}
-    assert bl.is_blacklisted(product) is True
+def test_is_blocked_keyword_whole_word(tmp_path, monkeypatch):
+    m = _m(tmp_path, monkeypatch)
+    m.add("keywords", "cam")
+    assert m.is_blocked_keyword("camera deal") is False
 
 
-def test_is_blacklisted_true_for_domain_in_url(monkeypatch, tmp_path):
-    bl = _reload(monkeypatch, tmp_path)
-    bl.add_domain("spam.com")
-    product = {"name": "Nice Product", "siteUrl": "https://www.spam.com/product/123"}
-    assert bl.is_blacklisted(product) is True
+def test_is_blocked_product(tmp_path, monkeypatch):
+    m = _m(tmp_path, monkeypatch)
+    m.add("product_ids", "P123")
+    assert m.is_blocked_product("P123") is True
+    assert m.is_blocked_product("P999") is False
 
 
-def test_is_blacklisted_domain_substring_match(monkeypatch, tmp_path):
-    bl = _reload(monkeypatch, tmp_path)
-    bl.add_domain("bad.net")
-    product = {"name": "Something", "deeplink": "https://shop.bad.net/deals/1"}
-    assert bl.is_blacklisted(product) is True
+def test_is_blocked_product_case_insensitive(tmp_path, monkeypatch):
+    m = _m(tmp_path, monkeypatch)
+    m.add("product_ids", "p123")
+    assert m.is_blocked_product("P123") is True
 
 
-def test_is_blacklisted_does_not_mutate_product(monkeypatch, tmp_path):
-    bl = _reload(monkeypatch, tmp_path)
-    bl.add_product("test")
-    product = {"name": "Test Product", "siteUrl": "https://ok.com"}
-    original = dict(product)
-    bl.is_blacklisted(product)
-    assert product == original
+def test_is_blocked_by_domain(tmp_path, monkeypatch):
+    m = _m(tmp_path, monkeypatch)
+    m.add("domains", "spam.com")
+    product = {"id": "p1", "url": "https://spam.com/item", "title": "Nice product"}
+    assert m.is_blocked(product) is True
 
 
-# ── remove_product / remove_domain ────────────────────────────────────────────
-
-def test_remove_product_returns_true_when_found(monkeypatch, tmp_path):
-    bl = _reload(monkeypatch, tmp_path)
-    bl.add_product("removeme")
-    assert bl.remove_product("removeme") is True
-    assert "removeme" not in bl.get_blacklist()["products"]
+def test_is_blocked_by_keyword(tmp_path, monkeypatch):
+    m = _m(tmp_path, monkeypatch)
+    m.add("keywords", "scam")
+    product = {"id": "p1", "url": "https://legit.com/item", "title": "Total scam deal"}
+    assert m.is_blocked(product) is True
 
 
-def test_remove_product_returns_false_when_not_found(monkeypatch, tmp_path):
-    bl = _reload(monkeypatch, tmp_path)
-    assert bl.remove_product("ghost") is False
+def test_filter_products(tmp_path, monkeypatch):
+    m = _m(tmp_path, monkeypatch)
+    m.add("domains", "spam.com")
+    products = [
+        {"id": "p1", "url": "https://legit.com/item", "title": "Good deal"},
+        {"id": "p2", "url": "https://spam.com/item", "title": "Bad deal"},
+    ]
+    result = m.filter_products(products)
+    assert len(result) == 1
+    assert result[0]["id"] == "p1"
 
 
-def test_remove_domain_returns_true_when_found(monkeypatch, tmp_path):
-    bl = _reload(monkeypatch, tmp_path)
-    bl.add_domain("bye.com")
-    assert bl.remove_domain("bye.com") is True
-    assert "bye.com" not in bl.get_blacklist()["domains"]
+def test_list_blocked_all(tmp_path, monkeypatch):
+    m = _m(tmp_path, monkeypatch)
+    m.add("domains", "spam.com")
+    m.add("keywords", "scam")
+    bl = m.list_blocked()
+    assert "domains" in bl
+    assert "keywords" in bl
+    assert "product_ids" in bl
 
 
-def test_remove_domain_returns_false_when_not_found(monkeypatch, tmp_path):
-    bl = _reload(monkeypatch, tmp_path)
-    assert bl.remove_domain("nothere.io") is False
+def test_list_blocked_category(tmp_path, monkeypatch):
+    m = _m(tmp_path, monkeypatch)
+    m.add("domains", "spam.com")
+    bl = m.list_blocked("domains")
+    assert "spam.com" in bl["domains"]
 
 
-# ── get_blacklist structure ───────────────────────────────────────────────────
-
-def test_get_blacklist_structure(monkeypatch, tmp_path):
-    bl = _reload(monkeypatch, tmp_path)
-    bl.add_product("alpha")
-    bl.add_domain("beta.com")
-    result = bl.get_blacklist()
-    assert set(result.keys()) == {"products", "domains"}
-    assert isinstance(result["products"], list)
-    assert isinstance(result["domains"], list)
+def test_blacklist_stats(tmp_path, monkeypatch):
+    m = _m(tmp_path, monkeypatch)
+    m.add("domains", "spam.com")
+    m.add("keywords", "scam")
+    s = m.blacklist_stats()
+    assert s["domains"] == 1
+    assert s["keywords"] == 1
+    assert s["total"] == 2

@@ -1,97 +1,119 @@
-"""Persistent product blacklist stored in /data/blacklist.json.
-
-Allows blocking specific products (by name substring) or entire domains.
-"""
-
 import json
 import os
+import re
+import tempfile
 from pathlib import Path
 
-DATA_DIR       = Path(os.environ.get("DATA_DIR", "/data"))
-BLACKLIST_FILE = DATA_DIR / "blacklist.json"
 
-_EMPTY: dict = {"products": [], "domains": []}
+def _data_dir() -> Path:
+    return Path(os.environ.get("DATA_DIR", "/data"))
+
+
+def _path() -> Path:
+    return _data_dir() / "blacklist.json"
 
 
 def _load() -> dict:
-    try:
-        data = json.loads(BLACKLIST_FILE.read_text())
-        return {
-            "products": list(data.get("products", [])),
-            "domains":  list(data.get("domains", [])),
-        }
-    except Exception:  # noqa: BLE001
-        return {"products": [], "domains": []}
+    p = _path()
+    if p.exists():
+        try:
+            return json.loads(p.read_text())
+        except Exception:
+            pass
+    return {"domains": [], "keywords": [], "product_ids": []}
 
 
 def _save(data: dict) -> None:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = str(BLACKLIST_FILE) + ".tmp"
-    Path(tmp).write_text(json.dumps(data, indent=2))
-    Path(tmp).rename(BLACKLIST_FILE)
+    p = _path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = tempfile.NamedTemporaryFile("w", dir=p.parent, delete=False, suffix=".tmp")
+    try:
+        json.dump(data, tmp)
+        tmp.close()
+        os.replace(tmp.name, p)
+    except Exception:
+        tmp.close()
+        os.unlink(tmp.name)
+        raise
 
 
-def add_product(name: str) -> None:
-    """Add a lowercased product name substring to the blacklist (no duplicates)."""
-    key = name.lower().strip()
-    if not key:
-        return
+def _normalize(value: str) -> str:
+    return value.strip().lower()
+
+
+def _validate_category(category: str) -> None:
+    if category not in ("domains", "keywords", "product_ids"):
+        raise ValueError(f"Unknown category {category!r}. Use: domains, keywords, product_ids")
+
+
+def add(category: str, value: str) -> bool:
+    _validate_category(category)
     data = _load()
-    if key not in data["products"]:
-        data["products"].append(key)
-        _save(data)
-
-
-def add_domain(domain: str) -> None:
-    """Add a lowercased domain to the blacklist (no duplicates)."""
-    key = domain.lower().strip()
-    if not key:
-        return
-    data = _load()
-    if key not in data["domains"]:
-        data["domains"].append(key)
-        _save(data)
-
-
-def remove_product(name: str) -> bool:
-    """Remove a product name substring. Returns True if it was present."""
-    key = name.lower().strip()
-    data = _load()
-    if key in data["products"]:
-        data["products"].remove(key)
+    v = _normalize(value)
+    if v not in data[category]:
+        data[category].append(v)
+        data[category].sort()
         _save(data)
         return True
     return False
 
 
-def remove_domain(domain: str) -> bool:
-    """Remove a domain. Returns True if it was present."""
-    key = domain.lower().strip()
+def remove(category: str, value: str) -> bool:
+    _validate_category(category)
     data = _load()
-    if key in data["domains"]:
-        data["domains"].remove(key)
+    v = _normalize(value)
+    if v in data[category]:
+        data[category].remove(v)
         _save(data)
         return True
     return False
 
 
-def is_blacklisted(product: dict) -> bool:
-    """Return True if the product's name or URL matches any blacklist entry."""
+def is_blocked_domain(url: str) -> bool:
     data = _load()
-    name = (product.get("name") or "").lower()
-    url  = (product.get("url") or product.get("siteUrl") or product.get("deeplink") or "").lower()
-
-    for substring in data["products"]:
-        if substring and substring in name:
-            return True
-
-    for domain in data["domains"]:
-        if domain and domain in url:
-            return True
-
-    return False
+    url_lower = url.lower()
+    return any(d in url_lower for d in data.get("domains", []))
 
 
-def get_blacklist() -> dict:
-    """Return the full blacklist as {"products": [...], "domains": [...]}."""
-    return _load()
+def is_blocked_keyword(text: str) -> bool:
+    data = _load()
+    text_lower = text.lower()
+    return any(re.search(r"\b" + re.escape(k) + r"\b", text_lower) for k in data.get("keywords", []))
+
+
+def is_blocked_product(product_id: str) -> bool:
+    data = _load()
+    return _normalize(product_id) in data.get("product_ids", [])
+
+
+def is_blocked(product: dict) -> bool:
+    pid = product.get("id", "")
+    url = product.get("url", "")
+    title = product.get("title", "") + " " + product.get("description", "")
+    return (
+        (pid and is_blocked_product(pid))
+        or (url and is_blocked_domain(url))
+        or (title.strip() and is_blocked_keyword(title))
+    )
+
+
+def filter_products(products: list[dict]) -> list[dict]:
+    return [p for p in products if not is_blocked(p)]
+
+
+def list_blocked(category: str | None = None) -> dict:
+    data = _load()
+    if category:
+        _validate_category(category)
+        return {category: data.get(category, [])}
+    return {k: data.get(k, []) for k in ("domains", "keywords", "product_ids")}
+
+
+def blacklist_stats() -> dict:
+    data = _load()
+    return {
+        "domains": len(data.get("domains", [])),
+        "keywords": len(data.get("keywords", [])),
+        "product_ids": len(data.get("product_ids", [])),
+        "total": sum(len(data.get(k, [])) for k in ("domains", "keywords", "product_ids")),
+    }
