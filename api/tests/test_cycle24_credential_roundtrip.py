@@ -43,9 +43,9 @@ class TestCredentialRoundTrip:
         r = cred_client.post("/api/social/x/credentials", json={
             "handle":          "myuser",
             "consumer_key":    "ck_real",
-            "consumer_secret": "cs_real",
+            "consumer_secret": "cs_real",  # pragma: allowlist secret
             "access_token":    "at_real",
-            "access_secret":   "as_real",
+            "access_secret":   "as_real",  # pragma: allowlist secret
         })
         assert r.status_code == 200
         assert r.json()["ok"] is True
@@ -97,9 +97,9 @@ class TestCredentialRoundTrip:
         cred_client.post("/api/social/x/credentials", json={
             "handle":          "partialuser",
             "consumer_key":    "ck_v1",
-            "consumer_secret": "cs_v1",
+            "consumer_secret": "cs_v1",  # pragma: allowlist secret
             "access_token":    "at_v1",
-            "access_secret":   "as_v1",
+            "access_secret":   "as_v1",  # pragma: allowlist secret
         })
 
         # Then update only consumer_key (simulates user only changing one field)
@@ -121,16 +121,16 @@ class TestCredentialRoundTrip:
         cred_client.post("/api/social/x/credentials", json={
             "handle":          "maskuser",
             "consumer_key":    "real_secret_key",
-            "consumer_secret": "real_secret_secret",
+            "consumer_secret": "real_secret_secret",  # pragma: allowlist secret
             "access_token":    "real_access_token",
-            "access_secret":   "real_access_secret",
+            "access_secret":   "real_access_secret",  # pragma: allowlist secret
         })
 
         r = cred_client.get("/api/accounts")
         x = r.json()["social"]["x"]
         assert x["consumer_key"]    != "real_secret_key"
-        assert x["consumer_secret"] != "real_secret_secret"
+        assert x["consumer_secret"] != "real_secret_secret"  # pragma: allowlist secret
         assert x["access_token"]    != "real_access_token"
-        assert x["access_secret"]   != "real_access_secret"
+        assert x["access_secret"]   != "real_access_secret"  # pragma: allowlist secret
         # Values should be the mask placeholder
         assert x["consumer_key"] == "••••"

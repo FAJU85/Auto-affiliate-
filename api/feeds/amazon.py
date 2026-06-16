@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import os
 import random
-from urllib.parse import urlparse, urlencode, parse_qs, urlunparse
 
 from ..utils import logger, metrics
 

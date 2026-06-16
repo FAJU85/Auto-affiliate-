@@ -35,7 +35,7 @@ class TestAuthMiddleware:
         assert r.status_code == 200
 
     def test_api_with_password_rejects_unauthorized(self, client):
-        os.environ["DASHBOARD_PASSWORD"] = "testpass123"
+        os.environ["DASHBOARD_PASSWORD"] = "testpass123"  # pragma: allowlist secret
         try:
             r = client.get("/api/status")
             assert r.status_code == 401
@@ -44,7 +44,7 @@ class TestAuthMiddleware:
             os.environ.pop("DASHBOARD_PASSWORD", None)
 
     def test_api_with_correct_bearer_token_allowed(self, client):
-        os.environ["DASHBOARD_PASSWORD"] = "testpass123"
+        os.environ["DASHBOARD_PASSWORD"] = "testpass123"  # pragma: allowlist secret
         try:
             r = client.get("/api/status", headers={"Authorization": "Bearer testpass123"})
             assert r.status_code == 200
@@ -52,7 +52,7 @@ class TestAuthMiddleware:
             os.environ.pop("DASHBOARD_PASSWORD", None)
 
     def test_health_always_public(self, client):
-        os.environ["DASHBOARD_PASSWORD"] = "testpass123"
+        os.environ["DASHBOARD_PASSWORD"] = "testpass123"  # pragma: allowlist secret
         try:
             r = client.get("/health")
             assert r.status_code == 200
@@ -60,7 +60,7 @@ class TestAuthMiddleware:
             os.environ.pop("DASHBOARD_PASSWORD", None)
 
     def test_redirect_route_is_public(self, client):
-        os.environ["DASHBOARD_PASSWORD"] = "testpass123"
+        os.environ["DASHBOARD_PASSWORD"] = "testpass123"  # pragma: allowlist secret
         try:
             r = client.get("/r/nonexistent", follow_redirects=False)
             assert r.status_code in (301, 302, 307, 308, 404)

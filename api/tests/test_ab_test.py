@@ -3,7 +3,6 @@
 import os
 import pytest
 from fastapi.testclient import TestClient
-from datetime import datetime, timezone
 
 
 @pytest.fixture(scope="module")
