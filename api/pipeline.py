@@ -465,7 +465,7 @@ async def _execute(started: float) -> dict:
     duration_ms = int((time.time() - started) * 1000)
     logger.info(f"Pipeline complete in {duration_ms}ms — posted to {list(uris.keys())}", "pipeline")
 
-    return _record({
+    result = _record({
         "success": True,
         "product": product.get("name"),
         "productSource": product.get("source"),
@@ -478,6 +478,17 @@ async def _execute(started: float) -> dict:
         "trackingId": tracking_id,
         "durationMs": duration_ms,
     })
+
+    _webhook_url = os.environ.get("WEBHOOK_URL", "")
+    if _webhook_url:
+        import asyncio as _asyncio
+        from .utils.webhook_notifier import fire_webhook as _fire_webhook
+        try:
+            _asyncio.create_task(_fire_webhook(_webhook_url, {"event": "run_complete", "result": result}))
+        except RuntimeError:
+            pass  # no event loop (e.g. during tests)
+
+    return result
 
 
 # ── Retry runner (called every 15 minutes by APScheduler) ─────────────────────
