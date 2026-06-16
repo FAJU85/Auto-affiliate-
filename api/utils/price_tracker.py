@@ -57,12 +57,18 @@ def record_price(product: dict) -> None:
     """Store the current price for a product."""
     key = _product_key(product)
     price = product.get("price")
-    if not key or price is None or float(price) <= 0:
+    if not key or price is None:
+        return
+    try:
+        price = float(str(price).lstrip("$").replace(",", ""))
+    except (ValueError, TypeError):
+        return
+    if price <= 0:
         return
 
     data = _load()
     data[key] = {
-        "price": float(price),
+        "price": price,
         "name": product.get("name", ""),
         "timestamp": time.time(),
         "source": product.get("source", ""),
@@ -81,10 +87,15 @@ def check_price_drop(product: dict) -> dict | None:
     """
     key = _product_key(product)
     current_price = product.get("price")
-    if not key or current_price is None or float(current_price) <= 0:
+    if not key or current_price is None:
+        return None
+    try:
+        current_price = float(str(current_price).lstrip("$").replace(",", ""))
+    except (ValueError, TypeError):
+        return None
+    if current_price <= 0:
         return None
 
-    current_price = float(current_price)
     data = _load()
     entry = data.get(key)
     if not entry:
