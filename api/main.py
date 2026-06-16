@@ -1406,6 +1406,14 @@ async def ab_results():
     return _ab.get_results()
 
 
+@app.get("/api/analytics/summary")
+async def analytics_summary(days: int = 30):
+    """Run history analytics — aggregated stats for the last `days` days."""
+    runs = metrics.get_recent_runs(500)
+    from .utils.analytics import summarize_runs
+    return summarize_runs(runs, days=days)
+
+
 # ── Link-in-bio landing page ───────────────────────────────────────────────
 
 @app.get("/bio", response_class=HTMLResponse)
