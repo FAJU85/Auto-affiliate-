@@ -1,131 +1,103 @@
-"""Scheduled post queue stored in /data/post_queue.json.
-
-Each item:
-  {
-    "id":           str  (uuid4 hex),
-    "product_name": str,
-    "platform":     str,
-    "scheduled_at": str  (ISO UTC),
-    "created_at":   str  (ISO UTC),
-    "status":       "pending" | "sent" | "failed",
-    "caption":      str | None,
-  }
-"""
-
 import json
 import os
+import tempfile
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 
-DATA_DIR   = Path(os.environ.get("DATA_DIR", "/data"))
-QUEUE_FILE = DATA_DIR / "post_queue.json"
-
-_PRUNE_DAYS = 7
+_VALID_STATUSES = ("pending", "sent", "failed", "cancelled")
+_VALID_PRIORITIES = (1, 2, 3)  # 1=high, 2=normal, 3=low
 
 
-def _now_utc() -> datetime:
-    return datetime.now(timezone.utc)
+def _data_dir() -> Path:
+    return Path(os.environ.get("DATA_DIR", "/data"))
 
 
-def _iso(dt: datetime) -> str:
-    return dt.isoformat()
+def _path() -> Path:
+    return _data_dir() / "post_queue.json"
 
 
-def _parse(ts: str) -> datetime:
+def _load() -> dict:
+    p = _path()
+    if p.exists():
+        try:
+            return json.loads(p.read_text())
+        except Exception:
+            pass
+    return {"items": {}}
+
+
+def _save(data: dict) -> None:
+    p = _path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = tempfile.NamedTemporaryFile("w", dir=p.parent, delete=False, suffix=".tmp")
     try:
-        return datetime.fromisoformat(ts.replace("Z", "+00:00"))
-    except (ValueError, TypeError):
-        return datetime.min.replace(tzinfo=timezone.utc)
-
-
-def _load() -> list:
-    try:
-        return json.loads(QUEUE_FILE.read_text())
+        json.dump(data, tmp)
+        tmp.close()
+        os.replace(tmp.name, p)
     except Exception:
-        return []
+        tmp.close()
+        os.unlink(tmp.name)
+        raise
 
 
-def _save(items: list) -> None:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    cutoff = _now_utc() - timedelta(days=_PRUNE_DAYS)
-    items = [
-        it for it in items
-        if it.get("status") == "pending" or _parse(it.get("created_at", "")) > cutoff
-    ]
-    tmp = str(QUEUE_FILE) + ".tmp"
-    Path(tmp).write_text(json.dumps(items, indent=2))
-    Path(tmp).rename(QUEUE_FILE)
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
-def enqueue(
-    product_name: str,
-    platform: str,
-    scheduled_at: str,
-    caption: str | None = None,
-) -> dict:
-    """Add a new item to the queue and return it."""
-    items = _load()
-    item: dict = {
-        "id":           uuid.uuid4().hex,
-        "product_name": product_name,
-        "platform":     platform,
+def enqueue(platform: str, content: str, priority: int = 2, scheduled_at: str | None = None) -> str:
+    if priority not in _VALID_PRIORITIES:
+        raise ValueError(f"Priority must be one of {_VALID_PRIORITIES}")
+    item_id = str(uuid.uuid4())[:8]
+    data = _load()
+    data["items"][item_id] = {
+        "id": item_id,
+        "platform": platform,
+        "content": content,
+        "priority": priority,
+        "status": "pending",
         "scheduled_at": scheduled_at,
-        "created_at":   _iso(_now_utc()),
-        "status":       "pending",
-        "caption":      caption,
+        "created_at": _now_iso(),
+        "sent_at": None,
+        "error": None,
     }
-    items.append(item)
-    _save(items)
-    return item
+    _save(data)
+    return item_id
 
 
-def get_queue(status: str | None = None) -> list[dict]:
-    """Return all items, optionally filtered by status, sorted by scheduled_at."""
-    items = _load()
-    if status is not None:
-        items = [it for it in items if it.get("status") == status]
-    return sorted(items, key=lambda it: it.get("scheduled_at", ""))
+def get_item(item_id: str) -> dict | None:
+    return _load()["items"].get(item_id)
 
 
-def get_due(now: datetime | None = None) -> list[dict]:
-    """Return pending items whose scheduled_at <= now (default UTC now)."""
-    if now is None:
-        now = _now_utc()
-    return [
-        it for it in get_queue(status="pending")
-        if _parse(it.get("scheduled_at", "")) <= now
-    ]
+def update_status(item_id: str, status: str, error: str | None = None) -> bool:
+    if status not in _VALID_STATUSES:
+        raise ValueError(f"Status must be one of {_VALID_STATUSES}")
+    data = _load()
+    if item_id not in data["items"]:
+        return False
+    data["items"][item_id]["status"] = status
+    data["items"][item_id]["error"] = error
+    if status == "sent":
+        data["items"][item_id]["sent_at"] = _now_iso()
+    _save(data)
+    return True
 
 
-def _set_status(item_id: str, status: str) -> bool:
-    items = _load()
-    for it in items:
-        if it.get("id") == item_id:
-            it["status"] = status
-            _save(items)
-            return True
-    return False
-
-
-def mark_sent(item_id: str) -> bool:
-    """Mark item as sent. Returns True if found."""
-    return _set_status(item_id, "sent")
-
-
-def mark_failed(item_id: str) -> bool:
-    """Mark item as failed. Returns True if found."""
-    return _set_status(item_id, "failed")
+def get_pending(platform: str | None = None) -> list[dict]:
+    items = _load()["items"].values()
+    pending = [i for i in items if i["status"] == "pending"]
+    if platform:
+        pending = [i for i in pending if i["platform"] == platform]
+    return sorted(pending, key=lambda x: (x["priority"], x["created_at"]))
 
 
 def cancel(item_id: str) -> bool:
-    """Remove a pending item from the queue. Returns True if removed."""
-    items = _load()
-    for it in items:
-        if it.get("id") == item_id:
-            if it.get("status") != "pending":
-                return False
-            items.remove(it)
-            _save(items)
-            return True
-    return False
+    return update_status(item_id, "cancelled")
+
+
+def queue_stats() -> dict:
+    items = list(_load()["items"].values())
+    stats: dict = {"total": len(items)}
+    for s in _VALID_STATUSES:
+        stats[s] = sum(1 for i in items if i["status"] == s)
+    return stats
