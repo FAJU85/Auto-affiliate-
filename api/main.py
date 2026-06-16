@@ -1114,6 +1114,25 @@ async def clicks(days: int = 30):
     return {"daily": daily, "total": metrics.get_total_clicks()}
 
 
+# ── Click Tracker ───────────────────────────────────────────────────────────
+
+@app.post("/api/clicks/record")
+async def record_click_event(body: dict):
+    from .utils.click_tracker import record_click
+    return record_click(
+        product_name=body.get("product_name", "unknown"),
+        url=body.get("url", ""),
+        platform=body.get("platform", "unknown"),
+        source=body.get("source", "unknown"),
+    )
+
+
+@app.get("/api/clicks/summary")
+async def click_summary():
+    from .utils.click_tracker import clicks_summary
+    return clicks_summary()
+
+
 # ── Dedup ───────────────────────────────────────────────────────────────────
 
 @app.get("/api/dedup/stats")
