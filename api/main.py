@@ -465,6 +465,12 @@ async def api_hashtags(category: str = "General", platform: str = "instagram", n
     return {"category": category, "platform": platform, "hashtags": tags}
 
 
+@app.get("/api/trends")
+async def get_trends(category: str = "General", n: int = 3):
+    from .utils.trend_injector import get_trends_for
+    return {"category": category, "trends": get_trends_for(category, n=n)}
+
+
 # ── Logs & debug ────────────────────────────────────────────────────────────
 
 @app.get("/api/metrics")
