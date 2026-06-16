@@ -1565,6 +1565,20 @@ async def get_build_by_number(number: int):
     return build
 
 
+# ── Activity log ────────────────────────────────────────────────────────────
+
+@app.get("/api/activity")
+async def get_activity(limit: int = 100):
+    from .utils.activity_log import get_recent
+    return {"entries": get_recent(limit=limit)}
+
+
+@app.get("/api/activity/summary")
+async def get_activity_summary():
+    from .utils.activity_log import activity_summary
+    return activity_summary()
+
+
 @app.post("/api/geo-filter")
 async def geo_filter_products(body: dict):
     from .utils.geo_filter import filter_by_region
