@@ -1580,6 +1580,15 @@ async def get_variations(body: dict):
     return generate_all_variations(product)
 
 
+@app.post("/api/link-check")
+async def link_check(body: dict):
+    url = body.get("url", "")
+    if not url:
+        return {"url": url, "alive": False, "error": "no url provided"}
+    from .utils.link_checker import check_link
+    return await check_link(url)
+
+
 # ── Link-in-bio landing page ───────────────────────────────────────────────
 
 @app.get("/bio", response_class=HTMLResponse)
