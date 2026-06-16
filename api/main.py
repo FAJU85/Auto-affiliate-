@@ -1473,6 +1473,12 @@ async def remove_blacklist_domain(domain: str):
     return {"removed": remove_domain(domain)}
 
 
+@app.get("/api/feeds/health")
+async def feeds_health():
+    from .utils.feed_health import all_feeds_health
+    return {"feeds": all_feeds_health()}
+
+
 # ── Link-in-bio landing page ───────────────────────────────────────────────
 
 @app.get("/bio", response_class=HTMLResponse)
