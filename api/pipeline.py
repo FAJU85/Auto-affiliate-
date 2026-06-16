@@ -27,7 +27,8 @@ from .utils.platform_guardian import check_allowed
 from .utils import budget as budget_util
 from .utils import logger, metrics, settings
 from .utils.telemetry import Timer
-from .utils.product_scorer import pick_best, pick_best_with_freshness, score_product
+from .utils.product_scorer import pick_best_with_freshness
+from .utils.category_detector import ensure_category
 from .utils import retry_queue
 from .utils.price_tracker import record_price, check_price_drop
 from .utils import ab_test as ab
@@ -352,6 +353,10 @@ async def _execute(started: float) -> dict:
             "success": False, "error": "Product already posted recently (dedup skip)",
             "product": product.get("name"), "productSource": product.get("source"),
         })
+
+    # ── Category auto-detection ──
+    product = ensure_category(product)
+    logger.info(f"Product category: {product.get('category')}", "pipeline")
 
     # ── Phase 2: Caption (base — used when platform-specific fails or for single platform) ──
     trends = await get_trends()
