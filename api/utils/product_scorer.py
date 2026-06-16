@@ -141,8 +141,9 @@ def pick_best(products: list[dict], recently_posted: set[str] | None = None) -> 
 
 
 def pick_best_with_freshness(products: list[dict], runs: list[dict]) -> dict | None:
-    """Pick the best product, penalising those posted in the last DEDUP_TTL_HOURS."""
+    """Pick the best product, penalising recently posted ones and boosting high-CTR items."""
     from .metrics import DEDUP_TTL_HOURS
+    from .ctr_feedback import ctr_boost_for
     from datetime import datetime, timezone, timedelta
 
     cutoff = datetime.now(timezone.utc) - timedelta(hours=DEDUP_TTL_HOURS)
@@ -160,7 +161,15 @@ def pick_best_with_freshness(products: list[dict], runs: list[dict]) -> dict | N
         except (ValueError, TypeError):
             pass
 
-    return pick_best(products, recently_posted=recently_posted)
+    def _score(p: dict) -> float:
+        base = score_product(p, recently_posted).total
+        boost = ctr_boost_for(p.get("name", ""), p.get("source", ""), runs)
+        # CTR boost adjusts score by ±5% to break ties without overriding quality
+        return base + (boost - 0.5) * 0.10
+
+    if not products:
+        return None
+    return max(products, key=_score)
 
 
 def rank_products(products: list[dict], recently_posted: set[str] | None = None) -> list[tuple[dict, ProductScore]]:

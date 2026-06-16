@@ -440,6 +440,14 @@ async def schedule_optimal():
     return schedule_summary(runs)
 
 
+@app.get("/api/ctr-stats")
+async def ctr_stats():
+    """Return CTR feedback stats: top products, per-source CTR, overall CTR."""
+    from .utils.ctr_feedback import ctr_summary
+    runs = metrics.get_recent_runs(500)
+    return ctr_summary(runs)
+
+
 # ── Logs & debug ────────────────────────────────────────────────────────────
 
 @app.get("/api/metrics")
