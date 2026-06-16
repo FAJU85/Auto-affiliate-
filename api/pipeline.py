@@ -263,6 +263,17 @@ async def run_pipeline() -> dict:
             msg = f"Pipeline is paused — auto-resumes in {wait}s" if until else "Pipeline is paused"
             return {"ok": False, "error": msg}
 
+    # Smart schedule soft gate: skip low-engagement hours when enabled
+    import os as _os
+    from datetime import datetime as _dt, timezone as _tz
+    if _os.environ.get("SMART_SCHEDULE", "").strip() in ("1", "true", "yes"):
+        from .utils.smart_schedule import is_peak_hour
+        current_hour = _dt.now(_tz.utc).hour
+        runs = metrics.get_recent_runs(500)
+        if not is_peak_hour(current_hour, runs):
+            logger.info(f"Smart schedule: hour {current_hour:02d} UTC is off-peak — skipping", "pipeline")
+            return {"ok": False, "skipped": True, "reason": f"off-peak hour {current_hour:02d} UTC"}
+
     STATE["running"] = True
     started = time.time()
     try:
