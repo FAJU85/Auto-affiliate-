@@ -33,6 +33,7 @@ from .utils.snapshot import record_response
 from .utils.circuit_breaker import all_statuses as cb_statuses, reset_breaker, reset_all as cb_reset_all
 from .utils.telemetry import golden_signals
 from .utils.prometheus import build_prometheus_output
+from .utils.platform_queue import get_enabled_platforms
 
 DASHBOARD = Path(__file__).resolve().parent.parent / "src" / "dashboard.html"
 
@@ -735,6 +736,11 @@ async def env_status():
 
 
 # ── Settings ────────────────────────────────────────────────────────────────
+
+@app.get("/api/platforms/enabled")
+async def platforms_enabled():
+    return get_enabled_platforms(settings.get_settings())
+
 
 @app.get("/api/settings")
 async def get_settings_route():
