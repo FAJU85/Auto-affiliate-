@@ -1589,6 +1589,16 @@ async def link_check(body: dict):
     return await check_link(url)
 
 
+@app.post("/api/price-monitor/rank")
+async def rank_products_by_value(body: dict):
+    from .utils.price_monitor import rank_by_value, best_value_per_category
+    products = body.get("products", [])
+    return {
+        "ranked": rank_by_value(products),
+        "best_per_category": best_value_per_category(products),
+    }
+
+
 # ── Link-in-bio landing page ───────────────────────────────────────────────
 
 @app.get("/bio", response_class=HTMLResponse)
