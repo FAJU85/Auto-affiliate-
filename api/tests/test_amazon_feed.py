@@ -1,6 +1,5 @@
 """Tests for the Amazon Associates feed (Build #6)."""
 
-import os
 import pytest
 
 

@@ -29,17 +29,17 @@ class TestBuildPromptsWithPlatform:
         assert _PLATFORM_TONE["instagram"][:20] in system
 
     def test_mastodon_injects_hashtag_guidance(self):
-        from api.ai.text import _build_prompts, _PLATFORM_TONE
+        from api.ai.text import _build_prompts
         system, _ = _build_prompts(_PRODUCT, [], platform="mastodon")
         assert "hashtag" in system.lower()
 
     def test_x_injects_character_limit_guidance(self):
-        from api.ai.text import _build_prompts, _PLATFORM_TONE
+        from api.ai.text import _build_prompts
         system, _ = _build_prompts(_PRODUCT, [], platform="x")
         assert "220" in system or "Twitter" in system
 
     def test_facebook_no_hashtag_instruction(self):
-        from api.ai.text import _build_prompts, _PLATFORM_TONE
+        from api.ai.text import _build_prompts
         system, _ = _build_prompts(_PRODUCT, [], platform="facebook")
         assert "no hashtag" in system.lower()
 
@@ -50,7 +50,7 @@ class TestBuildPromptsWithPlatform:
         assert system_no_platform == system_unknown
 
     def test_none_platform_is_backward_compatible(self):
-        from api.ai.text import _build_prompts, generate_post_text
+        from api.ai.text import _build_prompts
         system_none, user_none = _build_prompts(_PRODUCT, [], platform=None)
         system_old, user_old = _build_prompts(_PRODUCT, [])
         assert system_none == system_old

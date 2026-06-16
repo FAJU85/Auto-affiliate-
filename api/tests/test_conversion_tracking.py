@@ -3,7 +3,6 @@
 import os
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import patch
 from datetime import datetime, timezone
 
 
@@ -192,7 +191,8 @@ class TestPostbackEndpoint:
         monkeypatch.delenv("POSTBACK_SECRET")
 
     def test_postback_with_valid_sig_passes(self, client, monkeypatch):
-        import hmac, hashlib
+        import hmac
+        import hashlib
         monkeypatch.setenv("POSTBACK_SECRET", "mysecret")
         c, m = client["client"], client["metrics"]
         self._seed_run(m, "pb_sig_02")

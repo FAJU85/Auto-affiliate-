@@ -17,7 +17,6 @@ creates a *new* loop and tries to start the same scheduler — producing either
 Fix: wrap start/shutdown so the scheduler cleanly detaches from a dead loop
 and re-attaches to the current one on each TestClient startup.
 """
-import asyncio
 import pytest
 
 
