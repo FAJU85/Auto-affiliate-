@@ -1048,7 +1048,7 @@ let currentPage = 'overview';
 // ── NAV ────────────────────────────────────────────────────────
 const PAGE_META = {
   overview:  ['Overview',       'Pipeline status & KPIs'],
-  analytics: ['Analytics',      'Clicks, CTR & performance'],
+  analytics: ['Analytics',      'Post history, platform breakdown & click trends'],
   revenue:   ['Revenue',        'Commission earnings, A/B test & retry queue'],
   posts:     ['Post History',   'All published posts'],
   seo:       ['SEO',            'Search optimisation & keywords'],
@@ -1072,6 +1072,7 @@ function nav(p) {
   if (p==='settings') loadSettingsForm();
   if (p==='schedule') loadSchedule();
   if (p==='revenue')  loadRevenue();
+  if (p==='analytics') loadAnalytics();
 }
 
 // ── API ────────────────────────────────────────────────────────
