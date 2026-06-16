@@ -321,6 +321,34 @@ async def dry_run():
     return await pipeline.dry_run()
 
 
+@app.post("/api/preview")
+async def preview_post(body: dict):
+    """Dry-run: generate caption for a product without posting."""
+    from .ai.text import generate_platform_caption
+    from .utils.category_detector import ensure_category
+    from .utils.trend_injector import get_trends_for
+
+    product = {
+        "name": body.get("name", "Sample Product"),
+        "category": body.get("category", "General"),
+        "description": body.get("description", ""),
+        "price": body.get("price"),
+        "url": body.get("url", ""),
+    }
+    product = ensure_category(product)
+    platform = body.get("platform", "bluesky")
+    trends = get_trends_for(product.get("category", "General"), n=3)
+    caption = await generate_platform_caption(product, trends=trends, platform=platform)
+    return {
+        "caption": caption,
+        "platform": platform,
+        "product_name": product["name"],
+        "category": product.get("category", "General"),
+        "char_count": len(caption),
+        "dry_run": True,
+    }
+
+
 @app.post("/api/schedule/pause")
 async def pause():
     pipeline.STATE["paused"] = True
