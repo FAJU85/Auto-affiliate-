@@ -322,17 +322,35 @@ async def generate_post_text(product: dict, trends: list | None = None) -> str:
     return _template(product, trends)
 
 
-async def generate_platform_caption(product: dict, trends: list | None = None, platform: str | None = None) -> str:
-    """Generate a caption tuned to the target platform's style and audience."""
+async def generate_platform_caption(product: dict, trends: list | None = None, platform: str | None = None, runs: list[dict] | None = None) -> str:
+    """Generate a caption tuned to the target platform's style and audience.
+
+    When runs history is provided, injects CTR-optimized hashtags for platforms
+    that support them (instagram, mastodon, threads, x).
+    """
     trends = trends or []
     system, user = _build_prompts(product, trends, platform=platform)
+    caption = None
     for provider in (_try_groq, _try_mistral):
         out = await provider(system, user)
         if out and out.strip():
             cleaned = _clean(out)
             if _looks_usable(cleaned):
                 logger.info(f"Caption [{platform or 'generic'}] ({len(cleaned)} chars): {cleaned[:80]}…")
-                return cleaned
+                caption = cleaned
+                break
             logger.warn(f"AI caption rejected (unusable) [{platform}]: {repr(cleaned[:80])}")
-    logger.warn(f"AI providers unavailable — using template [{platform}]")
-    return _template(product, trends)
+    if caption is None:
+        logger.warn(f"AI providers unavailable — using template [{platform}]")
+        caption = _template(product, trends)
+
+    # Inject optimized hashtags for platforms that benefit from them
+    if platform and platform.lower() in ("instagram", "mastodon", "threads", "x"):
+        from ..utils.hashtag_optimizer import optimized_hashtags, inject_hashtags
+        tags = optimized_hashtags(product, platform=platform, runs=runs)
+        if tags:
+            candidate = inject_hashtags(caption, tags)
+            if len(candidate) <= MAX_CHARS:
+                caption = candidate
+
+    return caption[:MAX_CHARS] if len(caption) > MAX_CHARS else caption
