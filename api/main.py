@@ -1573,6 +1573,13 @@ async def geo_filter_products(body: dict):
     return {"filtered": filter_by_region(products, allowed), "count": len(filter_by_region(products, allowed))}
 
 
+@app.post("/api/variations")
+async def get_variations(body: dict):
+    from .utils.content_variations import generate_all_variations
+    product = body.get("product", {})
+    return generate_all_variations(product)
+
+
 # ── Link-in-bio landing page ───────────────────────────────────────────────
 
 @app.get("/bio", response_class=HTMLResponse)
