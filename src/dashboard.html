@@ -312,6 +312,7 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
     <div class="sb-section-label">Dashboard</div>
     <div class="nav-item active" onclick="nav('overview')" id="nav-overview"><span class="nav-icon">⚡</span><span class="nav-label">Overview</span></div>
     <div class="nav-item" onclick="nav('analytics')" id="nav-analytics"><span class="nav-icon">📊</span><span class="nav-label">Analytics</span></div>
+    <div class="nav-item" onclick="nav('revenue')" id="nav-revenue"><span class="nav-icon">💰</span><span class="nav-label">Revenue</span></div>
     <div class="nav-item" onclick="nav('posts')" id="nav-posts"><span class="nav-icon">📝</span><span class="nav-label">Post History</span></div>
   </div>
 
@@ -509,6 +510,73 @@ tbody tr:hover td { background: rgba(255,255,255,.02); }
           <thead><tr><th>Product</th><th>Network</th><th>Clicks</th><th>SEO</th><th>Posted</th><th>Link</th></tr></thead>
           <tbody id="top-posts-body"><tr><td colspan="6" style="text-align:center;color:var(--dim);padding:32px">Loading…</td></tr></tbody>
         </table>
+      </div>
+    </div>
+
+    <!-- ══ REVENUE ══ -->
+    <div class="page" id="page-revenue">
+      <div class="sec-hdr">
+        <div><div class="sec-title">Revenue Dashboard</div><div class="sec-sub">Commission earnings, A/B test results &amp; retry queue</div></div>
+        <div class="sec-ctrl">
+          <button class="btn btn-secondary" onclick="loadRevenue()" style="font-size:12px;padding:5px 14px">↻ Refresh</button>
+        </div>
+      </div>
+
+      <!-- KPI cards row -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;margin-bottom:20px">
+        <div class="card" style="padding:18px 20px">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Total Commission</div>
+          <div id="rev-total" style="font-size:26px;font-weight:700;color:var(--green)">—</div>
+        </div>
+        <div class="card" style="padding:18px 20px">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Conversions</div>
+          <div id="rev-conversions" style="font-size:26px;font-weight:700">—</div>
+        </div>
+        <div class="card" style="padding:18px 20px">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Total Clicks</div>
+          <div id="rev-clicks" style="font-size:26px;font-weight:700;color:var(--cyan)">—</div>
+        </div>
+        <div class="card" style="padding:18px 20px">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">EPC</div>
+          <div id="rev-epc" style="font-size:26px;font-weight:700;color:var(--accent)">—</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">earnings per click</div>
+        </div>
+        <div class="card" style="padding:18px 20px">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Retry Queue</div>
+          <div id="rev-retry" style="font-size:26px;font-weight:700;color:var(--yellow)">—</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">pending retries</div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px">
+        <!-- Commission by network -->
+        <div class="card" style="padding:18px 20px">
+          <div style="font-size:13px;font-weight:600;margin-bottom:14px">Commission by Network</div>
+          <div id="rev-networks-bars">
+            <div style="color:var(--muted);font-size:12px">Loading…</div>
+          </div>
+        </div>
+
+        <!-- A/B test panel -->
+        <div class="card" style="padding:18px 20px">
+          <div style="font-size:13px;font-weight:600;margin-bottom:14px">A/B Caption Test
+            <span id="ab-winner-badge" style="display:none;margin-left:8px;font-size:11px;font-weight:700;background:var(--green);color:#000;padding:2px 8px;border-radius:10px"></span>
+          </div>
+          <div id="ab-panel">
+            <div style="color:var(--muted);font-size:12px">Loading…</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Daily revenue table -->
+      <div class="card" style="padding:18px 20px">
+        <div style="font-size:13px;font-weight:600;margin-bottom:14px">Daily Breakdown</div>
+        <div id="rev-daily-wrap" style="overflow-x:auto">
+          <table class="tbl" style="min-width:500px">
+            <thead><tr><th>Date</th><th>Commission</th><th>Conversions</th><th>Clicks</th></tr></thead>
+            <tbody id="rev-daily-body"><tr><td colspan="4" style="color:var(--muted)">Loading…</td></tr></tbody>
+          </table>
+        </div>
       </div>
     </div>
 
@@ -981,6 +1049,7 @@ let currentPage = 'overview';
 const PAGE_META = {
   overview:  ['Overview',       'Pipeline status & KPIs'],
   analytics: ['Analytics',      'Clicks, CTR & performance'],
+  revenue:   ['Revenue',        'Commission earnings, A/B test & retry queue'],
   posts:     ['Post History',   'All published posts'],
   seo:       ['SEO',            'Search optimisation & keywords'],
   ai:        ['AI Studio',      'Insights & caption generator'],
@@ -1002,6 +1071,7 @@ function nav(p) {
   if (p==='logs')     loadLogs();
   if (p==='settings') loadSettingsForm();
   if (p==='schedule') loadSchedule();
+  if (p==='revenue')  loadRevenue();
 }
 
 // ── API ────────────────────────────────────────────────────────
@@ -1151,6 +1221,80 @@ async function loadHistory() {
   S.historyError = false;
   S.history = Array.isArray(d) ? d : [];
 }
+// ── REVENUE ────────────────────────────────────────────────────
+async function loadRevenue() {
+  const [rev, ab] = await Promise.all([api('/api/revenue'), api('/api/ab-results')]);
+
+  // KPI cards
+  if (rev) {
+    document.getElementById('rev-total').textContent = '$' + (rev.total_commission||0).toFixed(2);
+    document.getElementById('rev-conversions').textContent = rev.total_conversions||0;
+    document.getElementById('rev-clicks').textContent = rev.total_clicks||0;
+    document.getElementById('rev-epc').textContent = '$' + (rev.epc||0).toFixed(4);
+  }
+
+  // Retry queue depth (from status)
+  const st = await api('/api/status');
+  if (st) {
+    const depth = st.retry_queue_depth ?? st.retryQueueDepth ?? '—';
+    document.getElementById('rev-retry').textContent = depth;
+  }
+
+  // Network commission bars
+  if (rev && rev.by_network) {
+    const nets = Object.entries(rev.by_network).sort((a,b)=>b[1]-a[1]);
+    const maxVal = nets.length ? Math.max(...nets.map(n=>n[1])) : 1;
+    const colors = ['var(--accent)','var(--green)','var(--purple)','var(--cyan)','var(--yellow)'];
+    document.getElementById('rev-networks-bars').innerHTML = nets.length
+      ? nets.map(([name,val],i)=>`
+          <div style="margin-bottom:10px">
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">
+              <span style="text-transform:capitalize">${name}</span>
+              <span style="color:var(--green);font-weight:600">$${val.toFixed(2)}</span>
+            </div>
+            <div style="background:var(--border);border-radius:4px;height:6px">
+              <div style="background:${colors[i%colors.length]};height:6px;border-radius:4px;width:${maxVal>0?Math.round(val/maxVal*100):0}%;transition:width .4s"></div>
+            </div>
+          </div>`).join('')
+      : '<div style="color:var(--muted);font-size:12px">No network data yet</div>';
+  }
+
+  // A/B panel
+  if (ab && ab.variants) {
+    const winner = ab.winner;
+    if (winner) {
+      const badge = document.getElementById('ab-winner-badge');
+      badge.textContent = `Winner: Variant ${winner}`;
+      badge.style.display = 'inline';
+    }
+    const vars = Object.entries(ab.variants);
+    document.getElementById('ab-panel').innerHTML = vars.map(([v,s])=>`
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)">
+        <div>
+          <div style="font-weight:600;font-size:13px">Variant ${v}${winner===v?' 🏆':''}</div>
+          <div style="font-size:11px;color:var(--muted)">Runs: ${s.runs||0} · Clicks: ${s.clicks||0}</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:20px;font-weight:700;color:${winner===v?'var(--green)':'var(--text)'}">${((s.ctr||0)*100).toFixed(1)}%</div>
+          <div style="font-size:11px;color:var(--muted)">CTR</div>
+        </div>
+      </div>`).join('') + `<div style="font-size:11px;color:var(--muted);margin-top:8px">Total assignments: ${ab.total_assignments||0}</div>`;
+  }
+
+  // Daily breakdown table
+  if (rev && rev.daily) {
+    const rows = rev.daily.slice().reverse();
+    document.getElementById('rev-daily-body').innerHTML = rows.length
+      ? rows.map(d=>`<tr>
+          <td>${d.date||'—'}</td>
+          <td style="color:var(--green)">$${(d.commission||0).toFixed(2)}</td>
+          <td>${d.conversions||0}</td>
+          <td>${d.clicks||0}</td>
+        </tr>`).join('')
+      : '<tr><td colspan="4" style="color:var(--muted)">No data yet</td></tr>';
+  }
+}
+
 async function loadNetworks() {
   const d = await api('/api/networks');
   if (!d) { S.networksError = true; S.networks = []; return; }

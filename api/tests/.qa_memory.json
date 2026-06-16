@@ -226,6 +226,7 @@
         "lastRun",
         "missingVars",
         "pipeline",
+        "retry_queue_depth",
         "runs",
         "stats"
       ]
@@ -371,7 +372,7 @@
       ]
     }
   },
-  "run_count": 150,
+  "run_count": 154,
   "known_routes": [
     "/",
     "/api/ab-results",
