@@ -448,6 +448,15 @@ async def ctr_stats():
     return ctr_summary(runs)
 
 
+@app.get("/api/hashtags")
+async def api_hashtags(category: str = "General", platform: str = "instagram", n: int = 8):
+    """Return optimized hashtags for a product category and platform."""
+    from .utils.hashtag_optimizer import hashtags_for
+    runs = metrics.get_recent_runs(200)
+    tags = hashtags_for(category, platform=platform, runs=runs, n=n)
+    return {"category": category, "platform": platform, "hashtags": tags}
+
+
 # ── Logs & debug ────────────────────────────────────────────────────────────
 
 @app.get("/api/metrics")
