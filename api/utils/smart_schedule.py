@@ -95,6 +95,36 @@ def optimal_cron(runs: list[dict], n: int = TOP_HOURS) -> str:
     return "0 " + ",".join(str(h) for h in hours) + " * * *"
 
 
+def next_fire_time(runs: list[dict], tz_offset_hours: int = 0) -> dict:
+    from datetime import datetime, timezone, timedelta
+
+    now = datetime.now(timezone.utc)
+    peaks = compute_peak_hours(runs)
+
+    tz = timezone(timedelta(hours=tz_offset_hours))
+
+    candidate = None
+    for h in peaks:
+        t = now.replace(hour=h, minute=0, second=0, microsecond=0)
+        if t > now:
+            candidate = t
+            break
+
+    if candidate is None:
+        tomorrow = now + timedelta(days=1)
+        candidate = tomorrow.replace(hour=peaks[0], minute=0, second=0, microsecond=0)
+
+    hours_until = (candidate - now).total_seconds() / 3600
+    local_dt = candidate.astimezone(tz)
+
+    return {
+        "next_utc": candidate.isoformat(),
+        "next_local": local_dt.isoformat(),
+        "hours_until": round(hours_until, 4),
+        "peak_hours": peaks,
+    }
+
+
 def schedule_summary(runs: list[dict]) -> dict:
     """Return a summary dict for the /api/schedule/optimal endpoint."""
     peaks = compute_peak_hours(runs)
