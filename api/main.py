@@ -1523,6 +1523,29 @@ async def set_commission_rate(body: dict):
         raise HTTPException(status_code=400, detail=str(e))
 
 
+# ── Scheduled post queue ───────────────────────────────────────────────────
+
+@app.get("/api/queue")
+async def get_post_queue(status: str | None = None):
+    from .utils.post_queue import get_queue
+    return {"items": get_queue(status=status)}
+
+@app.post("/api/queue")
+async def enqueue_post(body: dict):
+    from .utils.post_queue import enqueue
+    return enqueue(
+        product_name=body.get("product_name", ""),
+        platform=body.get("platform", "bluesky"),
+        scheduled_at=body.get("scheduled_at", ""),
+        caption=body.get("caption"),
+    )
+
+@app.delete("/api/queue/{item_id}")
+async def cancel_queued_post(item_id: str):
+    from .utils.post_queue import cancel
+    return {"cancelled": cancel(item_id)}
+
+
 # ── Link-in-bio landing page ───────────────────────────────────────────────
 
 @app.get("/bio", response_class=HTMLResponse)
