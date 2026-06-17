@@ -95,8 +95,12 @@ def run() -> SensorReport:
             else:
                 report.add("credentials", Severity.OK, f"No hardcoded credentials in {check_file}")
 
-    # 5. pyproject.toml / requirements present
-    has_reqs = (_ROOT / "requirements.txt").exists() or (_ROOT / "pyproject.toml").exists()
+    # 5. pyproject.toml / requirements present (check root and api/ subdir)
+    has_reqs = (
+        (_ROOT / "requirements.txt").exists()
+        or (_ROOT / "pyproject.toml").exists()
+        or (_ROOT / "api" / "requirements.txt").exists()
+    )
     if has_reqs:
         report.add("deps", Severity.OK, "Dependency file present")
     else:

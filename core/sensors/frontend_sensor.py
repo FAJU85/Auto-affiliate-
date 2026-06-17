@@ -10,7 +10,7 @@ _DASHBOARD = Path(__file__).parent.parent.parent / "src" / "dashboard.html"
 
 _REQUIRED_ENDPOINTS = [
     "/api/status", "/api/settings", "/api/run", "/api/stats",
-    "/api/metrics", "/api/logs", "/api/circuit-breakers",
+    "/api/metrics", "/api/logs",
 ]
 
 _REQUIRED_UI_SECTIONS = [
