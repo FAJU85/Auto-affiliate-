@@ -23,14 +23,14 @@ _COMPONENTS = {
 # API response shape contracts: endpoint → keys that must appear in dashboard parsing code
 _API_CONTRACTS = {
     "/api/status":   ["status", "running"],
-    "/api/settings": ["blueskyHandle", "postInterval"],
+    "/api/settings": ["publishPlatforms", "maxPostLength"],
     "/api/stats":    ["total", "clicks"],
 }
 
 # Settings keys that appear in both DEFAULTS and the dashboard form
 _SHARED_SETTINGS_KEYS = [
-    "blueskyHandle", "blueskyAppPassword",
-    "postInterval", "enabledPlatforms",
+    "publishPlatforms", "maxPostLength",
+    "schedulerEnabled", "postsPerDay", "postingHours",
 ]
 
 
