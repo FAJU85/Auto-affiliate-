@@ -3,27 +3,27 @@
     {
       "test": "5xx:/api/audit",
       "detail": "Internal Server Error",
-      "ts": "2026-06-16T23:19:30Z"
+      "ts": "2026-06-17T11:27:38Z"
     },
     {
       "test": "5xx:/api/blacklist",
       "detail": "Internal Server Error",
-      "ts": "2026-06-16T23:19:30Z"
+      "ts": "2026-06-17T11:27:38Z"
     },
     {
       "test": "5xx:/api/feeds/health",
       "detail": "Internal Server Error",
-      "ts": "2026-06-16T23:19:30Z"
+      "ts": "2026-06-17T11:27:38Z"
     },
     {
       "test": "5xx:/api/health/full",
       "detail": "Internal Server Error",
-      "ts": "2026-06-16T23:19:30Z"
+      "ts": "2026-06-17T11:27:38Z"
     },
     {
       "test": "5xx:/api/queue",
       "detail": "Internal Server Error",
-      "ts": "2026-06-16T23:19:30Z"
+      "ts": "2026-06-17T11:27:38Z"
     }
   ],
   "regressions": [
@@ -401,7 +401,7 @@
       ]
     }
   },
-  "run_count": 170,
+  "run_count": 175,
   "known_routes": [
     "/",
     "/api/ab-results",
